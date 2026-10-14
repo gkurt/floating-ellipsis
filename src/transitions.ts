@@ -29,9 +29,12 @@ export interface TransitionOptions {
   glide?: boolean;
   /**
    * How long glyphs take to leave:
-   * - 'leeway' (default): in proportion to the room their removal frees. When
-   *   text is squeezed hard (a fast drag), removing a glyph frees almost
-   *   nothing and there is nowhere to animate into, so it goes at once.
+   * - 'leeway' (default): shorter the less room and time there is. Room: a
+   *   glyph leaving gets time in proportion to the space its removal frees;
+   *   squeezed text frees almost nothing. Time: when changes come faster than
+   *   animations can play (a dragged slider, a fast resize), each gets a few
+   *   times the gap since the previous one. With no leeway, glyphs come and
+   *   go at once and anything still in flight lands immediately.
    * - 'fixed': always `duration`.
    */
   pace?: 'leeway' | 'fixed';
@@ -148,6 +151,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   const omega = 6.6 / (duration / 1000);
   let springFrame = 0;
   let lastTick = 0;
+  let lastChange = -Infinity;
 
   const reduced = () => respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -411,16 +415,24 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return marks[Math.min(marks.length - 1, Math.floor(at * marks.length))];
   }
 
+  /** An ellipsis with no marks is a gap: things merge into its middle. */
+  function gapPoint(j: number): DOMRect | undefined {
+    const r = instance.ellipsisRect(j);
+    return r ? new DOMRect(r.left + r.width / 2, r.top + r.height / 2, 0, 0) : undefined;
+  }
+
   /** The mark a newly shown glyph grows out of, as it was last painted. */
   function sourceMark(i: number, change: ElideChange): DOMRect | undefined {
     const was = change.previous?.hidden.findIndex((p) => i >= p.start && i < p.end) ?? -1;
     const prev = change.previous?.hidden[was];
+    if (!prev) return undefined;
     const marks = change.marksBefore[was] ?? [];
-    if (!prev || !marks.length) return undefined;
     // The part it came from usually still exists, a little smaller: the
     // glyph comes out of the end of the ellipsis on its side.
-    const match = change.state.hidden.find((p) => p.start < prev.end && p.end > prev.start);
-    if (match) return i < match.start ? marks[0] : marks[marks.length - 1];
+    const match = change.state.hidden.findIndex((p) => p.start < prev.end && p.end > prev.start);
+    if (!marks.length) return match >= 0 ? gapPoint(match) : undefined;
+    const part = change.state.hidden[match];
+    if (part) return i < part.start ? marks[0] : marks[marks.length - 1];
     return markOf(i, prev, marks);
   }
 
@@ -440,7 +452,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     { opacity: 1, filter: 'blur(0px)' },
   ];
 
-  function enter(i: number, change: ElideChange) {
+  function enter(i: number, change: ElideChange, ms: number) {
     const el = instance.glyph(i);
     const ink = instance.glyphInk(i);
     if (!el || !ink) return;
@@ -456,9 +468,9 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         return;
       }
       const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(ghost, box, ink, mark, [style.color, markColor], duration, true);
+      anims = morph(ghost, box, ink, mark, [style.color, markColor], ms, true);
     } else {
-      anims = [ghost.el.animate(fadeFrames(), { duration, easing })];
+      anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing })];
     }
     el.style.color = 'transparent';
     const g: Ghost = {
@@ -488,7 +500,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
     let anims: Animation[];
     if (effect === 'merge') {
-      const mark = markOf(i, part, restingMarks(j));
+      const mark = markOf(i, part, restingMarks(j)) ?? gapPoint(j);
       if (!mark) {
         ghost.el.remove();
         return;
@@ -524,17 +536,36 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   }
 
   /**
-   * How long leaving glyphs get. Removing glyphs frees their width, minus
+   * How long leaving glyphs get, by room. Removing glyphs frees their width, minus
    * whatever the text was overflowing by; what is left over is the room the
-   * animation has. Little room means the text is squeezed: be quick.
+   * animation has. Little room means the text is squeezed (a fast drag, a
+   * jump in position): be quick, down to nothing.
    */
   function leaveTime(change: ElideChange): number {
-    if (pace === 'fixed' || !change.hidden.length || change.shown.length) return duration * 0.85;
+    if (pace === 'fixed' || !change.hidden.length) return duration * 0.85;
     let removed = 0;
     for (const i of change.hidden) removed += change.hiddenGlyphs.get(i)?.box.width ?? 0;
     if (!removed) return duration * 0.85;
     const leeway = Math.min(1, Math.max(0, change.state.slack / removed));
     return duration * 0.85 * leeway;
+  }
+
+  /**
+   * How long arriving glyphs get. Glyphs that arrive together come out of the
+   * same mark, so a run of them would start out stacked on top of each other:
+   * the longer the run, the quicker they go. When glyphs also leave in the
+   * same change (the position moved), they share its leeway.
+   */
+  function enterTime(change: ElideChange): number {
+    if (pace === 'fixed' || !change.shown.length) return duration;
+    if (change.hidden.length) return leaveTime(change) / 0.85;
+    let run = 1;
+    let longest = 1;
+    for (let k = 1; k < change.shown.length; k++) {
+      run = change.shown[k] === change.shown[k - 1]! + 1 ? run + 1 : 1;
+      longest = Math.max(longest, run);
+    }
+    return duration / longest;
   }
 
   const offChange = instance.onChange((change: ElideChange) => {
@@ -545,11 +576,24 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     }
     if (change.reset || !change.previous || reduced()) return;
 
-    const ms = leaveTime(change);
+    // Room is one limit; time is the other. When changes come faster than
+    // their animations can play (a slider dragged, a fast resize), each gets
+    // a few times the gap since the last one, and soon nothing at all.
+    const now = performance.now();
+    const cap = pace === 'fixed' ? Infinity : (now - lastChange) * 3;
+    lastChange = now;
+    const ms = Math.min(leaveTime(change), cap);
+    const inMs = Math.min(enterTime(change), cap);
     const instant = ms < INSTANT;
     const leaving = change.hidden.length > 0 && effect !== 'none' && !instant;
+    const arriving = change.shown.length > 0 && effect !== 'none' && inMs >= INSTANT;
+    // No time for this change means the text is moving fast: anything still
+    // in flight from earlier changes lands now too, rather than piling up.
+    if ((change.hidden.length && instant) || (change.shown.length && !arriving)) {
+      for (const g of [...ghosts]) g.anims.forEach((a) => a.finish());
+    }
     // Arriving glyphs first: the spacing may only glide over glyphs still on their way in.
-    if (effect !== 'none') for (const i of change.shown) enter(i, change);
+    if (arriving) for (const i of change.shown) enter(i, change, inMs);
     if (glide) glideMarks(markTiming === 'after' && leaving && effect === 'merge' ? performance.now() + ms * 0.8 : 0);
     if (effect === 'none') return;
 

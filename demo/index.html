@@ -37,6 +37,21 @@
           </div>
         </div>
 
+        <div class="keep-row">
+          <label class="control keep-field">
+            <span>Keep visible <small>comma-separated words, or <code>/regex/g</code></small></span>
+            <input type="text" id="keep" placeholder="e.g. quiet, asked" spellcheck="false" autocomplete="off" />
+          </label>
+          <div class="hints" aria-label="Suggestions">
+            <button type="button" value="quiet">quiet</button>
+            <button type="button" value="art, asked">art, asked</button>
+            <button type="button" value="symmetrically">symmetrically</button>
+            <button type="button" value="/\w+ly/g" title="Every word ending in -ly">/\w+ly/g</button>
+            <button type="button" value="/[A-Z]\w*/" title="The first capitalised word">/[A-Z]\w*/</button>
+            <button type="button" value="" class="clear">Clear</button>
+          </div>
+        </div>
+
         <div class="controls">
           <label class="control">
             <span>Position <output id="posOut">50%</output></span>
@@ -57,6 +72,10 @@
               ><button value="ring">Rings</button><button value="square">Squares</button>
             </div>
           </div>
+          <label class="control">
+            <span>Dots <output id="countOut">3</output></span>
+            <input type="range" id="count" min="0" max="7" value="3" />
+          </label>
           <div class="control">
             <span id="gap-label">Gap</span>
             <div class="seg" data-name="gap" role="group" aria-labelledby="gap-label">

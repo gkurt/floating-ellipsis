@@ -47,7 +47,8 @@ npm run build   # dist/ with type declarations
 ```
 
 The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
-`window.pathInstances` are live instances you can try from the console.
+`window.pathInstances` are live instances you can try from the console. The
+hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 
 ## Options
 
@@ -77,7 +78,13 @@ elide(el, { ellipsis: { shape: 'bullet' } });                 // • • •, si
 elide(el, { ellipsis: { shape: 'ring', count: 4 } });
 elide(el, { ellipsis: { shape: 'square', size: '0.12em', spacing: 3 } });
 elide(el, { ellipsis: { shape: 'dot', like: '…' } });         // the font's … as separate dots
+elide(el, { ellipsis: { shape: 'dot', like: '…', count: 5 } }); // five of them
+elide(el, { ellipsis: '' });                                   // no marks, just a balanced gap
 ```
+
+`count` can be anything from 0 up. With no marks (`count: 0` or `''`), the cut
+still leaves a gap the size of the font's dot rhythm, balanced and justified
+like any other.
 
 Dots and squares take their size and height from the font's `.`; bullets and
 rings from its `•`. The spacing defaults to the font's own ellipsis rhythm,
@@ -126,7 +133,7 @@ const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
 | `effect` | `'merge'` | `'merge'`, `'fade'`, `'blur'`, or `'none'` (glyphs come and go at once; the dots still glide). |
 | `duration` | `460` | Milliseconds for glyph effects, and roughly how long the dots take to settle. |
 | `glide` | `true` | When the cut changes, the ellipsis' spacing glides instead of jumping. The dots always sit evenly in the space between their neighbouring glyphs; that space's edges glide on a critically damped spring (velocity carries over, no overshoot). An edge only reaches past a glyph that is still on its way in, so the dots never run into the text. Works without glyph mode too. |
-| `pace` | `'leeway'` | How long leaving glyphs take. `'leeway'`: in proportion to the room their removal frees; squeezed text (a fast drag) leaves instantly instead of animating into space that isn't there. `'fixed'`: always `duration`. |
+| `pace` | `'leeway'` | How long glyph effects take. `'leeway'`: leaving glyphs take time in proportion to the room their removal frees, and arriving ones are compressed by how many arrive side by side. Every effect is also capped at three times the interval since the previous change, so a fast drag or slider sweep is instant, and anything still in flight finishes at once instead of piling up. `'fixed'`: always `duration`. |
 | `marks` | `'together'` | When the spacing widens as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty. |
 
 With `'merge'`, a glyph that leaves shrinks into the nearest mark of the

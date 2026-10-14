@@ -121,15 +121,52 @@ segmented('lines', (v) => hero.update({ lines: Number(v) }));
 segmented('gap', (v) => hero.update({ gap: v as Gap }));
 segmented('justify', (v) => hero.update({ justify: v === 'off' ? false : (v as 'ellipsis' | 'dots' | 'spread') }));
 
-const ellipsisStyles: Record<string, EllipsisStyle> = {
-  glyph: '\u2026',
-  periods: '...',
-  dot: { shape: 'dot' },
-  bullet: { shape: 'bullet' },
-  ring: { shape: 'ring' },
-  square: { shape: 'square' },
-};
-segmented('ellipsis', (v) => hero.update({ ellipsis: ellipsisStyles[v] }));
+// Ellipsis style and number of dots. The font's own '…' is three dots; any
+// other count draws dots shaped like its own.
+let markKind = 'glyph';
+const count = $<HTMLInputElement>('#count');
+function ellipsisStyle(): EllipsisStyle {
+  const n = Number(count.value);
+  if (markKind === 'glyph') return n === 3 ? '…' : { shape: 'dot', like: '…', count: n };
+  if (markKind === 'periods') return '.'.repeat(n);
+  return { shape: markKind as 'dot' | 'bullet' | 'ring' | 'square', count: n };
+}
+segmented('ellipsis', (v) => {
+  markKind = v;
+  hero.update({ ellipsis: ellipsisStyle() });
+});
+count.addEventListener('input', () => {
+  $('#countOut').textContent = count.value;
+  hero.update({ ellipsis: ellipsisStyle() });
+});
+
+// Keep visible: comma-separated words, or /regex/flags.
+const keepInput = $<HTMLInputElement>('#keep');
+function applyKeep() {
+  const keep: (string | RegExp)[] = [];
+  let valid = true;
+  for (const raw of keepInput.value.split(',')) {
+    const part = raw.trim();
+    if (!part) continue;
+    const re = /^\/(.+)\/([dgimsuvy]*)$/.exec(part);
+    if (re) {
+      try {
+        keep.push(new RegExp(re[1]!, re[2]));
+      } catch {
+        valid = false;
+      }
+    } else keep.push(part);
+  }
+  keepInput.toggleAttribute('aria-invalid', !valid);
+  hero.update({ keep });
+}
+keepInput.addEventListener('input', applyKeep);
+$('.hints').addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('button');
+  if (!btn) return;
+  keepInput.value = btn.value;
+  applyKeep();
+});
 
 const showGuides = $<HTMLInputElement>('#showGuides');
 showGuides.addEventListener('change', () => {

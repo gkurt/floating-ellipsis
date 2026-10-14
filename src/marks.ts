@@ -20,7 +20,7 @@ export type Length = number | `${number}em` | `${number}px`;
 /** Drawn ellipsis marks. Sizes default to the font's own '.' (dot, square) or '•' (bullet, ring). */
 export interface MarkStyle {
   shape: Shape;
-  /** Number of marks. Default 3. */
+  /** Number of marks, 0 or more. Default 3. With 0 the ellipsis is just a gap. */
   count?: number;
   /** Diameter. Default from the font. */
   size?: Length;
@@ -77,7 +77,7 @@ export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
     return el;
   };
   if (typeof style === 'string') return graphemes(style).map(make);
-  return Array.from({ length: Math.max(1, style.count ?? 3) }, () => {
+  return Array.from({ length: Math.max(0, Math.round(style.count ?? 3)) }, () => {
     const el = make('');
     el.setAttribute('data-fp-shape', style.shape);
     return el;
@@ -109,6 +109,9 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
     });
     const natural = metrics.slice(1).map((m, i) => inkGap(metrics[i]!, m));
     const single = marks.length === 1;
+    // With no marks at all the ellipsis is a gap; keep it as wide as the
+    // font's own dot rhythm so the text on either side doesn't run together.
+    const none = marks.length === 0 ? (dotSpacing(font, '…') ?? fontSize * 0.2) : null;
     return {
       font,
       fontSize,
@@ -117,7 +120,7 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
       metrics,
       natural,
       inner: natural.map(() => 0),
-      rhythm: single ? dotSpacing(font, marks[0]!) : natural.length ? natural.reduce((s, v) => s + v, 0) / natural.length : null,
+      rhythm: none ?? (single ? dotSpacing(font, marks[0]!) : natural.length ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
       runs: single ? inkRuns(font, marks[0]!) : null,
     };
   }
@@ -166,8 +169,8 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
     ascent,
     drawn: true,
     metrics: Array.from({ length: count }, () => m),
-    natural: Array.from({ length: count - 1 }, () => 0),
-    inner: Array.from({ length: count - 1 }, () => rhythm),
+    natural: Array.from({ length: Math.max(0, count - 1) }, () => 0),
+    inner: Array.from({ length: Math.max(0, count - 1) }, () => rhythm),
     rhythm,
     runs: null,
   };
@@ -176,6 +179,7 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */
 export function groupMetrics(layout: MarkLayout, inner: readonly number[]): GlyphMetrics {
   const { metrics } = layout;
+  if (!metrics.length) return { advance: 0, left: 0, right: 0, ascent: 0, descent: 0 };
   let origin = 0;
   let ascent = 0;
   let descent = 0;

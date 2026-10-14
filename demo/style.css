@@ -538,3 +538,65 @@ input:focus-visible {
   background: var(--accent-2-soft);
   border: 0;
 }
+
+/* ------------------------------------------------------------------------ */
+/* Keep visible */
+
+.keep-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: end;
+  margin-top: 20px;
+}
+.keep-field {
+  flex: 0 1 340px;
+}
+.keep-field small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.keep-field code {
+  font: 11px var(--mono);
+}
+.keep-field input {
+  font: 14px/1.4 var(--mono);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.keep-field input[aria-invalid] {
+  border-color: var(--accent);
+}
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.hints button {
+  font: 12px/1 var(--mono);
+  color: var(--accent-2);
+  background: var(--accent-2-soft);
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.hints button.clear {
+  color: var(--muted);
+  background: none;
+  font-family: var(--sans);
+}
+.hints button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+.hero-text [data-fp-kept] {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-2);
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.12em;
+}

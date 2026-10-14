@@ -30,10 +30,13 @@ import { type EllipsisStyle, type MarkLayout, buildMarks, ellipsisText, groupMet
  * The marks actually drawn. `justify: 'dots'` needs separate marks, so a
  * single glyph like '…' is redrawn as dots sized and placed like its own.
  */
+/** How many dots the horizontal dotted characters are made of. */
+const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
+
 function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown }): EllipsisStyle {
   const e = settings.ellipsis;
   if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1) {
-    return { shape: 'dot', like: e, count: 3 };
+    return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
   }
   return e;
 }
@@ -57,7 +60,8 @@ export interface ElideOptions {
   keep?: Keep | Keep[] | null;
   /**
    * What the ellipsis looks like: a string ('…' by default, '...', '·····')
-   * or drawn marks, e.g. `{ shape: 'bullet' }`. See `MarkStyle`.
+   * or drawn marks, e.g. `{ shape: 'bullet', count: 5 }`. See `MarkStyle`.
+   * An empty string or `count: 0` leaves just a balanced gap.
    */
   ellipsis?: EllipsisStyle;
   /**
