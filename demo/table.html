@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>floating-ellipsis — a crowded table</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="intro">
+      <p class="eyebrow"><a href="./">floating-ellipsis</a> <span>/ table</span></p>
+      <h1>A crowded <em>table.</em></h1>
+      <p class="lede">
+        Every row truncates four cells its own way: file names keep their extension, paths are cut at a separator, hashes in the middle.
+        Drag a column's edge, or let the table sweep, and watch the timings.
+      </p>
+    </header>
+
+    <main class="block wide">
+      <div class="controls compact">
+        <div class="control">
+          <span id="rows-label">Rows</span>
+          <div class="seg" data-name="rows" role="group" aria-labelledby="rows-label">
+            <button value="100">100</button><button aria-pressed="true" value="1000">1,000</button><button value="2500">2,500</button>
+          </div>
+        </div>
+        <div class="control">
+          <span id="markup-label">Markup</span>
+          <div class="seg" data-name="markup" role="group" aria-labelledby="markup-label">
+            <button aria-pressed="true" value="grid" title="CSS grid rows with content-visibility: auto">Grid rows</button
+            ><button value="table">&lt;table&gt;</button>
+          </div>
+        </div>
+        <div class="control">
+          <span id="lines-label">Message lines</span>
+          <div class="seg" data-name="lines" role="group" aria-labelledby="lines-label">
+            <button aria-pressed="true" value="1">1</button><button value="2">2</button>
+          </div>
+        </div>
+        <div class="control toggles">
+          <label class="switch"><input type="checkbox" id="sweep" /> <span>Sweep the width</span></label>
+        </div>
+      </div>
+
+      <dl class="readout" id="stats"></dl>
+
+      <div class="stage table-stage">
+        <div class="resizable" id="tableBox">
+          <div id="grid"></div>
+          <button class="handle" aria-label="Resize the table (left and right arrow keys)"></button>
+        </div>
+      </div>
+
+      <p class="note">
+        Every instance reads layout, then every instance writes, round after round, so a resize lays the page out a few times in all rather
+        than a few times per cell. Rows more than a screen away wait until they come near. What's left is the browser's own layout: a
+        <code>&lt;table&gt;</code> lays out every row whenever one changes, while grid rows with <code>content-visibility: auto</code> skip
+        the ones off screen.
+      </p>
+    </main>
+
+    <footer class="foot"><a href="./">← Back to the playground</a></footer>
+
+    <script type="module" src="./table.ts"></script>
+  </body>
+</html>

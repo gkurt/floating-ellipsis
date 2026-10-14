@@ -48,6 +48,8 @@ export interface MarkLayout {
   rhythm: number | null;
   /** For a single text mark: its separate parts (the dots of '…'), in px from its ink's left edge. */
   runs: [number, number][] | null;
+  /** Drawn marks: their inline style (see `styleMarks`). */
+  css: string | null;
 }
 
 export function toPx(value: Length, fontSize: number): number {
@@ -55,6 +57,21 @@ export function toPx(value: Length, fontSize: number): number {
   const n = parseFloat(value);
   if (!Number.isFinite(n)) return 0;
   return value.endsWith('em') ? n * fontSize : n;
+}
+
+/** How many dots the horizontal dotted characters are made of. */
+const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
+
+/**
+ * The marks actually drawn. `justify: 'dots'` needs separate marks, so a
+ * single glyph like '…' is redrawn as dots sized and placed like its own.
+ */
+export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown }): EllipsisStyle {
+  const e = settings.ellipsis;
+  if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1)
+    return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
+
+  return e;
 }
 
 /** Create the mark elements for an ellipsis. */
@@ -82,10 +99,10 @@ export function ellipsisText(style: EllipsisStyle): string {
 const diameter = (m: GlyphMetrics) => (m.left + m.right + m.ascent + m.descent) / 2;
 
 /**
- * Measure the marks with the ellipsis' computed style, and size drawn marks.
- * `elements` are the marks of one ellipsis; `others` get the same drawn style.
+ * Measure the marks with the ellipsis' computed style, and size drawn marks
+ * (`count` of them). Only reads: `styleMarks` applies the drawn style.
  */
-export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, groups: HTMLElement[][]): MarkLayout {
+export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, count: number): MarkLayout {
   const font = fontOf(cs);
   const fontSize = parseFloat(cs.fontSize);
   const ascent = fontAscent(font);
@@ -114,6 +131,7 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
       rhythm:
         none ?? (single ? dotSpacing(font, marks[0]!) : natural.length > 0 ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
       runs: single ? inkRuns(font, marks[0]!) : null,
+      css: null,
     };
   }
 
@@ -131,7 +149,6 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
     style.spacing !== undefined
       ? toPx(style.spacing, fontSize)
       : (own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period))));
-  const count = groups[0]?.length ?? style.count ?? 3;
   const m: GlyphMetrics = { advance: d, left: 0, right: d, ascent: bottom + d, descent: -bottom };
 
   const shapeCss =
@@ -141,17 +158,6 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
   // In forced-colors mode backgrounds are overridden, which would erase the
   // marks; opting out keeps them in the (forced) text colour.
   const css = `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;forced-color-adjust:none;${shapeCss}`;
-  for (const group of groups) {
-    for (const el of group) {
-      // Keep the margin set by spacing; only rewrite the shape when it changes.
-      if (el.dataset.fpCss !== css) {
-        const margin = el.style.marginLeft;
-        el.style.cssText = css;
-        el.style.marginLeft = margin;
-        el.dataset.fpCss = css;
-      }
-    }
-  }
   return {
     font,
     fontSize,
@@ -162,7 +168,19 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
     inner: Array.from({ length: Math.max(0, count - 1) }, () => rhythm),
     rhythm,
     runs: null,
+    css,
   };
+}
+
+/** Give drawn marks their shape (see `MarkLayout.css`), keeping the margins set by spacing. */
+export function styleMarks(marks: readonly HTMLElement[], css: string): void {
+  for (const el of marks) {
+    if (el.dataset.fpCss === css) continue;
+    const margin = el.style.marginLeft;
+    el.style.cssText = css;
+    el.style.marginLeft = margin;
+    el.dataset.fpCss = css;
+  }
 }
 
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */

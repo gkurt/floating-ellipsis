@@ -1,0 +1,44 @@
+/** Reading the lines of laid-out inline text. Each of these reads layout. */
+
+/** A rendered line: its vertical extent and right edge. */
+export interface LineBox {
+  top: number;
+  bottom: number;
+  right: number;
+}
+
+/**
+ * The lines `el` (an inline element) is laid out on, top to bottom. A line
+ * can come back as several boxes, so boxes sharing a top are merged.
+ */
+export function lineBoxes(el: Element): LineBox[] {
+  const lines: LineBox[] = [];
+  for (const r of el.getClientRects()) {
+    const line = lines.find((l) => Math.abs(l.top - r.top) < 1);
+    if (line) {
+      line.bottom = Math.max(line.bottom, r.bottom);
+      line.right = Math.max(line.right, r.right);
+    } else {
+      lines.push({ top: r.top, bottom: r.bottom, right: r.right });
+    }
+  }
+  return lines.sort((a, b) => a.top - b.top);
+}
+
+/**
+ * How many lines `el` is laid out on, whether it all lies between `left` and
+ * `right`, and where its rightmost box ends.
+ */
+export function lineSpan(el: Element, left: number, right: number): { lines: number; inside: boolean; end: number } {
+  let lines = 0;
+  let lastTop = NaN;
+  let inside = true;
+  let end = -Infinity;
+  for (const r of el.getClientRects()) {
+    if (!(Math.abs(r.top - lastTop) < 1)) lines++;
+    lastTop = r.top;
+    end = Math.max(end, r.right);
+    if (r.right > right + 0.05 || r.left < left - 0.05) inside = false;
+  }
+  return { lines, inside, end };
+}

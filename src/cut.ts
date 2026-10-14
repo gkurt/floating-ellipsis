@@ -170,6 +170,36 @@ export function hiddenRanges(
   return showSlivers(graphemes, subtract(grown, pins), pins);
 }
 
+/**
+ * The most graphemes `hiddenRanges` can keep while their widths (`sums` is
+ * their running total: `sums[i]` is the width of graphemes [0, i)), with
+ * `mark` for each cut, add up to no more than `room`. Only an estimate of
+ * what fits, as layout will tell, but a cheap one.
+ */
+export function estimateKept(
+  graphemes: readonly string[],
+  layout: Layout,
+  pins: readonly Range[],
+  snap: Snap | null,
+  trim: boolean,
+  sums: ArrayLike<number>,
+  mark: number,
+  room: number,
+): number {
+  const n = graphemes.length;
+  const width = (k: number) => {
+    let w = sums[n]!;
+    for (const [s, e] of hiddenRanges(graphemes, layout, k, pins, snap, trim)) w -= sums[e]! - sums[s]! - mark;
+    return w;
+  };
+  return searchMax(0, n - 1, (k) => width(k) <= room);
+}
+
+/** Whether two lists of ranges are the same. */
+export function sameRanges(a: readonly Range[], b: readonly Range[]): boolean {
+  return a.length === b.length && a.every((r, i) => r[0] === b[i]![0] && r[1] === b[i]![1]);
+}
+
 /** Most graphemes (whitespace aside) a cut beside a pin can hide and still be a sliver. */
 export const SLIVER = 3;
 
@@ -220,15 +250,26 @@ export function showSlivers(graphemes: readonly string[], cuts: readonly Range[]
  * A `hint` (e.g. the previous answer) turns small changes into a few probes.
  */
 export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, hint?: number | null): number {
+  const search = searchSteps(lo, hi, hint);
+  let step = search.next();
+  while (!step.done) step = search.next(fits(step.value));
+  return step.value;
+}
+
+/**
+ * `searchMax` one probe at a time: yields each k to try, takes whether it
+ * fits, and returns the answer. Lets the caller do other work between probes.
+ */
+export function* searchSteps(lo: number, hi: number, hint?: number | null): Generator<number, number, boolean> {
   if (hi <= lo) return lo;
   if (hint != null) {
     const h = Math.min(hi, Math.max(lo, hint));
     let step = 1;
-    if (fits(h)) {
+    if (yield h) {
       lo = h;
       while (lo < hi) {
         const next = Math.min(hi, lo + step);
-        if (!fits(next)) {
+        if (!(yield next)) {
           hi = next - 1;
           break;
         }
@@ -239,7 +280,7 @@ export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, 
       hi = h - 1;
       while (hi > lo) {
         const next = Math.max(lo, hi - step + 1);
-        if (fits(next)) {
+        if (yield next) {
           lo = next;
           break;
         }
@@ -250,7 +291,7 @@ export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, 
   }
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (fits(mid)) lo = mid;
+    if (yield mid) lo = mid;
     else hi = mid - 1;
   }
   return lo;

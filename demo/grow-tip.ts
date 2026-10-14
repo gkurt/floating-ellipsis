@@ -51,6 +51,20 @@ export function growTip(t: Elide, tip: HTMLElement) {
     tip.style.left = `${lines[0]!.left - (box.right - (view - 8))}px`;
   }
   box = tip.getBoundingClientRect();
+  // Where each grapheme ends up, and where the background starts. All read
+  // before anything animates: starting an animation between two reads would
+  // lay the tip out again for every grapheme, which takes long enough to notice.
+  const targets = spans.map((span) => span.getBoundingClientRect());
+  const cs = getComputedStyle(tip);
+  // The line's box, padded like the tip: where the background grows from.
+  const cssLineHeight = parseFloat(cs.lineHeight);
+  const lineHeight = cssLineHeight > 0 ? cssLineHeight : lines[0]!.height * 1.2;
+  const start = {
+    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
+    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
+    bottom: box.top + parseFloat(cs.paddingTop) + lines.length * lineHeight + parseFloat(cs.paddingBottom),
+  };
+  const inset = `0px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
 
   // Every grapheme travels from where it was. (Inline text can't be
   // transformed, so they move by relative offsets, which don't reflow
@@ -58,7 +72,7 @@ export function growTip(t: Elide, tip: HTMLElement) {
   // once the others have made some room.
   const timing = { duration: 460, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' } as const;
   spans.forEach((span, i) => {
-    const to = span.getBoundingClientRect();
+    const to = targets[i]!;
     const top = `${from[i]!.top - to.top}px`;
     if (!arriving[i]) {
       span.animate(
@@ -96,15 +110,6 @@ export function growTip(t: Elide, tip: HTMLElement) {
     dot.animate({ opacity: [1, 0] }, { duration: 160, fill: 'forwards' });
   }
 
-  // The background grows from the line's box (padded like the tip) to the tip's.
-  const cs = getComputedStyle(tip);
-  const cssLineHeight = parseFloat(cs.lineHeight);
-  const lineHeight = cssLineHeight > 0 ? cssLineHeight : lines[0]!.height * 1.2;
-  const start = {
-    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
-    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
-    bottom: box.top + parseFloat(cs.paddingTop) + lines.length * lineHeight + parseFloat(cs.paddingBottom),
-  };
-  const inset = `0px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
+  // The background grows from the line's box to the tip's.
   bg.animate([{ inset }, { inset: '0px' }], timing);
 }

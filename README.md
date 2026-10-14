@@ -22,6 +22,9 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
 - **Change diffs and transitions.** Glyphs shown and hidden on every resize,
   with their positions, plus an optional add-on that morphs glyphs into the
   nearest dot.
+- **Fast in bulk.** Instances truncate together, so the thousands of cells in a
+  table resize with a few shared layouts, and rows far off screen wait until
+  they come near.
 
 ```js
 import { elide } from 'floating-ellipsis';
@@ -49,6 +52,8 @@ bun run build  # dist/ with type declarations
 The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
 `window.pathInstances` are live instances you can try from the console. The
 hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
+`/table.html` is a crowded table: up to 2,500 rows, four truncated cells each,
+as a `<table>` or as grid rows, with draggable columns and timings.
 
 ## Options
 
@@ -63,13 +68,18 @@ hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 | `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
 | `trim`     | `true`       | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
 | `snap`     | `null`       | _Experimental._ Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. See [Separators](#separators).                                                                                                                                                                                                                                                                               |
-| `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load.                                                                                                                                                                                                                                                                                                                                                                     |
+| `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load. An element more than a screen away from the viewport puts this off until it comes near, when what it shows meanwhile can't change its height (one line, or several held at their height once truncated).                                                                                                                                                            |
 | `glyphs`   | `false`      | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text.                                                                                                                                                                                                                                                                                       |
 | `title`    | `false`      | Put the full text in the element's `title` while it is truncated.                                                                                                                                                                                                                                                                                                                                                                   |
 | `copy`     | `'full'`     | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis).                                                                                                                                                                                                                                                                                                               |
 | `onChange` | —            | Same as `instance.onChange(fn)`.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 `instance.update(options)` changes any option, including `text`.
+
+Truncating runs in a microtask, together with every other instance's: creating,
+updating or refreshing many instances at once costs a few shared layouts rather
+than a few each. Reading anything from an instance (`state`, `truncated`,
+`marks()`, …) runs its pending pass first, so what you read is always current.
 
 ### Drawn marks
 
@@ -218,6 +228,19 @@ function growTip(t, tip) {
     tip.style.left = `${lines[0].left - (box.right - (view - 8))}px`;
   }
   box = tip.getBoundingClientRect();
+  // Where each grapheme ends up, and where the background starts. All read
+  // before anything animates: starting an animation between two reads would
+  // lay the tip out again for every grapheme, which takes long enough to notice.
+  const targets = spans.map((span) => span.getBoundingClientRect());
+  const cs = getComputedStyle(tip);
+  // The line's box, padded like the tip: where the background grows from.
+  const lineHeight = parseFloat(cs.lineHeight) || lines[0].height * 1.2;
+  const start = {
+    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
+    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
+    bottom: box.top + parseFloat(cs.paddingTop) + lines.length * lineHeight + parseFloat(cs.paddingBottom),
+  };
+  const inset = `0px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
 
   // Every grapheme travels from where it was. (Inline text can't be
   // transformed, so they move by relative offsets, which don't reflow
@@ -225,7 +248,7 @@ function growTip(t, tip) {
   // once the others have made some room.
   const timing = { duration: 460, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' };
   spans.forEach((span, i) => {
-    const to = span.getBoundingClientRect();
+    const to = targets[i];
     const top = `${from[i].top - to.top}px`;
     if (!arriving[i]) {
       span.animate(
@@ -263,15 +286,7 @@ function growTip(t, tip) {
     dot.animate({ opacity: [1, 0] }, { duration: 160, fill: 'forwards' });
   }
 
-  // The background grows from the line's box (padded like the tip) to the tip's.
-  const cs = getComputedStyle(tip);
-  const lineHeight = parseFloat(cs.lineHeight) || lines[0].height * 1.2;
-  const start = {
-    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
-    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
-    bottom: box.top + parseFloat(cs.paddingTop) + lines.length * lineHeight + parseFloat(cs.paddingBottom),
-  };
-  const inset = `0px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
+  // The background grows from the line's box to the tip's.
   bg.animate([{ inset }, { inset: '0px' }], timing);
 }
 
@@ -323,9 +338,12 @@ drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
 
 1. **Fit.** The text is rendered into the element and measured with
    `getClientRects()`, so every CSS property that affects layout is respected.
-   A search finds the most graphemes that fit in `lines` lines. On resize it
-   starts from the previous answer, which usually takes 2–3 layout passes. The
-   full text is only tried when its summed glyph widths could fit.
+   A search finds the most graphemes that fit in `lines` lines. It starts from
+   what the summed glyph widths say fits, shifted by how far off that was last
+   time, so it usually only has to confirm it. On one line, a cut close to one
+   already measured is judged from the glyph widths alone when it clears the
+   edge by a safe margin (a tenth of an em), so a resize often needs a single
+   layout. The full text is only tried when its summed glyph widths could fit.
 2. **Islands.** With N ellipses, the kept text forms N + 1 islands: the first
    anchored at the start, the last at the end, and the ones in between centred
    where they sit in the text. Kept graphemes are handed out one at a time in
@@ -357,6 +375,18 @@ drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
    truncated multi-line text holds its height between passes (as an inline
    `height`, restored on `destroy()`), and the probing while fitting happens
    with the height held and overflow clipped.
+6. **Batching.** Reading layout after changing the DOM makes the browser lay
+   the page out again, and in a long list or table each of those layouts costs
+   more with every row: one instance after another, truncating costs the
+   square of the row count. So every pass is written to alternate between
+   reading and writing, and passes run in lockstep: all of them read, then all
+   of them write, and one layout serves them all. One ResizeObserver serves
+   every instance, and an IntersectionObserver lets those far off screen wait.
+   Inside content that `content-visibility: auto` skips, an instance waits
+   until it is rendered. For long lists, that's the fastest setup: rows of
+   CSS grid with `content-visibility: auto`, which the browser doesn't lay
+   out while they're off screen, whereas a `<table>` lays out every row
+   whenever one changes. The demo's table page shows both.
 
 ## Accessibility
 

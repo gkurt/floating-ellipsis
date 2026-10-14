@@ -3,52 +3,7 @@ import { type Effect, transitions } from '#src/transitions.ts';
 import { growTip } from './grow-tip.ts';
 import { tipDelays } from './tip-delay.ts';
 import { selectableTip } from './tip-select.ts';
-
-const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
-
-// ---------------------------------------------------------------------------
-// Small UI helpers
-
-/** Segmented control: calls back with the pressed button's value. */
-function segmented(name: string, onPick: (value: string) => void) {
-  const seg = $(`.seg[data-name="${name}"]`);
-  seg.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('button');
-    if (!btn) return;
-    for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === btn));
-    onPick(btn.value);
-  });
-}
-
-/** Drag the box's handle (or use arrow keys on it) to change its width. */
-function resizable(box: HTMLElement, onResize?: () => void) {
-  const handle = $('.handle', box);
-  const setWidth = (w: number) => {
-    const max = box.parentElement!.clientWidth - 64;
-    box.style.width = `${Math.max(80, Math.min(max, w))}px`;
-  };
-  handle.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const startW = box.getBoundingClientRect().width;
-    onResize?.();
-    const move = (ev: PointerEvent) => setWidth(startW + ev.clientX - startX);
-    const up = () => {
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', up);
-    };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', up);
-  });
-  handle.addEventListener('keydown', (e) => {
-    const dir = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-    if (dir === 0) return;
-    e.preventDefault();
-    onResize?.();
-    setWidth(box.getBoundingClientRect().width + dir * (e.shiftKey ? 40 : 8));
-  });
-}
+import { $, resizable, segmented } from './ui.ts';
 
 /**
  * Draw the ink gaps around and inside every ellipsis, plus the ink of each
@@ -176,6 +131,7 @@ $('.hints').addEventListener('click', (e) => {
 const showGuides = $<HTMLInputElement>('#showGuides');
 showGuides.addEventListener('change', () => {
   if (!showGuides.checked) heroGuides.replaceChildren();
+  animate();
 });
 
 // Live readout of the instance state.
@@ -209,14 +165,19 @@ function renderReadout() {
     }),
   );
 }
+hero.onRender(renderReadout);
 renderReadout();
 
-// Breathing: sweep the width back and forth.
+// Breathing: sweep the width back and forth. Frames only run while it
+// breathes or the guides are on (they follow the dots as they glide).
 const breathe = $<HTMLInputElement>('#breathe');
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) breathe.checked = false;
+breathe.addEventListener('change', animate);
 let phase = 0.62;
 let last = 0;
+let frame = 0;
 function tick(now: number) {
+  frame = 0;
   const dt = last !== 0 ? Math.min(64, now - last) : 16;
   last = now;
   if (breathe.checked) {
@@ -227,9 +188,11 @@ function tick(now: number) {
     heroBox.style.width = `${min + (max - min) * t}px`;
   }
   if (showGuides.checked) drawGuides(hero, heroGuides);
-  for (const [instance, layer] of compareGuides) drawGuides(instance, layer);
-  renderReadout();
-  requestAnimationFrame(tick);
+  if (breathe.checked || showGuides.checked) frame = requestAnimationFrame(tick);
+  else last = 0;
+}
+function animate() {
+  frame ||= requestAnimationFrame(tick);
 }
 resizable(heroBox, () => {
   breathe.checked = false;
@@ -243,7 +206,6 @@ const samples: { text: string; cls?: string; position: number; width: string }[]
   { text: 'AVAILABILITY / TYPOGRAPHY', cls: 'caps', position: 0.42, width: '86%' },
   { text: 'fulfill(); flip().flop();', cls: 'mono', position: 0.5, width: '74%' },
 ];
-const compareGuides: [Elide, HTMLElement][] = [];
 const compare = $('#compare');
 for (const sample of samples) {
   for (const gap of ['none', 'dots'] as const) {
@@ -258,7 +220,9 @@ for (const sample of samples) {
     layer.setAttribute('aria-hidden', 'true');
     cell.append(p, layer);
     compare.append(cell);
-    compareGuides.push([elide(p, { position: sample.position, gap, justify: false }), layer]);
+    // Redrawn only when the text is laid out again: nothing moves in between.
+    const instance = elide(p, { position: sample.position, gap, justify: false });
+    instance.onRender(() => drawGuides(instance, layer));
   }
 }
 
@@ -656,4 +620,4 @@ mpos.addEventListener('input', () => {
 segmented('mlines', (v) => article.update({ lines: Number(v) }));
 resizable($('#cardBox'));
 
-requestAnimationFrame(tick);
+animate();

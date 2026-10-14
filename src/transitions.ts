@@ -1,5 +1,6 @@
-import type { Elide, ElideChange, Part } from './elide.ts';
+import type { Elide } from './elide.ts';
 import { isWhitespace } from './graphemes.ts';
+import type { ElideChange, Part } from './options.ts';
 
 export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 

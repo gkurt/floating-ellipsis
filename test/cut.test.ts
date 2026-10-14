@@ -3,12 +3,15 @@ import {
   type Range,
   allocationOrder,
   complement,
+  estimateKept,
   hiddenRanges,
   islands,
   keepRanges,
   layoutFor,
   positionValue,
+  sameRanges,
   searchMax,
+  searchSteps,
   separators,
   showSlivers,
   type SeparatorOptions,
@@ -330,6 +333,62 @@ describe('searchMax', () => {
     const cold = limit(41);
     searchMax(0, 999, cold.fits);
     expect(cold.calls()).toBeGreaterThan(5);
+  });
+});
+
+describe('searchSteps', () => {
+  /** The values probed, and the answer, for a limit of `max`. */
+  const probes = (max: number, hint?: number) => {
+    const tried: number[] = [];
+    const search = searchSteps(0, 99, hint);
+    let step = search.next();
+    while (!step.done) {
+      tried.push(step.value);
+      step = search.next(step.value <= max);
+    }
+    return { tried, answer: step.value };
+  };
+
+  it('probes what searchMax would, one at a time', () => {
+    expect(probes(41, 40)).toEqual({ tried: [40, 41, 43, 42], answer: 41 });
+    expect(probes(41).answer).toBe(41);
+  });
+
+  it('ends on the answer when the hint is one past it', () => {
+    const { tried, answer } = probes(41, 42);
+    expect(answer).toBe(41);
+    expect(tried).toEqual([42, 41]);
+  });
+});
+
+describe('estimateKept', () => {
+  const g = graphemes('abcdefghij');
+  const sums = g.map((_, i) => i * 10).concat(100);
+
+  it('keeps as much as fits with a mark for each cut', () => {
+    // Kept k from the start: 10k for the text, 5 for the ellipsis.
+    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 60)).toBe(5);
+    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 64.9)).toBe(5);
+    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 65)).toBe(6);
+  });
+
+  it('counts a mark for every cut, kept parts included', () => {
+    // Keeping 'k' splits the cut in two: 10 per kept grapheme, 'k' and two marks.
+    const long = graphemes('abcdefghijklmnopqrst');
+    const pins: Range[] = [[10, 11]];
+    const at = (room: number) =>
+      estimateKept(long, layoutFor(20, ['end']), pins, null, false, long.map((_, i) => i * 10).concat(200), 5, room);
+    expect(at(60)).toBe(4);
+    expect(at(69)).toBe(4);
+    expect(at(70)).toBe(5);
+  });
+});
+
+describe('sameRanges', () => {
+  it('compares range by range', () => {
+    expect(sameRanges([[1, 2]], [[1, 2]])).toBe(true);
+    expect(sameRanges([[1, 2]], [[1, 3]])).toBe(false);
+    expect(sameRanges([], [[1, 2]])).toBe(false);
   });
 });
 

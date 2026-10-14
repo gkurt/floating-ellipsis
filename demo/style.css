@@ -653,3 +653,120 @@ input:focus-visible {
   text-decoration-thickness: 0.06em;
   text-underline-offset: 0.12em;
 }
+
+/* ------------------------------------------------------------------------ */
+/* The crowded table (table.html) */
+
+.eyebrow a,
+.foot a {
+  color: inherit;
+}
+.block.wide {
+  max-width: 1280px;
+  padding-top: 24px;
+}
+/* Clipped, not scrolled, so the header can stick to the window. */
+.stage.table-stage {
+  padding: 0;
+  overflow: clip;
+  margin-top: 20px;
+}
+#tableBox {
+  padding-right: 0;
+}
+#tableBox .handle {
+  top: 22px;
+  margin-top: 0;
+  z-index: 2;
+}
+.grid {
+  width: 100%;
+  font-size: 14px;
+}
+table.grid {
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.grid .h {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  text-align: left;
+  font: 500 11px/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.grid .c {
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.grid tbody tr:hover,
+.rows [role='rowgroup'] > .row:hover {
+  background: var(--accent-soft);
+}
+/* Grid rows: the browser skips laying out the ones off screen. */
+.rows .row {
+  display: grid;
+  grid-template-columns: var(--cols);
+}
+.rows [role='rowgroup'] > .row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 37px;
+}
+.rows .head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.grid .cell {
+  line-height: 20px;
+}
+.grid .mono {
+  font: 13px/20px var(--mono);
+  color: var(--muted);
+}
+.grid .num {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.grid [data-fp-ellipsis] {
+  color: var(--accent);
+}
+.col-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-handle::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 30%;
+  bottom: 30%;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+.col-handle:hover::after,
+.col-handle.dragging::after {
+  background: var(--accent);
+}
+.note {
+  max-width: 720px;
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
