@@ -132,6 +132,35 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
+  it('never justifies a gap wider than maxGap, leaving the rest of the room at the end', () => {
+    // Whole long words dropped, and a long word wrapping: both leave a lot of room.
+    const long = 'Internationalization accessibility, localization and globalization considerations';
+    const wrapping = 'A short intro, then pneumonoultramicroscopicsilicovolcanoconiosis, and then a few more words to finish';
+    const cases = [
+      { text: long, options: { position: 'middle', snap: words() } },
+      { text: long, options: { position: 'end', snap: words(), justify: 'ellipsis' } },
+      ...[0.1, 0.2, 0.3].map((position) => ({ text: wrapping, options: { position, lines: 2 } })),
+    ] as const;
+    const widest = (maxGap: number | null) => {
+      let most = 0;
+      for (const { text, options } of cases) {
+        const t = make(box(text, `font:${font}`), { ...options, maxGap });
+        for (const _w of sweep(t, 140, 420, 11)) {
+          expectFits(t);
+          // The gaps as planned: what justifying controls.
+          for (const { left, right, inner } of t.state.gaps)
+            for (const g of [left, right, ...inner]) if (g !== null) most = Math.max(most, g);
+        }
+        t.destroy();
+      }
+      return most;
+    };
+    const em = parseFloat(getComputedStyle(box('', `font:${font}`)).fontSize);
+    expect(widest(0.75 * em)).toBeLessThanOrEqual(0.75 * em + 0.01);
+    // The same widths with no limit: the cap was doing something.
+    expect(widest(null)).toBeGreaterThan(0.75 * em + 1);
+  });
+
   it('keeps what it is told to', () => {
     const t = make(box(PATH, `font:${font}`), { position: 'middle', keep: /\.[^.]+$/ });
     for (const _w of sweep(t, 90, 400, 31)) {

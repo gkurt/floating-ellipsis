@@ -4,9 +4,9 @@ import type { Elide } from '#src/elide.ts';
 import { type Tooltip, type TooltipOptions, tooltip } from '#src/tooltip.ts';
 import { PATH, PROSE, box, frames, make, spacer } from './helpers.ts';
 
-// WebKit gives a Range around text a box snapped to whole pixels, and
-// `graphemeRect` measures text with a Range: the original's glyphs read up to
-// a pixel off where they are.
+// WebKit doesn't kern across element boundaries, and the tip sets every
+// grapheme in a span of its own: its glyphs land up to a pixel off the
+// original's kerned text.
 const slack = server.browser === 'webkit' ? 1 : 0.5;
 const expectNear = (actual: number, expected: number, what = '') => expect(Math.abs(actual - expected), what).toBeLessThan(slack);
 

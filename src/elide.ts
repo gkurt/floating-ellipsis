@@ -14,11 +14,11 @@ import {
 } from './cut.ts';
 import { byId, hookDocument, instances } from './document.ts';
 import { graphemes, isWhitespace } from './graphemes.ts';
-import { childRanges, classRuns, fillPiece, textAt } from './highlight.ts';
+import { childRanges, fillPiece, textAt } from './highlight.ts';
 import { type Justified, justify } from './justify.ts';
-import { lineBoxes, lineSpan } from './lines.ts';
+import { boundsOf, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
-import { type EllipsisStyle, type MarkLayout, buildMarks, groupMetrics, layoutMarks, markStyleFor, styleMarks } from './marks.ts';
+import { type EllipsisStyle, type MarkLayout, buildMarks, groupMetrics, layoutMarks, markStyleFor, styleMarks, toPx } from './marks.ts';
 import {
   type Font,
   type GapPlan,
@@ -39,6 +39,7 @@ import {
   type Part,
   type Settings,
   DEFAULTS,
+  defined,
   isVisible,
   sameParts,
 } from './options.ts';
@@ -110,10 +111,6 @@ let sharedObserver: ResizeObserver | null = null;
 let nearObserver: IntersectionObserver | null = null;
 const observed = new Map<Element, Elide>();
 
-function defined<T extends object>(o: T): Partial<T> {
-  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
-}
-
 export class Elide {
   readonly element: HTMLElement;
 
@@ -146,6 +143,8 @@ export class Elide {
   private current: ElideState | null = null;
   private lastRun: Run | null = null;
   private pendingReset = false;
+  /** The full text shows, as just set, so a pass can start from measuring it. */
+  private fresh = true;
   private titled = false;
   private destroyed = false;
   private style: EllipsisStyle = '…';
@@ -179,6 +178,8 @@ export class Elide {
 
     if (onChange) this.listeners.add(onChange);
     instances.add(this);
+    // Turns off fallback.css's plain truncation.
+    element.setAttribute('data-elide', '');
     byId.set(this.id, { instance: this, hidden: () => this.current?.hidden ?? [] });
     hookDocument();
     this.schedule('init');
@@ -230,13 +231,7 @@ export class Elide {
 
   /** Tight box around the ink of ellipsis `index`, or null. */
   ellipsisInk(index = 0): DOMRect | null {
-    const marks = this.marks(index);
-    if (marks.length === 0) return null;
-    const left = Math.min(...marks.map((r) => r.left));
-    const top = Math.min(...marks.map((r) => r.top));
-    const right = Math.max(...marks.map((r) => r.right));
-    const bottom = Math.max(...marks.map((r) => r.bottom));
-    return new DOMRect(left, top, right - left, bottom - top);
+    return boundsOf(this.marks(index));
   }
 
   /**
@@ -440,7 +435,10 @@ export class Elide {
 
   /** Subscribe to visible-text changes. Returns an unsubscribe function. */
   onChange(fn: (change: ElideChange) => void): () => void {
+    const first = this.listeners.size === 0;
     this.listeners.add(fn);
+    // Passes record what they paint only for listeners; the next change animates from here.
+    if (first && this.current && this.lastRun) this.recordPainted(this.lastRun);
     return () => this.listeners.delete(fn);
   }
 
@@ -470,6 +468,8 @@ export class Elide {
     if (s.lines !== before.lines) this.bias = null;
     if ((text !== undefined && text !== this.text) || s.glyphs !== before.glyphs) {
       this.setText(text ?? this.text);
+      this.showAll();
+      this.fresh = true;
       this.pendingReset = true;
       this.painted = null;
     } else {
@@ -501,6 +501,7 @@ export class Elide {
     this.unlockHeight();
     this.clip(false);
     this.element.removeAttribute('data-truncated');
+    this.element.removeAttribute('data-elide');
     if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
   }
@@ -756,14 +757,15 @@ export class Elide {
   // Rendering
 
   /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
-  private fill(el: HTMLElement, from: number, to: number) {
+  /** `shown`: the visible run it's part of, which a highlight may go on into. */
+  private fill(el: HTMLElement, from: number, to: number, shown: Range = [0, this.g.length]) {
     if (this.settings.glyphs) {
       const want = this.glyphEls.slice(from, to);
       const have = el.childNodes;
       if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
       return;
     }
-    fillPiece(el, classRuns(this.g, this.classes, from, to));
+    fillPiece(el, this.g, this.classes, [from, to], shown);
   }
 
   /**
@@ -836,17 +838,18 @@ export class Elide {
     for (let r = 0; r <= m; r++) {
       let a = r === 0 ? 0 : hidden[r - 1]![1];
       let b = r === m ? n : hidden[r]![0];
+      const shown: Range = [a, b];
       if (r > 0) {
         const take = a < b ? 1 : 0;
-        this.fill(this.joins[r - 1]!.after, a, a + take);
+        this.fill(this.joins[r - 1]!.after, a, a + take, shown);
         a += take;
       }
       if (r < m) {
         const take = a < b ? 1 : 0;
-        this.fill(this.joins[r]!.before, b - take, b);
+        this.fill(this.joins[r]!.before, b - take, b, shown);
         b -= take;
       }
-      this.fill(this.runEl(r), a, b);
+      this.fill(this.runEl(r), a, b, shown);
     }
 
     const layout = this.markLayout(run);
@@ -877,6 +880,7 @@ export class Elide {
   private justified(run: Run, plans: GapPlan[], lines: number): Justified {
     return {
       mode: this.settings.justify,
+      maxGap: this.settings.maxGap === null ? null : toPx(this.settings.maxGap, run.marks!.fontSize),
       lines,
       sure: this.settings.lines <= 1 && WRAP_MODE,
       right: run.right,
@@ -1070,10 +1074,12 @@ export class Elide {
       // A highlight may change the font, which the glyph widths don't know.
       this.classes.every((c) => c === null);
     let base: { cut: Range[]; end: number } | null = null;
-    if (predictable && (reason === 'resize' || reason === 'init') && !this.pendingReset && this.g.length > 0) {
+    // (Or the full text, when it has just been set and shows in full.)
+    const fresh = this.fresh;
+    if (predictable && this.g.length > 0 && (fresh || ((reason === 'resize' || reason === 'init') && !this.pendingReset))) {
       const { end } = lineSpan(this.lineEl, run.left, run.right);
-      const added = previous?.gaps.reduce((sum, g) => sum + g.slack, 0) ?? 0;
-      base = { cut: previous?.hidden.map((p): Range => [p.start, p.end]) ?? [], end: end - added };
+      const added = fresh ? 0 : (previous?.gaps.reduce((sum, g) => sum + g.slack, 0) ?? 0);
+      base = { cut: fresh ? [] : (previous?.hidden.map((p): Range => [p.start, p.end]) ?? []), end: end - added };
     }
     // Trying cuts that don't fit wraps the text, so the element grows (or
     // overflows) for a moment. Nobody sees it, but measuring lays it out, and
@@ -1087,6 +1093,7 @@ export class Elide {
 
     yield* phase.write();
     this.pendingReset = false;
+    this.fresh = false;
     this.steadyLines(whiteSpace);
     this.clip(false);
 

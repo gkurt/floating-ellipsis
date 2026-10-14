@@ -19,6 +19,20 @@ describe('highlights (classes on keep)', () => {
     }
   });
 
+  it('marks the edges where a highlight goes on into the next piece', () => {
+    const t = make(box(PROSE), { position: 'middle', keep: { match: 'boxing', class: 'hit' } });
+    for (const _w of sweep(t, 120, 400, 23)) {
+      const pieces = [...t.element.querySelectorAll('[data-fp-text] .hit')];
+      expect(pieces.map((p) => p.textContent).join('')).toBe('boxing');
+      // Open towards the pieces it goes on into, closed at its own ends.
+      pieces.forEach((p, i) => {
+        const open = (p.getAttribute('data-fp-open') ?? '').split(' ');
+        expect(open.includes('start')).toBe(i > 0);
+        expect(open.includes('end')).toBe(i < pieces.length - 1);
+      });
+    }
+  });
+
   it('highlights text that fits too', () => {
     const t = make(box('A short line', 'width:400px'), { keep: { match: 'short', class: 'hit' } });
     expect(t.truncated).toBe(false);

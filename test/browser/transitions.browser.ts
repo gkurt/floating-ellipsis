@@ -69,6 +69,15 @@ describe('transitions', () => {
     expect(ghosts(t)).toBe(0);
   });
 
+  it('animates the first change after being attached late', async () => {
+    const t = make(box(PROSE, 'width:360px'), { position: 'middle', glyphs: true });
+    expect(t.truncated).toBe(true);
+    await frames();
+    stops.push(transitions(t, { pace: 'fixed' }));
+    narrow(t, 240);
+    expect(ghosts(t)).toBeGreaterThan(0);
+  });
+
   it('merge: arriving glyphs grow out of the ellipsis, and are drawn once they land', async () => {
     const t = await animated({ effect: 'merge' }, 240);
     const shown: number[] = [];

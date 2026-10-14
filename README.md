@@ -31,6 +31,8 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   nearest dot.
 - **Without the DOM.** `elideText` makes the same cuts as a string, for canvas,
   SVG, chart labels, workers or the server.
+- **Before scripts run.** An optional stylesheet truncates with plain CSS
+  until an instance takes over, and server-rendered React shows its text.
 - **Framework bindings.** A `<elide-text>` element, a React hook and component,
   a Vue directive and a Svelte action.
 - **Fast in bulk.** Instances truncate together, so the thousands of cells in a
@@ -59,7 +61,11 @@ bun dev        # demo at http://localhost:4181
 bun run test   # unit tests (pure logic)
 bun run test:browser  # layout tests in Chromium, Firefox and WebKit
 bun run build  # dist/ with type declarations
+bun run size   # what each entry costs gzipped, against its budget
 ```
+
+The package ships its TypeScript source (`src/`) next to `dist/`, so the
+sourcemaps resolve and tools and agents can read the implementation.
 
 The browser tests need Playwright's engines once:
 `bunx playwright install chromium firefox webkit`.
@@ -101,6 +107,7 @@ through trusted publishing (no token).
 | `ellipsis` | `'…'`        | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                                                                                                                                                                                                                                                       |
 | `gap`      | `'dots'`     | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
 | `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
+| `maxGap`   | `'0.75em'`   | The widest an ink gap next to or inside an ellipsis gets from `justify` (`'dots'`, `'ellipsis'`): px, or `'0.75em'` / `'12px'`. Room past it stays at the end of the line, which then isn't flush, so a long word wrapping or a dropped whole word doesn't spread the dots apart. `null`: no limit.                                                                                                                                 |
 | `trim`     | `true`       | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
 | `snap`     | `null`       | Move cuts to nicer boundaries: `words()` cuts prose between words, `separators('/\\')` paths at segments. See [Snapping](#snapping).                                                                                                                                                                                                                                                                                                |
 | `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load. An element more than a screen away from the viewport puts this off until it comes near, when what it shows meanwhile can't change its height (one line, or several held at their height once truncated).                                                                                                                                                            |
@@ -150,8 +157,25 @@ goes on each glyph. `classOf(i)` tells the classes of grapheme `i`, and the
 [tooltip](#tooltips) gives its copy of the text the same classes.
 
 A highlight next to an ellipsis comes in pieces: the grapheme beside an
-ellipsis is kept with it, so the two never part across lines. Flat styles
-(a background, a colour) meet seamlessly; rounded corners show the seams.
+ellipsis is kept with it, so the two never part across lines. A piece the
+highlight goes on from, or into, says so with `data-fp-open` (`start`,
+`end`), so rounded corners can be kept to the outer ends:
+
+```css
+.hit {
+  background: #fde68a;
+  border-radius: 4px;
+}
+.hit[data-fp-open~='start'] {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.hit[data-fp-open~='end'] {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+```
+
 A class may change the font (bold, say): what fits is still measured, but
 the gaps around an ellipsis are planned with the element's own font.
 
@@ -220,6 +244,30 @@ already there.
 
 The element also gets a `data-truncated` attribute, for CSS.
 
+## Before scripts run
+
+Until an instance takes over (before scripts load, while a server-rendered
+page hydrates, or without JavaScript), the text is whatever HTML shows. The
+optional stylesheet truncates it with plain CSS meanwhile:
+
+```js
+import 'floating-ellipsis/fallback.css';
+```
+
+```html
+<div class="path" data-elide-fallback>/Users/ada/notes/2026/difference-tables.md</div>
+<p data-elide-fallback="2">A long description, clamped to two lines…</p>
+```
+
+`data-elide-fallback` (one line, or `"2"` to `"6"` lines) gets a CSS
+ellipsis at the end, the only place CSS can put one, and `<elide-text>` gets
+one until it's defined. An instance marks its element `data-elide` while it's
+attached, which turns the fallback off. React's `<Elided>` renders its text
+marked this way, so a server-rendered page shows it truncated before it
+hydrates. With `useElide`, `v-elide` or the Svelte action, render the text
+into the element on the server yourself, with the attribute; the instance
+takes the element over when it mounts.
+
 ## Text without the DOM
 
 ```js
@@ -274,7 +322,8 @@ the `text` option and leave the element empty. A `snap` made inline
 
 `<elide-text>` truncates its own text. Its attributes are `lines`, `position`
 (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`),
-`keep-class` (a class to highlight what `keep` matches),
+`keep-class` (a class to highlight what `keep` matches), `max-gap` (`none`
+for no limit),
 `ellipsis`, `gap`, `justify` (`false` turns it off), `trim`, `snap` (`words`,
 `paths`, or separator characters), `glyphs`, `tooltip-title` (the `title`
 option), `copy` and `text`. The `options` property takes anything `elide` does,
@@ -311,6 +360,15 @@ React is an optional peer dependency (18 or later); the Vue and Svelte
 bindings need nothing from them. `elideOf(el)` from `floating-ellipsis/vue`
 gives the instance behind a `v-elide`.
 
+## Long and virtual lists
+
+Instances truncate together: creating 900 of them, or resizing the grid
+they're in, takes a handful of shared layouts (the browser tests count them).
+In a virtualized list, either way works and costs the same: keep the rows'
+instances and give a recycled row its new text with `update({ text })`, or
+let rows mount and unmount with their own instances. Don't render the text
+as the element's children either way: the instance owns its content.
+
 ## Transitions
 
 ```js
@@ -334,6 +392,9 @@ ellipsis: glyphs on the left go into the left dot, glyphs on the right into
 the right one, and big jumps spread across the middle dots. On the way it
 takes the ellipsis' colour and cross-fades into the mark's shape. Arriving
 glyphs grow back out the same way.
+
+`transitions` can be attached at any time; the first change after it
+animates from what's showing.
 
 Nothing moves the text itself: glyphs keep their layout positions, so the line
 always ends exactly at the edge. Ghost glyphs are drawn in an overlay next to
@@ -478,6 +539,8 @@ line.
    into its gaps (or the letter-spacing), line by line from the top, backing
    off by a fraction of a pixel if layout rounding would make the line wrap.
    Filling a line exactly up to the edge keeps its line break where it was.
+   No gap grows past `maxGap`: room a long wrapping word leaves behind stays
+   at the end of the line.
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
    only its neighbours change. Re-inserting it would restart animations and
    reset hover state on every resize. When truncating changes the element's
@@ -522,10 +585,11 @@ line.
 - Plain text only. Left-to-right text only.
 - The element's width must not depend on its content. Use a block, or a flex
   or grid item with `min-width: 0`.
-- With several lines, a line holding an ellipsis is filled to the edge even
-  when its leftover space comes from a long word wrapping to the next line, so
-  the gaps there can get wide.
-- Snapping to whole segments still leaves some room over when no run of them
-  hides just enough; `justify` spreads it into the gaps around the ellipsis.
-  Allowing a fragment (`fragment: 'head'`) leaves almost none.
+- A line whose leftover room is more than `maxGap` allows (a long word
+  wrapping, a whole word or segment dropped by `snap`) isn't flush with the
+  edge. Allowing a fragment (`fragment: 'head'`) leaves almost no room over.
+- CSS fallback (before scripts run) can only cut at the end.
+- WebKit doesn't kern across element boundaries, so in Safari a tooltip's
+  glyphs, each in an element of its own, can sit up to a pixel off the
+  original's kerned text.
 - `elideText` fits one line.

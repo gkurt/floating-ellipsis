@@ -15,4 +15,5 @@ export default defineConfig({
   platform: 'neutral',
   dts: true,
   sourcemap: true,
+  copy: ['src/fallback.css'],
 });

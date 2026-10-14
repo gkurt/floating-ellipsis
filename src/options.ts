@@ -1,6 +1,6 @@
 /** An instance's options and their defaults, its state, and its change events. */
 import type { Keep, Position, Snap } from './cut.ts';
-import type { EllipsisStyle } from './marks.ts';
+import type { EllipsisStyle, Length } from './marks.ts';
 import type { Gap, GapPlan } from './metrics.ts';
 
 export interface ElideOptions {
@@ -48,6 +48,14 @@ export interface ElideOptions {
    * - false: leave the slack at the end of the line.
    */
   justify?: 'ellipsis' | 'dots' | 'spread' | false;
+  /**
+   * The widest an ink gap next to or inside an ellipsis gets from justifying
+   * ('dots' and 'ellipsis'): px, or a string like '0.75em'. Room past it
+   * stays at the end of the line, which then isn't flush: a long word that
+   * wrapped, or a snap that dropped a whole word, would otherwise spread the
+   * dots far apart. Null for no limit. Default '0.75em'.
+   */
+  maxGap?: Length | null;
   /** Drop whitespace touching an ellipsis. Default true. */
   trim?: boolean;
   /** Experimental: move cuts to nicer boundaries, see `separators()`. */
@@ -79,6 +87,7 @@ export const DEFAULTS: Settings = {
   ellipsis: '…',
   gap: 'dots',
   justify: 'dots',
+  maxGap: '0.75em',
   trim: true,
   snap: null,
   observe: true,
@@ -86,6 +95,11 @@ export const DEFAULTS: Settings = {
   title: false,
   copy: 'full',
 };
+
+/** `o` without the keys set to undefined, so they don't override defaults. */
+export function defined<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
 
 /** A stretch of text, by grapheme index. */
 export interface Part {

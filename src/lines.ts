@@ -44,3 +44,13 @@ export function lineSpan(el: Element, left: number, right: number): { lines: num
   }
   return { lines, inside, end };
 }
+
+/** The box around `rects`, or null when there are none. */
+export function boundsOf(rects: readonly DOMRect[]): DOMRect | null {
+  if (rects.length === 0) return null;
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.right));
+  const bottom = Math.max(...rects.map((r) => r.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
+}

@@ -6,7 +6,7 @@
 import type { Range } from './cut.ts';
 
 /** Graphemes `[from, to)` as stretches that share their class, joined. */
-export function classRuns(
+function classRuns(
   graphemes: readonly string[],
   classes: readonly (string | null)[],
   from: number,
@@ -25,8 +25,25 @@ export function classRuns(
 /** What each piece was last filled with, so filling it again is free. */
 const filled = new WeakMap<HTMLElement, string>();
 
-/** Make `el` hold `runs`: plain text, or text and highlight spans. Touches the DOM as little as possible. */
-export function fillPiece(el: HTMLElement, runs: readonly [string | null, string][]): void {
+/**
+ * Make `el` hold graphemes `[from, to)`: plain text, or text and spans for
+ * stretches with a class. Touches the DOM as little as possible. A highlight
+ * that goes on into the piece beside it, within the visible run `shown` (a
+ * grapheme kept with an ellipsis is a piece of its own), says so to CSS with
+ * `data-fp-open` ('start', 'end').
+ */
+export function fillPiece(
+  el: HTMLElement,
+  graphemes: readonly string[],
+  classes: readonly (string | null)[],
+  [from, to]: Range,
+  shown: Range,
+): void {
+  const runs = classRuns(graphemes, classes, from, to);
+  const open = {
+    start: from > shown[0] && from < to && classes[from - 1] === classes[from],
+    end: to < shown[1] && from < to && classes[to] === classes[to - 1],
+  };
   if (runs.every(([cls]) => cls === null)) {
     filled.delete(el);
     const text = runs.map(([, t]) => t).join('');
@@ -38,15 +55,17 @@ export function fillPiece(el: HTMLElement, runs: readonly [string | null, string
     }
     return;
   }
-  const key = JSON.stringify(runs);
+  const key = JSON.stringify([runs, open]);
   if (filled.get(el) === key) return;
   filled.set(el, key);
   el.replaceChildren(
-    ...runs.map(([cls, text]) => {
+    ...runs.map(([cls, text], i) => {
       if (cls === null) return document.createTextNode(text);
       const span = document.createElement('span');
       span.className = cls;
       span.setAttribute('data-fp-kept', '');
+      const sides = [i === 0 && open.start ? 'start' : '', i === runs.length - 1 && open.end ? 'end' : ''].filter(Boolean);
+      if (sides.length > 0) span.setAttribute('data-fp-open', sides.join(' '));
       span.textContent = text;
       return span;
     }),

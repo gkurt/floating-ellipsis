@@ -63,7 +63,9 @@ export type ElidedProps<T extends ElementType = 'div'> = ElideOptions & {
 
 /**
  * An element (a `div` unless `as` says otherwise) showing `text`, truncated
- * with the rest of the props as options. Other props go to the element.
+ * with the rest of the props as options. Other props go to the element. It
+ * renders the text, marked `data-elide-fallback`, so with fallback.css a
+ * server-rendered page shows it truncated before it hydrates.
  *
  * ```jsx
  * <Elided text={path} position="middle" keep={/\.[^.]+$/} className="path" />
@@ -78,5 +80,17 @@ export function Elided<T extends ElementType = 'div'>(props: ElidedProps<T>): Re
     else attributes[key] = value;
   }
   const [ref] = useElide(options);
-  return createElement(props.as ?? 'div', { ...attributes, ref });
+  // The text as first rendered, so server-rendered HTML shows it (truncated
+  // by fallback.css) before hydrating. It never changes after, so React
+  // leaves the content to the instance.
+  const [initial] = useState(() => escape(props.text));
+  const lines = props.lines ?? 1;
+  return createElement(props.as ?? 'div', {
+    ...attributes,
+    ref,
+    'data-elide-fallback': lines > 1 ? String(lines) : '',
+    dangerouslySetInnerHTML: { __html: initial },
+  });
 }
+
+const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

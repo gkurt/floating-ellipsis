@@ -15,6 +15,8 @@ export interface Justified {
   lines: number;
   /** One line that can't wrap: filling it needs no checking. */
   sure: boolean;
+  /** The widest a gap may get, in px, or null. */
+  maxGap: number | null;
   /** The right edge of the content box. */
   right: number;
   layout: MarkLayout;
@@ -38,7 +40,8 @@ export interface Justified {
  * A pass (see `lockstep`): it starts out reading.
  */
 export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: GapInfo[]; slack: number }, void> {
-  const { layout, plans, right: edge } = t;
+  const { layout, plans, right: edge, maxGap } = t;
+  const cap = maxGap ?? Infinity;
   const info = (plan: GapPlan, left: number, right: number, inner: readonly number[], extra: number, slack: number): GapInfo => ({
     ...plan,
     left: plan.naturalLeft === null ? null : plan.naturalLeft + left + extra,
@@ -147,6 +150,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
         const count = gapsOf(p);
         if (count === 0) continue;
         const share = (slack * count) / total;
+        let used = share;
         let left = p.marginLeft;
         let right = p.marginRight;
         let inner = layout.inner;
@@ -157,17 +161,24 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
             ...layout.natural.map((v, i) => v + layout.inner[i]!),
             ...(p.naturalRight !== null ? [p.naturalRight + p.marginRight] : []),
           ];
-          const even = (current.reduce((sum, v) => sum + v, 0) + share) / count;
+          const sum = current.reduce((total, v) => total + v, 0);
+          // As wide as `maxGap` allows, but never taking room away.
+          const even = Math.max(sum / count, Math.min((sum + share) / count, cap));
           if (p.naturalLeft !== null) left = even - p.naturalLeft;
           if (p.naturalRight !== null) right = even - p.naturalRight;
           inner = layout.natural.map((v) => even - v);
+          used = Math.max(0, even * count - sum);
         } else {
           const each = share / count;
-          if (p.naturalLeft !== null) left += each;
-          if (p.naturalRight !== null) right += each;
+          const grow = (natural: number | null, margin: number) =>
+            natural === null ? 0 : Math.max(0, Math.min(each, cap - natural - margin));
+          const [l, r] = [grow(p.naturalLeft, left), grow(p.naturalRight, right)];
+          left += l;
+          right += r;
+          used = l + r;
         }
         t.space(j, left, right, inner);
-        tried.set(j, info(p, left, right, inner, 0, share));
+        tried.set(j, info(p, left, right, inner, 0, used));
       }
       if (!t.sure) yield* phase.read();
       if (t.sure || holds(line, ellipses)) {

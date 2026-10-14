@@ -10,6 +10,8 @@ declare module 'vitest/browser' {
     /** The real mouse at `x`, `y` in the test frame's viewport (see vitest.config.ts). */
     mouse: (action: 'move' | 'down' | 'up', x: number, y: number) => Promise<void>;
     reducedMotion: (on: boolean) => Promise<void>;
+    /** Layouts the page has done so far (Chromium only). */
+    layouts: () => Promise<number>;
   }
 }
 

@@ -5,6 +5,7 @@
 import { Binding } from './bind.ts';
 import { type Position, type Snap, separators, words } from './cut.ts';
 import type { Elide } from './elide.ts';
+import type { Length } from './marks.ts';
 import type { Gap } from './metrics.ts';
 import type { ElideChange, ElideOptions } from './options.ts';
 
@@ -15,6 +16,7 @@ const ATTRIBUTES = [
   'keep-class',
   'ellipsis',
   'gap',
+  'max-gap',
   'justify',
   'trim',
   'snap',
@@ -24,7 +26,8 @@ const ATTRIBUTES = [
   'text',
 ] as const;
 
-const isGap = (v: string): v is Extract<Gap, string> => v === 'dots' || v === 'natural' || v === 'none' || /^-?[\d.]+(em|px)$/.test(v);
+const isLength = (v: string): v is Exclude<Length, number> => /^-?[\d.]+(em|px)$/.test(v);
+const isGap = (v: string): v is Extract<Gap, string> => v === 'dots' || v === 'natural' || v === 'none' || isLength(v);
 const isJustify = (v: string): v is 'dots' | 'ellipsis' | 'spread' => v === 'dots' || v === 'ellipsis' || v === 'spread';
 
 /** `'middle'`, `'0.3'`, or several: `'0.33 0.67'`. */
@@ -51,7 +54,7 @@ function parseSnap(value: string): Snap | null {
 /**
  * Truncates its text to fit, like `elide(this, options)`. Attributes:
  * `lines`, `position` (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or
- * `/regex/flags`) and `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `justify` (`false` to turn it off),
+ * `/regex/flags`) and `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap` (`none` for no limit), `justify` (`false` to turn it off),
  * `trim` (`false`), `snap` (`words`, `paths`, or separator characters),
  * `glyphs`, `tooltip-title` (the `title` option), `copy` and `text` (else
  * its text content). The `options` property takes anything `elide` does and
@@ -139,6 +142,8 @@ export class ElideElement extends HTMLElement {
     if (ellipsis !== null) options.ellipsis = ellipsis;
     const gap = attr('gap');
     if (gap !== null) options.gap = isGap(gap) ? gap : Number(gap);
+    const maxGap = attr('max-gap');
+    if (maxGap !== null) options.maxGap = maxGap === 'none' ? null : isLength(maxGap) ? maxGap : Number(maxGap);
     const justify = attr('justify');
     if (justify !== null) options.justify = isJustify(justify) ? justify : false;
     const snap = attr('snap');
