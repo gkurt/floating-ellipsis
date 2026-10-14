@@ -146,6 +146,8 @@ export class Elide {
   private painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
   /** The element's own inline height (value, priority) while we hold it. */
   private heightLock: [string, string] | null = null;
+  /** The element's own inline overflow (value, priority) while a put-off pass has it clipped. */
+  private clipped: [string, string] | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { text, onChange, ...rest } = options;
@@ -167,6 +169,7 @@ export class Elide {
     // On one line, so that the first pass can wait (see `putOff`).
     this.showAll();
     if (WRAP_MODE) this.steadyLines('');
+    this.clip(true);
 
     if (onChange) this.listeners.add(onChange);
     instances.add(this);
@@ -479,6 +482,7 @@ export class Elide {
     this.listeners.clear();
     this.renderListeners.clear();
     this.unlockHeight();
+    this.clip(false);
     this.element.removeAttribute('data-truncated');
     if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
@@ -614,6 +618,23 @@ export class Elide {
     if (!this.heightLock) return;
     this.element.style.setProperty('height', ...this.heightLock);
     this.heightLock = null;
+  }
+
+  /**
+   * Clip the element while a pass is put off: what it shows meanwhile (the
+   * full text, or a cut for another width) can overflow, and when it comes
+   * into view faster than the observers can tell, it is painted once like that.
+   */
+  private clip(on: boolean) {
+    const style = this.element.style;
+    if (on === (this.clipped !== null)) return;
+    if (this.clipped) {
+      style.setProperty('overflow', ...this.clipped);
+      this.clipped = null;
+      return;
+    }
+    this.clipped = [style.getPropertyValue('overflow'), style.getPropertyPriority('overflow')];
+    style.setProperty('overflow', 'clip', 'important');
   }
 
   /** What a pass needs to know about the element. Reads layout. */
@@ -857,7 +878,10 @@ export class Elide {
    * soon as anything is read from this one.
    */
   private schedule(reason: ChangeReason) {
-    if (this.putOff(reason, this.far === true)) return;
+    if (this.putOff(reason, this.far === true)) {
+      this.clip(true);
+      return;
+    }
     if (!queued.has(this)) queued.set(this, reason);
     if (flushing) return;
     flushing = true;
@@ -938,7 +962,11 @@ export class Elide {
       if (!instance) continue;
       const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
       // Height changes are usually our own doing (fewer lines); only width matters.
-      if ((Math.abs(width - instance.lastWidth) < 0.01 && !instance.owed) || instance.putOff('resize', instance.far === true)) continue;
+      if (Math.abs(width - instance.lastWidth) < 0.01 && !instance.owed) continue;
+      if (instance.putOff('resize', instance.far === true)) {
+        instance.clip(true);
+        continue;
+      }
       heights.set(instance, entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     if (heights.size === 0) return;
@@ -984,6 +1012,8 @@ export class Elide {
     // rendered: the ResizeObserver reports it then.
     if (!this.reading && observed.get(host) === this && !host.checkVisibility?.({ contentVisibilityAuto: true })) {
       this.owed = reason;
+      yield* phase.write();
+      this.clip(true);
       return null;
     }
     if (host.getClientRects().length === 0) return null;
@@ -997,7 +1027,11 @@ export class Elide {
     const box = run.box;
     const far =
       this.far ?? (box.bottom < -innerHeight || box.top > 2 * innerHeight || box.right < -innerWidth || box.left > 2 * innerWidth);
-    if (this.putOff(reason, far)) return null;
+    if (this.putOff(reason, far)) {
+      yield* phase.write();
+      this.clip(true);
+      return null;
+    }
     const previous = this.current;
     const reset = this.pendingReset || !previous;
     const first = this.joins[0]!;
@@ -1032,6 +1066,7 @@ export class Elide {
     yield* phase.write();
     this.pendingReset = false;
     this.steadyLines(whiteSpace);
+    this.clip(false);
 
     // Where things were when last painted, for listeners that animate the
     // change. (Measuring now would see the old text reflowed at the new size.)
