@@ -449,6 +449,48 @@ export class Elide {
     return this.glyphEls[index] ?? null;
   }
 
+  /**
+   * Box of grapheme `index` as laid out, in viewport coordinates, or null
+   * when it is hidden. Works in text mode too (measured with a Range), so a
+   * tooltip can line its own copy of the text up with the original glyph by
+   * glyph.
+   */
+  graphemeRect(index: number): DOMRect | null {
+    const n = this.g.length;
+    if (index < 0 || index >= n || !this.current || !isVisible(this.current, index)) return null;
+    if (this.settings.glyphs) {
+      const el = this.glyphEls[index];
+      return el?.isConnected ? el.getBoundingClientRect() : null;
+    }
+    // Where `render` put it: visible run r is split into the join before it
+    // (its first grapheme), its own element, and the join after it (its last).
+    const hidden = this.current.hidden;
+    const m = hidden.length;
+    for (let r = 0; r <= m; r++) {
+      let a = r === 0 ? 0 : hidden[r - 1]!.end;
+      let b = r === m ? n : hidden[r]!.start;
+      if (index < a || index >= b) continue;
+      let el: HTMLElement = this.runEl(r);
+      let from = a;
+      if (r > 0 && a < b) {
+        if (index === a) el = this.joins[r - 1]!.after;
+        else from = ++a;
+      }
+      if (r < m && a < b && index === b - 1 && el === this.runEl(r)) {
+        el = this.joins[r]!.before;
+        from = b - 1;
+      }
+      const node = el.firstChild;
+      if (!(node instanceof Text)) return null;
+      const start = this.offsets[index]! - this.offsets[from]!;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + (this.offsets[index + 1]! - this.offsets[index]!));
+      return range.getBoundingClientRect();
+    }
+    return null;
+  }
+
   /** Ink box of grapheme `index` in glyph mode, or null when it isn't showing. */
   glyphInk(index: number): DOMRect | null {
     const el = this.glyphEls[index];

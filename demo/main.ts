@@ -333,67 +333,169 @@ function hideTips() {
   setPeeking(null);
 }
 
-/** Full text, laid exactly over the truncated text so the letters line up. */
-function showExpand(instance: Elide) {
-  if (!instance.truncated) return hideTips();
-  expandTip.textContent = instance.state.text;
-  placeOverLine(instance);
+const EDGE = 8;
+const SEPARATORS = '/\\';
+const easeOut = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
+
+/** The tip's background, a layer of its own so it can change size without reflowing the text. */
+function tipBackground() {
+  const bg = document.createElement('div');
+  bg.className = 'tip-bg';
+  return bg;
 }
 
-/** Put the expand tip's first line exactly over the instance's first line. */
-function placeOverLine(instance: Elide) {
-  const first = instance.lineRects()[0];
-  if (!first) return hideTips();
-  expandTip.hidden = false;
-  const cs = getComputedStyle(expandTip);
-  const lineHeight = parseFloat(cs.lineHeight);
-  // The line rect is the font's content area; centre it in the tip's line box.
-  const x = first.left - parseFloat(cs.paddingLeft);
-  const y = first.top - (lineHeight - first.height) / 2 - parseFloat(cs.paddingTop);
-  expandTip.style.left = `${Math.round(x)}px`;
-  expandTip.style.top = `${Math.round(y)}px`;
+/** Items with a line break opportunity after each path separator. */
+function breakAfterSeparators<T extends Node | string>(items: T[], text: readonly string[]): (T | HTMLElement)[] {
+  return items.flatMap((item, i) => (SEPARATORS.includes(text[i]!) ? [item, document.createElement('wbr')] : [item]));
 }
 
 /**
- * Full text grown out of the truncated text: the tip starts as an exact copy
- * of the line, ellipses and all, then each ellipsis' area widens into the
- * text it hides while its dots fade out.
+ * Place the full-text tip. Its first line goes exactly over the instance's
+ * first line when the whole text fits there on one line; otherwise the tip
+ * slides left just enough to stay on screen; and when even the screen is too
+ * narrow, it wraps at the screen's width (between path segments where it can).
+ */
+function placeTip(instance: Elide): boolean {
+  const first = instance.lineRects()[0];
+  if (!first) return false;
+  const tip = expandTip;
+  tip.hidden = false;
+  const cs = getComputedStyle(tip);
+  const lineHeight = parseFloat(cs.lineHeight);
+  const view = document.documentElement.clientWidth;
+  const room = view - EDGE * 2;
+  // Its width on one line.
+  tip.style.maxWidth = '';
+  tip.style.left = '0px';
+  tip.style.whiteSpace = 'nowrap';
+  const natural = tip.getBoundingClientRect().width;
+  tip.style.whiteSpace = '';
+  let x = first.left - parseFloat(cs.paddingLeft);
+  if (natural <= room) x = Math.min(Math.max(x, EDGE), view - EDGE - natural);
+  else {
+    x = EDGE;
+    tip.style.maxWidth = `${room}px`;
+  }
+  tip.style.left = `${Math.round(x)}px`;
+  // The line rect is the font's content area; centre it in the tip's line box.
+  let y = first.top - (lineHeight - first.height) / 2 - parseFloat(cs.paddingTop);
+  const height = tip.getBoundingClientRect().height;
+  if (y + height > innerHeight - EDGE) y = Math.max(EDGE, innerHeight - EDGE - height);
+  tip.style.top = `${Math.round(y)}px`;
+  return true;
+}
+
+/** Full text, laid exactly over the truncated text so the letters line up (when it fits). */
+function showExpand(instance: Elide) {
+  if (!instance.truncated) return hideTips();
+  const g = instance.graphemes;
+  const pieces: string[] = [];
+  let at = 0;
+  g.forEach((ch, i) => {
+    if (SEPARATORS.includes(ch) || i === g.length - 1) {
+      pieces.push(g.slice(at, i + 1).join(''));
+      at = i + 1;
+    }
+  });
+  expandTip.replaceChildren(tipBackground(), ...pieces.flatMap((p, i) => (i ? [document.createElement('wbr'), p] : [p])));
+  if (!placeTip(instance)) hideTips();
+}
+
+/**
+ * Full text grown out of the truncated text. The tip is laid out as it will
+ * end up (on one line or wrapped, wherever it fits), and then every glyph
+ * comes from where it is now: the ones showing from their place in the line,
+ * the hidden ones out of the ellipsis that hides them, while the dots fade
+ * and the background grows from the line's box to the tip's.
  */
 function showGrow(instance: Elide) {
   if (!instance.truncated) return hideTips();
   const g = instance.graphemes;
-  const pieces: (Node | string)[] = [];
-  const windows: { el: HTMLElement; text: HTMLElement; dots: HTMLElement; from: number }[] = [];
-  let at = 0;
-  instance.state.hidden.forEach((part, j) => {
-    pieces.push(g.slice(at, part.start).join(''));
-    at = part.end;
-    const el = document.createElement('span');
-    el.className = 'grow';
-    const text = document.createElement('span');
-    text.textContent = part.text;
-    // The marks as drawn (they're inline-styled), without the gaps around them.
-    const dots = document.createElement('span');
-    dots.className = 'grow-dots';
-    dots.append(...instance.markElements(j).map((m) => m.cloneNode(true)));
-    el.append(text, dots);
-    pieces.push(el);
-    windows.push({ el, text, dots, from: instance.ellipsisArea(j)?.width ?? 0 });
+  const { hidden } = instance.state;
+
+  // Where everything is now, before the tip covers it.
+  const from: ({ x: number; y: number } | { cx: number; cy: number })[] = [];
+  g.forEach((_, i) => {
+    const r = instance.graphemeRect(i);
+    if (r) from[i] = { x: r.left, y: r.top };
   });
-  pieces.push(g.slice(at).join(''));
-  expandTip.replaceChildren(...pieces);
-  for (const w of windows) w.el.style.width = `${w.from}px`;
-  placeOverLine(instance);
+  hidden.forEach((part, j) => {
+    const area = instance.ellipsisArea(j);
+    if (!area) return;
+    const count = part.end - part.start;
+    for (let k = 0; k < count; k++) {
+      from[part.start + k] = { cx: area.left + ((k + 0.5) / count) * area.width, cy: area.top + area.height / 2 };
+    }
+  });
+  const marks = hidden.flatMap((_, j) => instance.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
+  const lines = instance.lineRects();
+
+  // The tip as it will end up.
+  const bg = tipBackground();
+  const glyphs = g.map((ch) => {
+    const span = document.createElement('span');
+    span.textContent = ch;
+    return span;
+  });
+  expandTip.replaceChildren(bg, ...breakAfterSeparators(glyphs, g));
+  if (!placeTip(instance)) return hideTips();
+  const tip = expandTip.getBoundingClientRect();
 
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const timing = { duration: still ? 0 : 420, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'both' } as const;
-  for (const w of windows) {
-    const to = w.text.getBoundingClientRect().width;
-    w.el.animate([{ width: `${w.from}px` }, { width: `${to}px` }], timing);
-    // The dots give way as the text comes in, overlapping so the window is never empty.
-    w.dots.animate([{ opacity: 1 }, { offset: 0.3, opacity: 0 }, { opacity: 0 }], timing);
-    w.text.animate([{ opacity: 0 }, { offset: 0.05, opacity: 0 }, { offset: 0.45, opacity: 1 }, { opacity: 1 }], timing);
+  const timing = { duration: still ? 0 : 460, easing: easeOut, fill: 'backwards' } as const;
+
+  // Inline text can't be transformed (and inline-blocks would break lines
+  // anywhere), so glyphs travel by relative offsets, which move them without
+  // reflowing anything.
+  glyphs.forEach((span, i) => {
+    const start = from[i];
+    if (!start) return;
+    const to = span.getBoundingClientRect();
+    if ('x' in start) {
+      const dx = start.x - to.left;
+      const dy = start.y - to.top;
+      if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) return;
+      span.animate([{ left: `${dx}px`, top: `${dy}px` }, { left: '0px', top: '0px' }], timing);
+    } else {
+      const dx = start.cx - (to.left + to.width / 2);
+      const dy = start.cy - (to.top + to.height / 2);
+      span.animate(
+        [
+          { left: `${dx}px`, top: `${dy}px`, opacity: 0, filter: 'blur(3px)' },
+          { offset: 0.15, opacity: 0 },
+          { offset: 0.6, opacity: 1, filter: 'blur(0px)' },
+          { left: '0px', top: '0px', opacity: 1, filter: 'blur(0px)' },
+        ],
+        timing,
+      );
+    }
+  });
+
+  // The ellipses' dots, as drawn, where they are, fading as the text arrives.
+  for (const { el, rect } of marks) {
+    const dot = el.cloneNode(true) as HTMLElement;
+    dot.classList.add('tip-dot');
+    dot.style.margin = '0';
+    dot.style.transform = 'none';
+    dot.style.left = `${rect.left - tip.left}px`;
+    dot.style.top = `${rect.top - tip.top}px`;
+    expandTip.append(dot);
+    dot.animate([{ opacity: 1 }, { offset: 0.35, opacity: 0 }, { opacity: 0 }], { ...timing, easing: 'linear', fill: 'both' });
   }
+
+  // The background, from the line's box (with the tip's padding) to the tip's.
+  const cs = getComputedStyle(expandTip);
+  const lineHeight = parseFloat(cs.lineHeight);
+  const firstLine = lines[0]!;
+  const lastLine = lines[lines.length - 1]!;
+  const box = {
+    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
+    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
+    top: firstLine.top - (lineHeight - firstLine.height) / 2 - parseFloat(cs.paddingTop),
+    bottom: lastLine.top - (lineHeight - lastLine.height) / 2 + lineHeight + parseFloat(cs.paddingBottom),
+  };
+  const inset = `${box.top - tip.top}px ${tip.right - box.right}px ${tip.bottom - box.bottom}px ${box.left - tip.left}px`;
+  bg.animate([{ inset }, { inset: '0px' }], timing);
 }
 
 /** Only what one ellipsis hides, anchored to that ellipsis' ink. */

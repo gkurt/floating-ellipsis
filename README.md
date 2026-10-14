@@ -122,6 +122,7 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
 - `ellipsisIndex(node)`: which ellipsis an event target is in, or -1.
 - `ellipsisRect(i)`, `ellipsisInk(i)`: the box, or the tight ink box, of ellipsis `i`.
 - `ellipsisArea(i)`: the space ellipsis `i` takes between the text before and after it, gaps included. Where the hidden text would go.
+- `graphemeRect(i)`: the box of grapheme `i` as laid out, or null when it's hidden. Works in text mode too, so a tooltip can line its own copy of the text up with the original, glyph by glyph (the demo's "grown from the ellipsis" tip does).
 - `ellipsisAt(x, y, slop?)`: which ellipsis' area holds a point (e.g. a pointer event's `clientX`/`clientY`), or -1. A better hover target than the ellipsis element, which only spans its marks.
 - `marks(i)`: the ink box of every dot, bullet or character of ellipsis `i`.
   For a single `…` glyph, the dots are found inside the glyph.
