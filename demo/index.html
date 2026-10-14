@@ -173,9 +173,9 @@
           <h2 id="paths-title">Paths, hooks and tooltips</h2>
           <p>
             The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact ink of every dot.
-            Enough for a tooltip that lines up letter for letter, or one that only answers the ellipsis. Rows are focusable too. Press on a
-            full-path tip to select its text: it stays open while you hover it. Each list is a <code>data-tip-group</code>, so after the
-            first tip's delay, its neighbours show at once.
+            <code>floating-ellipsis/tooltip</code> builds on them: a headless tip that lines up letter for letter, or only answers the
+            ellipsis. Rows are focusable too. Press on a full-path tip to select its text: it stays open while you hover it. Each list has a
+            tooltip of its own, so after the first tip's delay, its neighbours show at once.
           </p>
         </div>
         <div class="controls compact">
@@ -204,7 +204,7 @@
         </div>
         <div class="stage">
           <div class="resizable files" id="filesBox" style="width: 62%">
-            <ul class="file-list" id="files" aria-label="Files" data-tip-group="paths"></ul>
+            <ul class="file-list" id="files" aria-label="Files"></ul>
             <button class="handle" aria-label="Resize the file list (left and right arrow keys)"></button>
           </div>
         </div>
@@ -220,15 +220,14 @@
         <div class="block-head">
           <h2 id="grow-title">A tooltip grown from the line</h2>
           <p>
-            The README's example, live: a few dozen lines on top of <code>graphemeRect</code> and <code>ellipsisArea</code>. Every glyph
-            starts where it is and the hidden ones come out of their ellipsis. It stays on one line, sliding left to stay on screen, and
-            only text wider than the window wraps. The second row has two ellipses. Hover or focus a row; the tooltip delay above applies
-            here too.
+            <code>tooltip({ reveal: 'grow' })</code>, the default. Every glyph starts where it is and the hidden ones come out of their
+            ellipsis. It stays on one line, sliding left to stay on screen, and only text wider than the window wraps. The second row has
+            two ellipses. Hover or focus a row; the tooltip delay above applies here too.
           </p>
         </div>
         <div class="stage">
           <div class="resizable files" id="growBox" style="width: 56%">
-            <ul class="file-list" id="growFiles" aria-label="Long paths" data-tip-group="long-paths"></ul>
+            <ul class="file-list" id="growFiles" aria-label="Long paths"></ul>
             <button class="handle" aria-label="Resize the list (left and right arrow keys)"></button>
           </div>
         </div>
@@ -279,10 +278,6 @@
     </main>
 
     <footer class="foot">floating-ellipsis · built in the lab</footer>
-
-    <div class="tip expand" id="expandTip" aria-hidden="true" hidden></div>
-    <div class="tip peek" id="peekTip" aria-hidden="true" hidden></div>
-    <div class="grow-tip" id="growTip" aria-hidden="true" hidden></div>
 
     <script type="module" src="./main.ts"></script>
   </body>

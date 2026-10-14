@@ -382,7 +382,7 @@ input[type='range'] {
   border-radius: 4px;
 }
 /* The highlight covers the ellipsis' whole area: its marks and the gaps. */
-.reveal-peek .path [data-fp-ellipsis][data-peek]::before {
+.reveal-peek .path [data-fp-ellipsis][data-fp-tip-open]::before {
   content: '';
   position: absolute;
   z-index: -1;
@@ -390,90 +390,49 @@ input[type='range'] {
   border-radius: 4px;
   background: var(--accent-soft);
 }
-.reveal-peek .file-list li.peeking {
+.reveal-peek .file-list li[data-fp-tip-open] {
   cursor: help;
 }
 
-.tip {
-  position: fixed;
+/* The tooltips. floating-ellipsis/tooltip lays them out (full-text ones take
+   the text's font); this is only how they look. The background is a layer of
+   its own, so it can grow without reflowing the text. */
+[data-fp-tip] {
   z-index: 10;
-  pointer-events: none;
-  background: var(--ink);
-  color: var(--bg);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
-}
-/* The full text: its background is a layer of its own, so it can grow
-   without reflowing the text, and the text wraps between path segments when
-   the screen is too narrow for it. */
-.tip.expand {
   padding: 4px 10px;
-  font: 14px/22px var(--mono);
-  overflow-wrap: break-word;
-  background: none;
-  box-shadow: none;
+  color: var(--bg);
 }
-.tip-bg {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
+[data-fp-tip-bg] {
   background: var(--ink);
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+}
+/* The dots it grows out of, fading. */
+[data-fp-tip] [data-fp-mark] {
+  color: color-mix(in oklab, var(--accent) 55%, var(--bg));
 }
 
-.tip.peek {
+/* Only the hidden part, on its ellipsis, with an arrow pointing at it. */
+[data-fp-tip='peek'] {
   padding: 6px 10px;
   font: 13px/18px var(--mono);
-  transform: translate(-50%, -100%);
   max-width: min(420px, 90vw);
   overflow-wrap: anywhere;
 }
-.tip.peek::after {
+[data-fp-tip='peek']::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: var(--fp-tip-anchor);
   top: 100%;
   border: 6px solid transparent;
   border-top-color: var(--ink);
   transform: translateX(-50%);
 }
-
-/* The README's grow-from-the-line tooltip. The negative margin puts its
-   text (not its padding) over the line: half the 22px - 18px leading, plus
-   the 4px padding, up; the 10px padding left. */
-.grow-tip {
-  position: fixed;
-  box-sizing: border-box;
-  z-index: 10;
-  pointer-events: none;
-  margin: -6px 0 0 -10px;
-  padding: 4px 10px;
-  font: 14px/22px var(--mono);
-  overflow-wrap: break-word;
-  color: var(--bg);
-}
-.grow-tip-bg {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: var(--ink);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
-}
-/* Only a tip's text can be pointed at or selected (see tip-select.ts). */
-.tip.expand,
-.grow-tip {
-  user-select: text;
-}
-.grow-tip [data-fp-mark],
-.grow-tip-bg,
-.tip-bg {
-  pointer-events: none;
-  user-select: none;
-}
-.grow-tip [data-fp-mark] {
-  color: color-mix(in oklab, var(--accent) 55%, var(--bg));
+[data-fp-tip='peek'][data-side='bottom']::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--ink);
 }
 
 /* ------------------------------------------------------------------------ */

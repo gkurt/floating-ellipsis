@@ -39,6 +39,13 @@
         "default": "./dist/transitions.js"
       },
       "source": "./src/transitions.ts"
+    },
+    "./tooltip": {
+      "import": {
+        "types": "./dist/tooltip.d.ts",
+        "default": "./dist/tooltip.js"
+      },
+      "source": "./src/tooltip.ts"
     }
   },
   "scripts": {

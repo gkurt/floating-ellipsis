@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/transitions.ts'],
+  entry: ['src/index.ts', 'src/transitions.ts', 'src/tooltip.ts'],
   format: 'esm',
   platform: 'neutral',
   dts: true,

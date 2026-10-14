@@ -8,7 +8,7 @@ This file provides guidance to AI agents when working with code in this reposito
 bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun typecheck      # Type check (TypeScript 7, native tsc)
-bun run build      # dist/ via tsdown (index + transitions entries, with .d.ts)
+bun run build      # dist/ via tsdown (index, transitions and tooltip entries, with .d.ts)
 bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
 bun run lint       # Lint
 bun run format     # Format
@@ -36,7 +36,8 @@ formatter and `tsc` own all mechanical style rules. Fix the code; don't disable 
 - `src/marks.ts` — what an ellipsis is made of: characters of a string, or drawn dots/bullets/rings/squares sized from the font.
 - `src/graphemes.ts` — grapheme splitting; every index in state is a grapheme index.
 - `src/transitions.ts` — optional add-on (`floating-ellipsis/transitions`): animates glyphs entering/leaving (merge, fade, blur) from `ElideChange` diffs.
-- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`) with tooltip helpers (`grow-tip`, `tip-select`, `tip-delay`) built on the public hooks, a crowded table (`table.html`, `table.ts`) for performance, with the same grow tooltips, and shared UI helpers (`ui.ts`).
+- `src/tooltip.ts` — optional add-on (`floating-ellipsis/tooltip`): a headless tooltip on the public instance API. Shows the full text grown from the line, or what one ellipsis hides; owns delays, placement, the grow animation and selecting text in the tip, and leaves the looks to CSS (`data-fp-tip*` hooks).
+- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance, both with tooltips, and shared UI helpers (`ui.ts`).
 - `test/` — `bun test` suites for `cut`, `metrics` and `lockstep`.
 
 ## Architecture
@@ -45,7 +46,7 @@ formatter and `tsc` own all mechanical style rules. Fix the code; don't disable 
 - A layout pass searches for the most visible graphemes that still fit in `lines`, then plans the ink gap on each side of every ellipsis and spreads leftover slack so ellipsis lines end flush with the box.
 - Passes are generators run in lockstep (`lockstep.ts`): all instances read layout, then all write, so N instances share each layout instead of forcing their own. Never read layout in a write phase or write in a read phase; `yield* phase.read()` / `phase.write()` before each. Passes are queued and flushed in a microtask; public getters call `sync()` to flush first.
 - Measure performance on the demo's table page (`/table.html`) and with many instances; a single instance hides layout costs that grow with the page.
-- Each update emits an `ElideChange` (graphemes shown/hidden, previous boxes); `transitions` only consumes these, so it stays a separate entry point.
+- Each update emits an `ElideChange` (graphemes shown/hidden, previous boxes); `transitions` only consumes these, so it stays a separate entry point. `tooltip` likewise only uses the public instance API.
 - Imports from parent directories go through the `#src/` subpath alias (`package.json` `imports`), with `.ts` extensions.
 
 ## Coding Conventions

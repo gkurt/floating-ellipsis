@@ -19,6 +19,10 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
 - **Hooks.** Whether the text is truncated, what each ellipsis hides, the line
   boxes, and the exact ink box of every dot: enough to build tooltips that line
   up letter for letter, or that only respond to the ellipsis.
+- **Headless tooltips.** An optional add-on that does exactly that: the full
+  text grown out of the line, or just what an ellipsis hides. It brings the
+  behaviour (delays, placement, animation, selecting its text) and you bring
+  the CSS.
 - **Change diffs and transitions.** Glyphs shown and hidden on every resize,
   with their positions, plus an optional add-on that morphs glyphs into the
   nearest dot.
@@ -53,7 +57,7 @@ The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
 `window.pathInstances` are live instances you can try from the console. The
 hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 `/table.html` is a crowded table: up to 2,500 rows, four truncated cells each,
-as a `<table>` or as grid rows, with draggable columns, timings and the grow
+as a `<table>` or as grid rows, with draggable columns, timings and a
 tooltip on every cut-off cell.
 
 ## Options
@@ -133,8 +137,8 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
 - `ellipsisIndex(node)`: which ellipsis an event target is in, or -1.
 - `ellipsisRect(i)`, `ellipsisInk(i)`: the box, or the tight ink box, of ellipsis `i`.
 - `ellipsisArea(i)`: the space ellipsis `i` takes between the text before and after it, gaps included. Where the hidden text would go.
-- `graphemeRect(i)`: the box of grapheme `i` as laid out, or null when it's hidden. Works in text mode too, so a tooltip can line its own copy of the text up with the original, glyph by glyph (the demo's "grown from the ellipsis" tip does).
-- `graphemeAt(node, offset, side?)`: the grapheme index, in the full text, of a DOM position in the element's text (say, either end of a selection), or null. A position inside an ellipsis stands for the start (`side: 'start'`) or end (`'end'`) of what it hides, so a range touching an ellipsis covers all of it, as copying does. The demo uses it to carry a selection made in a row over to its tooltip.
+- `graphemeRect(i)`: the box of grapheme `i` as laid out, or null when it's hidden. Works in text mode too, so a tooltip can line its own copy of the text up with the original, glyph by glyph (the [tooltip](#tooltips) add-on does).
+- `graphemeAt(node, offset, side?)`: the grapheme index, in the full text, of a DOM position in the element's text (say, either end of a selection), or null. A position inside an ellipsis stands for the start (`side: 'start'`) or end (`'end'`) of what it hides, so a range touching an ellipsis covers all of it, as copying does. The [tooltip](#tooltips) add-on uses it to carry a selection made in the text over to its tip.
 - `ellipsisAt(x, y, slop?)`: which ellipsis' area holds a point (e.g. a pointer event's `clientX`/`clientY`), or -1. A better hover target than the ellipsis element, which only spans its marks.
 - `marks(i)`: the ink box of every dot, bullet or character of ellipsis `i`.
   For a single `…` glyph, the dots are found inside the glyph.
@@ -150,158 +154,6 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
 - `refresh()`, `update(options)`, `destroy()`
 
 The element also gets a `data-truncated` attribute, for CSS.
-
-### Example: a tooltip that grows out of the line
-
-`graphemeRect` and `ellipsisArea` tell you where every grapheme is right now,
-or for a hidden one, which ellipsis it's behind. That's all a tooltip needs to
-start as the truncated line and grow into the full text:
-
-```css
-.grow-tip {
-  position: fixed;
-  box-sizing: border-box;
-  pointer-events: none;
-  padding: 4px 10px;
-  margin: -6px 0 0 -10px; /* puts its text, not its padding, over the line */
-  font: inherit; /* the truncated text's font */
-  overflow-wrap: break-word;
-  color: white;
-}
-.grow-tip-bg {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: #222;
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.2);
-}
-```
-
-```js
-// `tip` is a `position: fixed` element with the same font as the text, styled
-// as in the CSS above: its background is a layer of its own (`.grow-tip-bg`),
-// so it can grow without reflowing the text.
-function growTip(t, tip) {
-  if (!t.truncated) return;
-
-  // Where each grapheme is now: its own box, or for a hidden one, its place in
-  // the ellipsis hiding it (spread across it, in order).
-  const from = t.graphemes.map((_, i) => t.graphemeRect(i));
-  const arriving = from.map((r) => !r);
-  t.state.hidden.forEach((part, j) => {
-    const area = t.ellipsisArea(j);
-    const count = part.end - part.start;
-    for (let k = 0; k < count; k++) {
-      from[part.start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
-    }
-  });
-  // The dots of every ellipsis, as drawn, and the line.
-  const dots = t.state.hidden.flatMap((_, j) => t.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
-  const lines = t.lineRects();
-
-  // The tip as it ends up: the full text, one span per grapheme, over the line.
-  const bg = document.createElement('div');
-  bg.className = 'grow-tip-bg';
-  const spans = t.graphemes.map((g) => {
-    const span = document.createElement('span');
-    span.textContent = g;
-    span.style.position = 'relative';
-    return span;
-  });
-  tip.replaceChildren(bg, ...spans);
-  const view = document.documentElement.clientWidth;
-  tip.style.left = `${lines[0].left}px`;
-  tip.style.top = `${lines[0].top}px`;
-  tip.style.maxWidth = '';
-  tip.style.whiteSpace = 'nowrap';
-  tip.hidden = false;
-  // One line, slid left if that's what it takes to stay on screen. Only text
-  // wider than the window wraps (after a separator, where it can).
-  let box = tip.getBoundingClientRect();
-  if (box.width > view - 16) {
-    // (Chrome breaks at <wbr> even with nowrap, so they only go in now.)
-    spans.forEach((span, i) => '/\\'.includes(t.graphemes[i]) && span.after(document.createElement('wbr')));
-    tip.style.whiteSpace = '';
-    tip.style.maxWidth = `${view - 16}px`;
-    tip.style.left = `${lines[0].left - (box.left - 8)}px`;
-  } else if (box.right > view - 8) {
-    tip.style.left = `${lines[0].left - (box.right - (view - 8))}px`;
-  }
-  box = tip.getBoundingClientRect();
-  // Where each grapheme ends up, and where the background starts. All read
-  // before anything animates: starting an animation between two reads would
-  // lay the tip out again for every grapheme, which takes long enough to notice.
-  const targets = spans.map((span) => span.getBoundingClientRect());
-  const cs = getComputedStyle(tip);
-  // The line's box, padded like the tip: where the background grows from.
-  const lineHeight = parseFloat(cs.lineHeight) || lines[0].height * 1.2;
-  const start = {
-    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
-    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
-    bottom: box.top + parseFloat(cs.paddingTop) + lines.length * lineHeight + parseFloat(cs.paddingBottom),
-  };
-  const inset = `0px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
-
-  // Every grapheme travels from where it was. (Inline text can't be
-  // transformed, so they move by relative offsets, which don't reflow
-  // anything.) Hidden ones come out of their ellipsis, blurred, and only show
-  // once the others have made some room.
-  const timing = { duration: 460, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' };
-  spans.forEach((span, i) => {
-    const to = targets[i];
-    const top = `${from[i].top - to.top}px`;
-    if (!arriving[i]) {
-      span.animate(
-        [
-          { left: `${from[i].left - to.left}px`, top },
-          { left: '0px', top: '0px' },
-        ],
-        timing,
-      );
-      return;
-    }
-    const left = `${from[i].left - (to.left + to.width / 2)}px`;
-    span.animate(
-      [
-        { left, top, opacity: 0, filter: 'blur(3px)' },
-        { offset: 0.15, opacity: 0 },
-        { offset: 0.6, opacity: 1, filter: 'blur(0px)' },
-        { left: '0px', top: '0px', opacity: 1, filter: 'blur(0px)' },
-      ],
-      timing,
-    );
-  });
-
-  // The dots stay where they are and fade as the text comes in.
-  for (const { el, rect } of dots) {
-    const dot = el.cloneNode(true);
-    Object.assign(dot.style, {
-      position: 'absolute',
-      margin: '0',
-      transform: 'none',
-      left: `${rect.left - box.left}px`,
-      top: `${rect.top - box.top}px`,
-    });
-    tip.append(dot);
-    dot.animate({ opacity: [1, 0] }, { duration: 160, fill: 'forwards' });
-  }
-
-  // The background grows from the line's box to the tip's.
-  bg.animate([{ inset }, { inset: '0px' }], timing);
-}
-
-el.addEventListener('pointerenter', () => growTip(t, tip));
-el.addEventListener('pointerleave', () => (tip.hidden = true));
-```
-
-The tip starts as an exact copy of the line, dots included, however many
-ellipses it has: each hidden part comes out of its own. The graphemes start
-exactly where they are on screen, whatever the tip's padding or line height,
-since each one is measured. The tip stays on one line, sliding left to stay on
-screen; only text wider than the window wraps, and the graphemes travel to
-wherever they end up. The demo runs this very function in "A tooltip grown
-from the line".
 
 ## Transitions
 
@@ -334,6 +186,108 @@ shifted with a transform, which is visual only, and only ever within the space
 between the visible glyphs on either side, never narrower than they need, so
 they can't collide with the text or each other. Only jumps glide; the gentle
 drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
+
+## Tooltips
+
+```js
+import { elide } from 'floating-ellipsis';
+import { tooltip } from 'floating-ellipsis/tooltip';
+
+const tips = tooltip({ reveal: 'grow', breaks: '/\\' });
+for (const row of rows) tips.attach(elide(row.querySelector('.path'), { position: 'middle' }), row);
+```
+
+A headless tooltip for truncated text. One tooltip serves every instance
+attached to it and shows one tip at a time: when a trigger (the instance's
+element, or any element around it, say its row) is hovered or focused and its
+text is truncated. After the first tip's delay, the next one shows at once, so
+moving along a list only makes you wait once. Make one per list or table.
+
+With `reveal: 'grow'`, the tip starts as an exact copy of the line, dots
+included, and grows into the full text: every grapheme starts where it is on
+screen and the hidden ones come out of their ellipsis, however many there are.
+It stays on one line, sliding left to stay in the window; only text wider than
+the window wraps (after `breaks`, where it can). `'expand'` is the same tip
+without the animation, and `'peek'` shows only what one ellipsis hides, next
+to it, when that ellipsis is hovered.
+
+A press on a full-text tip makes its text selectable: drag to select, press
+twice for the run between breaks, three times for all of it. It stays open
+while it's hovered or holds a selection. Text selected in the original when
+the tip opens is selected in the tip too, all of whatever an ellipsis it
+touches hides. Escape, a scroll, a press elsewhere, or a new layout of the
+text (a resize) closes it.
+
+| Option       | Default  |                                                                                                                                                                    |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reveal`     | `'grow'` | `'grow'`: the full text, grown out of the line. `'expand'`: the full text over the line, at once. `'peek'`: what one ellipsis hides, on that ellipsis.             |
+| `delay`      | `500`    | Milliseconds the pointer rests on a trigger before its tip shows. Focus shows it at once.                                                                          |
+| `grace`      | `300`    | While a tip shows, and this many milliseconds after it closes, the next one shows without the delay.                                                               |
+| `breaks`     | `''`     | Characters a full-text tip too wide for the window may wrap after, as well as at spaces: `'/\\'` for paths. A double press selects the run between them.           |
+| `edge`       | `8`      | How close the tip comes to the edges of the window, in px.                                                                                                         |
+| `offset`     | `8`      | `'peek'`: the distance between the ellipsis' ink and the tip, in px.                                                                                               |
+| `slop`       | `4`      | `'peek'`: how far around an ellipsis' area (see `ellipsisAt`) still counts as on it, in px.                                                                        |
+| `selectable` | `true`   | A press on a full-text tip selects its text, and holds the tip open.                                                                                               |
+| `duration`   | `460`    | `'grow'`: milliseconds; `easing` sets its curve. No motion when the user prefers reduced motion (`respectReducedMotion`, default true).                            |
+| `container`  | `<body>` | The element the tip goes in. Put it in a modal `<dialog>` to show tips for text inside it, since the dialog is drawn above the page. Can be changed with `update`. |
+| `onShow`     | —        | Called with `{ instance, trigger, ellipsis }` when a tip opens. `ellipsis` is the index of the peeked ellipsis, or null.                                           |
+| `onHide`     | —        | Called with the same when it closes.                                                                                                                               |
+
+- `attach(instance, trigger?)`: show `instance`'s tips when `trigger` (default:
+  its element) is hovered or focused. Returns a function that detaches it.
+  Listeners are shared, so attaching every cell of a table is cheap.
+- `show(instance, ellipsis?)`, `hide()`: open or close a tip yourself.
+- `update(options)`, `destroy()`, `element` (the tip), `target` (what it
+  shows), `held`.
+
+### Styling
+
+The tooltip lays the tip out and leaves how it looks to you. It's a
+`position: fixed` element in `container`, with `aria-hidden` (screen readers
+already get the full text). It lines up even when the container is the
+containing block of fixed elements (it has a transform, filter or `contain`),
+as long as it isn't scaled or rotated. A full-text tip takes the text's font, so
+its glyphs land on the original's; give a peek tip a font of your own. Its
+padding is yours too: the tip is placed so its text, not its box, sits on the
+line.
+
+| Hook                           |                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `[data-fp-tip]`                | The tip. Its value is the reveal: `'grow'`, `'expand'` or `'peek'`. `hidden` while closed.                               |
+| `[data-fp-tip-bg]`             | Its background, a layer of its own so it can grow without reflowing the text. Give it the background, border and shadow. |
+| `[data-fp-tip] [data-fp-mark]` | The ellipsis marks a growing tip fades out from.                                                                         |
+| `[data-side]`                  | `'peek'`: `'top'` or `'bottom'`, where the tip is (above the ellipsis unless there's no room).                           |
+| `--fp-tip-anchor`              | `'peek'`: the x of the ellipsis' centre from the tip's left edge, for an arrow.                                          |
+| `[data-held]`                  | The tip is held (pressed, or holding a selection).                                                                       |
+| `[data-fp-tip-open]`           | On the trigger whose tip shows, and in `'peek'` on the ellipsis.                                                         |
+
+```css
+[data-fp-tip] {
+  z-index: 10;
+  padding: 4px 10px;
+  color: white;
+}
+[data-fp-tip-bg] {
+  background: #222;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.2);
+}
+[data-fp-tip='peek'] {
+  font:
+    13px/18px ui-monospace,
+    monospace;
+  max-width: min(420px, 90vw);
+}
+[data-fp-tip='peek']::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: var(--fp-tip-anchor);
+  translate: -50%;
+  border: 6px solid transparent;
+  border-top-color: #222;
+}
+```
 
 ## How it works
 
@@ -396,6 +350,9 @@ drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
 - The visible text stays selectable, and copying across an ellipsis gives the
   hidden text (`copy: 'full'`).
 - `title: true` adds a native tooltip with the full text while truncated.
+- The [tooltip](#tooltips) add-on shows on keyboard focus as well as hover and
+  closes on Escape. It's `aria-hidden`, since screen readers already get the
+  full text.
 - Drawn marks stay visible in forced-colors (high contrast) mode.
 - Transitions respect `prefers-reduced-motion`.
 
