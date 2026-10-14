@@ -1,9 +1,10 @@
 /** Reading the lines of laid-out inline text. Each of these reads layout. */
 
-/** A rendered line: its vertical extent and right edge. */
+/** A rendered line: its vertical extent and its edges. */
 export interface LineBox {
   top: number;
   bottom: number;
+  left: number;
   right: number;
 }
 
@@ -17,9 +18,10 @@ export function lineBoxes(el: Element): LineBox[] {
     const line = lines.find((l) => Math.abs(l.top - r.top) < 1);
     if (line) {
       line.bottom = Math.max(line.bottom, r.bottom);
+      line.left = Math.min(line.left, r.left);
       line.right = Math.max(line.right, r.right);
     } else {
-      lines.push({ top: r.top, bottom: r.bottom, right: r.right });
+      lines.push({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
     }
   }
   return lines.sort((a, b) => a.top - b.top);

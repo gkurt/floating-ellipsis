@@ -304,7 +304,7 @@ export class Elide {
   /** One box per rendered line of visible text, in viewport coordinates. */
   lineRects(): DOMRect[] {
     this.sync();
-    return Array.from(this.lineEl.getClientRects());
+    return lineBoxes(this.lineEl).map((l) => new DOMRect(l.left, l.top, l.right - l.left, l.bottom - l.top));
   }
 
   /** Element of grapheme `index` in glyph mode (null otherwise or when out of range). */
