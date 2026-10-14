@@ -7,6 +7,7 @@ This file provides guidance to AI agents when working with code in this reposito
 ```bash
 bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
+bun run test:browser # Layout tests in Chromium, Firefox and WebKit (Vitest browser mode + Playwright)
 bun typecheck      # Type check (TypeScript 7, native tsc)
 bun run build      # dist/ via tsdown (index, transitions and tooltip entries, with .d.ts)
 bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
@@ -20,6 +21,8 @@ Prefer these scripts over ad-hoc commands. Do not prefix them with `bun run` whe
 a bare alias exists (`bun check`, `bun typecheck`) — those are whitelisted for
 agent use. Before finishing, run `bun run fix` then `bun run checks` — the linter,
 formatter and `tsc` own all mechanical style rules. Fix the code; don't disable rules.
+After touching `elide`, `justify`, `lines`, `marks`, `tooltip` or `transitions`, also
+run `bun run test:browser` (first time: `bunx playwright install chromium firefox webkit`).
 
 ## Project Structure
 
@@ -39,10 +42,12 @@ formatter and `tsc` own all mechanical style rules. Fix the code; don't disable 
 - `src/tooltip.ts` — optional add-on (`floating-ellipsis/tooltip`): a headless tooltip on the public instance API. Shows the full text grown from the line, or what one ellipsis hides; owns delays, placement, the grow animation and selecting text in the tip, and leaves the looks to CSS (`data-fp-tip*` hooks).
 - `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance, both with tooltips, and shared UI helpers (`ui.ts`).
 - `test/` — `bun test` suites for `cut`, `metrics` and `lockstep`.
+- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, `tooltip` and `transitions`, run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
 
 ## Architecture
 
-- Pure logic (`cut`, the math in `metrics`) is DOM-free and unit-tested; `elide.ts` is the only part that touches layout, and the demo is how it's verified.
+- Pure logic (`cut`, the math in `metrics`) is DOM-free and unit-tested with `bun test`. Layout is tested in real engines (`test/browser/`) by invariants that hold whatever fonts an engine maps to: lines fit the content box, ellipsis lines end flush, gaps balance, a wider box never shows less, and the tooltip's glyphs land on the line's. The demo is for looking.
+- A test failing in one engine because of a bug found there is marked `knownBug(engine)` (an expected failure, so CI turns red once it's fixed), with the bug described next to the helper. Don't loosen an invariant to make an engine pass.
 - A layout pass searches for the most visible graphemes that still fit in `lines`, then plans the ink gap on each side of every ellipsis and spreads leftover slack so ellipsis lines end flush with the box.
 - Passes are generators run in lockstep (`lockstep.ts`): all instances read layout, then all write, so N instances share each layout instead of forcing their own. Never read layout in a write phase or write in a read phase; `yield* phase.read()` / `phase.write()` before each. Passes are queued and flushed in a microtask; public getters call `sync()` to flush first.
 - Measure performance on the demo's table page (`/table.html`) and with many instances; a single instance hides layout costs that grow with the page.

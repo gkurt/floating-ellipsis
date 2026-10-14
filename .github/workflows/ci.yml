@@ -18,3 +18,17 @@ jobs:
       - run: bun run test
       - run: bun typecheck
       - run: bun run build
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun i
+      - run: bunx playwright install --with-deps chromium firefox webkit
+      - run: bun run test:browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: .vitest/attachments

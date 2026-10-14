@@ -6,6 +6,9 @@ out
 dist
 *.tgz
 
+# browser test failure screenshots
+.vitest
+
 # code coverage
 coverage
 *.lcov

@@ -50,8 +50,12 @@ t.destroy(); // restore the original content
 bun i
 bun dev        # demo at http://localhost:4181
 bun run test   # unit tests (pure logic)
+bun run test:browser  # layout tests in Chromium, Firefox and WebKit
 bun run build  # dist/ with type declarations
 ```
+
+The browser tests need Playwright's engines once:
+`bunx playwright install chromium firefox webkit`.
 
 The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
 `window.pathInstances` are live instances you can try from the console. The
