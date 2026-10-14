@@ -17,8 +17,8 @@
       <p class="eyebrow">floating-ellipsis <span>0.1</span></p>
       <h1>Truncation, <em>in balance.</em></h1>
       <p class="lede">
-        One line or many. The ellipsis goes wherever you ask, sits with the same visible gap on both sides, takes up
-        the slack so the line always ends at the edge, and tells you exactly where it is.
+        One line or many. The ellipsis goes wherever you ask, sits with the same visible gap on both sides, takes up the slack so the line
+        always ends at the edge, and tells you exactly where it is.
       </p>
     </header>
 
@@ -39,7 +39,9 @@
 
         <div class="keep-row">
           <label class="control keep-field">
-            <span>Keep visible <small>comma-separated words, or <code>/regex/g</code></small></span>
+            <span
+              >Keep visible <small>comma-separated words, or <code>/regex/g</code></small></span
+            >
             <input type="text" id="keep" placeholder="e.g. quiet, asked" spellcheck="false" autocomplete="off" />
           </label>
           <div class="hints" aria-label="Suggestions">
@@ -67,9 +69,8 @@
             <span id="ellipsis-label">Ellipsis</span>
             <div class="seg" data-name="ellipsis" role="group" aria-labelledby="ellipsis-label">
               <button aria-pressed="true" value="glyph" title="The font's own ellipsis glyph">…</button
-              ><button value="periods" title="Three periods">...</button
-              ><button value="dot">Dots</button><button value="bullet">Bullets</button
-              ><button value="ring">Rings</button><button value="square">Squares</button>
+              ><button value="periods" title="Three periods">...</button><button value="dot">Dots</button
+              ><button value="bullet">Bullets</button><button value="ring">Rings</button><button value="square">Squares</button>
             </div>
           </div>
           <label class="control">
@@ -124,9 +125,9 @@
         <div class="block-head">
           <h2 id="gap-title">Balanced gaps</h2>
           <p>
-            Dropping an ellipsis between two arbitrary letters leaves lopsided space, because every glyph carries its
-            own side bearings. floating-ellipsis measures the ink and evens it out. By default it matches the gap
-            between the dots themselves, so the ellipsis reads as part of the rhythm.
+            Dropping an ellipsis between two arbitrary letters leaves lopsided space, because every glyph carries its own side bearings.
+            floating-ellipsis measures the ink and evens it out. By default it matches the gap between the dots themselves, so the ellipsis
+            reads as part of the rhythm.
           </p>
         </div>
         <div class="compare" id="compare">
@@ -138,8 +139,8 @@
         <div class="block-head">
           <h2 id="keep-title">Keep parts, many ellipses</h2>
           <p>
-            Pin what matters and let the rest give way. A kept part in the middle of a cut splits it into two
-            ellipses, and you can ask for several ellipses outright. Kept parts are highlighted here.
+            Pin what matters and let the rest give way. A kept part in the middle of a cut splits it into two ellipses, and you can ask for
+            several ellipses outright. Kept parts are highlighted here.
           </p>
         </div>
         <div class="stage">
@@ -158,7 +159,9 @@
             </div>
             <div class="example">
               <code>keep: [/^\S+ \S+/, /ERR_\w+/]</code>
-              <p id="exLog" class="mono">2026-10-14 09:41:07 worker-3 upstream api.internal request failed with ERR_CONN_RESET after 3 retries</p>
+              <p id="exLog" class="mono">
+                2026-10-14 09:41:07 worker-3 upstream api.internal request failed with ERR_CONN_RESET after 3 retries
+              </p>
             </div>
             <button class="handle" aria-label="Resize the examples (left and right arrow keys)"></button>
           </div>
@@ -169,11 +172,10 @@
         <div class="block-head">
           <h2 id="paths-title">Paths, hooks and tooltips</h2>
           <p>
-            The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact
-            ink of every dot. Enough for a tooltip that lines up letter for letter, or one that only answers the
-            ellipsis. Rows are focusable too. Press on a full-path tip to select its text: it stays open while you
-            hover it. Each list is a <code>data-tip-group</code>, so after the first tip's delay, its neighbours
-            show at once.
+            The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact ink of every dot.
+            Enough for a tooltip that lines up letter for letter, or one that only answers the ellipsis. Rows are focusable too. Press on a
+            full-path tip to select its text: it stays open while you hover it. Each list is a <code>data-tip-group</code>, so after the
+            first tip's delay, its neighbours show at once.
           </p>
         </div>
         <div class="controls compact">
@@ -181,25 +183,22 @@
             <span id="reveal-label">Hover reveals</span>
             <div class="seg" data-name="reveal" role="group" aria-labelledby="reveal-label">
               <button aria-pressed="true" value="expand">Full path, in place</button
-              ><button value="grow">Full path, grown from the ellipsis</button
-              ><button value="peek">Hidden part, on the ellipsis</button>
+              ><button value="grow">Full path, grown from the ellipsis</button><button value="peek">Hidden part, on the ellipsis</button>
             </div>
           </div>
           <div class="control">
             <span id="delay-label">Tooltip delay</span>
             <div class="seg" data-name="delay" role="group" aria-labelledby="delay-label">
-              <button value="0">None</button
-              ><button aria-pressed="true" value="500">500ms</button
-              ><button value="1000">1s</button>
+              <button value="0">None</button><button aria-pressed="true" value="500">500ms</button><button value="1000">1s</button>
             </div>
           </div>
           <div class="control">
-            <span id="snap-label"><span>Cut at separators <small>experimental</small></span></span>
+            <span id="snap-label"
+              ><span>Cut at separators <small>experimental</small></span></span
+            >
             <div class="seg" data-name="snap" role="group" aria-labelledby="snap-label">
-              <button value="off">Off</button
-              ><button value="whole">Whole segments</button
-              ><button aria-pressed="true" value="head">Keep a head</button
-              ><button value="tail">Keep a tail</button>
+              <button value="off">Off</button><button value="whole">Whole segments</button
+              ><button aria-pressed="true" value="head">Keep a head</button><button value="tail">Keep a tail</button>
             </div>
           </div>
         </div>
@@ -210,7 +209,9 @@
           </div>
         </div>
         <div class="paste">
-          <label for="pasteBox">Select some truncated text across an ellipsis, copy it, and paste here. The ellipsis copies as the text it hides.</label>
+          <label for="pasteBox"
+            >Select some truncated text across an ellipsis, copy it, and paste here. The ellipsis copies as the text it hides.</label
+          >
           <textarea id="pasteBox" rows="2" placeholder="Paste here"></textarea>
         </div>
       </section>
@@ -219,10 +220,10 @@
         <div class="block-head">
           <h2 id="grow-title">A tooltip grown from the line</h2>
           <p>
-            The README's example, live: a few dozen lines on top of <code>graphemeRect</code> and
-            <code>ellipsisArea</code>. Every glyph starts where it is and the hidden ones come out of their ellipsis.
-            It stays on one line, sliding left to stay on screen, and only text wider than the window wraps. The
-            second row has two ellipses. Hover or focus a row; the tooltip delay above applies here too.
+            The README's example, live: a few dozen lines on top of <code>graphemeRect</code> and <code>ellipsisArea</code>. Every glyph
+            starts where it is and the hidden ones come out of their ellipsis. It stays on one line, sliding left to stay on screen, and
+            only text wider than the window wraps. The second row has two ellipses. Hover or focus a row; the tooltip delay above applies
+            here too.
           </p>
         </div>
         <div class="stage">
@@ -237,8 +238,7 @@
         <div class="block-head">
           <h2 id="multi-title">Multi-line, anywhere</h2>
           <p>
-            Line clamping usually means the end. Here the cut can sit in the middle of the third line, or at the very
-            start of the first.
+            Line clamping usually means the end. Here the cut can sit in the middle of the third line, or at the very start of the first.
           </p>
         </div>
         <div class="controls compact">
@@ -257,10 +257,10 @@
           <article class="resizable card" id="cardBox" style="width: 58%">
             <h3>Field notes</h3>
             <p id="article">
-              The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill.
-              We waited on the bridge until the light went, counting herons, arguing about whether the water would
-              reach the second step by morning. It did not. By noon the next day it had fallen a full meter, leaving a
-              line of silt on every stone like a tide mark, and the herons had gone somewhere quieter.
+              The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill. We waited on the
+              bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning. It did
+              not. By noon the next day it had fallen a full meter, leaving a line of silt on every stone like a tide mark, and the herons
+              had gone somewhere quieter.
             </p>
             <button class="handle" aria-label="Resize the card (left and right arrow keys)"></button>
           </article>

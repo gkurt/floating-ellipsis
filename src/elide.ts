@@ -1,4 +1,3 @@
-import { graphemes, isWhitespace } from './graphemes.js';
 import {
   type Keep,
   type Layout,
@@ -10,7 +9,9 @@ import {
   layoutFor,
   searchMax,
   toGraphemeRanges,
-} from './cut.js';
+} from './cut.ts';
+import { graphemes, isWhitespace } from './graphemes.ts';
+import { type EllipsisStyle, type MarkLayout, buildMarks, ellipsisText, groupMetrics, layoutMarks } from './marks.ts';
 import {
   type Font,
   type Gap,
@@ -23,8 +24,7 @@ import {
   measure,
   planGap,
   resolveGap,
-} from './metrics.js';
-import { type EllipsisStyle, type MarkLayout, buildMarks, ellipsisText, groupMetrics, layoutMarks } from './marks.js';
+} from './metrics.ts';
 
 /**
  * The marks actually drawn. `justify: 'dots'` needs separate marks, so a
@@ -35,9 +35,9 @@ const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
 
 function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown }): EllipsisStyle {
   const e = settings.ellipsis;
-  if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1) {
+  if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1)
     return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
-  }
+
   return e;
 }
 
@@ -217,7 +217,7 @@ function hookDocument() {
   if (hooked || typeof document === 'undefined') return;
   hooked = true;
   document.addEventListener('copy', onCopy);
-  if (!document.fonts) return;
+  if (typeof document.fonts === 'undefined') return;
   const refresh = () => {
     clearMetrics();
     for (const instance of instances) instance.refresh('fonts');
@@ -233,12 +233,11 @@ function hookDocument() {
  */
 function onCopy(event: ClipboardEvent) {
   const selection = document.getSelection();
-  if (!selection || selection.isCollapsed || !selection.rangeCount || !event.clipboardData) return;
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !event.clipboardData) return;
   const range = selection.getRangeAt(0);
   let touched = false;
-  for (const instance of instances) {
-    if (instance.ellipses.some((e) => range.intersectsNode(e))) touched = true;
-  }
+  for (const instance of instances) if (instance.ellipses.some((e) => range.intersectsNode(e))) touched = true;
+
   if (!touched) return;
 
   const fragment = range.cloneContents();
@@ -264,7 +263,7 @@ function defined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
-const asArray = <T,>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+const asArray = <T>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
 export class Elide {
   readonly element: HTMLElement;
@@ -365,7 +364,7 @@ export class Elide {
   /** Tight box around the ink of ellipsis `index`, or null. */
   ellipsisInk(index = 0): DOMRect | null {
     const marks = this.marks(index);
-    if (!marks.length) return null;
+    if (marks.length === 0) return null;
     const left = Math.min(...marks.map((r) => r.left));
     const top = Math.min(...marks.map((r) => r.top));
     const right = Math.max(...marks.map((r) => r.right));
@@ -647,8 +646,10 @@ export class Elide {
       const cs = getComputedStyle(host);
       const now =
         host.getBoundingClientRect().height -
-        parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) -
-        parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
+        parseFloat(cs.paddingTop) -
+        parseFloat(cs.paddingBottom) -
+        parseFloat(cs.borderTopWidth) -
+        parseFloat(cs.borderBottomWidth);
       if (Math.abs(now - height) > 0.5) {
         observer.unobserve(host);
         requestAnimationFrame(() => {
@@ -770,9 +771,10 @@ export class Elide {
     const box = host.getBoundingClientRect();
     const left = box.left + host.clientLeft + parseFloat(cs.paddingLeft);
     const right = box.left + host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight);
+    const letterSpacing = parseFloat(cs.letterSpacing);
     return {
       font: fontOf(cs),
-      letterSpacing: parseFloat(cs.letterSpacing) || 0,
+      letterSpacing: Number.isFinite(letterSpacing) ? letterSpacing : 0,
       transform: cs.textTransform,
       left,
       right,
@@ -792,7 +794,7 @@ export class Elide {
 
   private glyphMetrics(run: Run, g: string): GlyphMetrics {
     const m = measure(run.font, applyTextTransform(g, run.transform));
-    return run.letterSpacing ? { ...m, advance: m.advance + run.letterSpacing } : m;
+    return run.letterSpacing !== 0 ? { ...m, advance: m.advance + run.letterSpacing } : m;
   }
 
   private inkOf(run: Run, index: number, box: DOMRect): DOMRect {
@@ -827,7 +829,9 @@ export class Elide {
       if (line) {
         line.bottom = Math.max(line.bottom, r.bottom);
         line.right = Math.max(line.right, r.right);
-      } else lines.push({ top: r.top, bottom: r.bottom, right: r.right });
+      } else {
+        lines.push({ top: r.top, bottom: r.bottom, right: r.right });
+      }
     }
     return lines.sort((a, b) => a.top - b.top);
   }
@@ -899,7 +903,7 @@ export class Elide {
     const want: Node[] = [this.runEl(0)];
     for (let j = 0; j < m; j++) want.push(this.join(j).el, this.runEl(j + 1));
     this.reconcile(want);
-    if (!m) {
+    if (m === 0) {
       this.fill(this.runEl(0), 0, n);
       return [];
     }
@@ -938,10 +942,13 @@ export class Elide {
   private applySpacing(index: number, left: number, right: number, inner: readonly number[]) {
     const join = this.joins[index]!;
     const style = join.ellipsis.style;
-    style.marginLeft = left ? `${left}px` : '';
-    style.marginRight = right ? `${right}px` : '';
+    style.marginLeft = left !== 0 ? `${left}px` : '';
+    style.marginRight = right !== 0 ? `${right}px` : '';
     join.marks.forEach((mark, i) => {
-      if (i > 0) mark.style.marginLeft = inner[i - 1] ? `${inner[i - 1]}px` : '';
+      if (i > 0) {
+        const before = inner[i - 1] ?? 0;
+        mark.style.marginLeft = before !== 0 ? `${before}px` : '';
+      }
     });
   }
 
@@ -971,7 +978,7 @@ export class Elide {
     let room = 0;
     for (const line of byLine.keys()) room += Math.max(0, run.right - boxes[line]!.right);
     const mode = this.settings.justify;
-    if (!mode || room <= 0) return { gaps: infos, slack: room };
+    if (mode === undefined || mode === false || room <= 0) return { gaps: infos, slack: room };
 
     const holds = (line: number, ellipses: number[]) => {
       const m = this.measure(run);
@@ -987,9 +994,16 @@ export class Elide {
       // Letter-spacing goes after every character; drawn marks get the same
       // as margins. Measure how the line grows rather than count characters.
       const apply = (ls: number) => {
-        this.lineEl.style.letterSpacing = ls ? `${run.letterSpacing + ls}px` : '';
+        this.lineEl.style.letterSpacing = ls !== 0 ? `${run.letterSpacing + ls}px` : '';
         if (layout.drawn) {
-          plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight + ls, layout.inner.map((v) => v + ls)));
+          plans.forEach((p, j) =>
+            this.applySpacing(
+              j,
+              p.marginLeft,
+              p.marginRight + ls,
+              layout.inner.map((v) => v + ls),
+            ),
+          );
         }
       };
       const start = boxes[0]!.right;
@@ -1001,9 +1015,13 @@ export class Elide {
         const grown = (this.lineBoxes()[0]?.right ?? start) - start;
         const ls = grown > 0 ? (probe * slack) / grown : 0;
         apply(ls);
-        if (holds(0, plans.map((_, j) => j))) {
+        if (
+          holds(
+            0,
+            plans.map((_, j) => j),
+          )
+        )
           return { gaps: plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, ls, slack / plans.length)), slack: room };
-        }
       }
       apply(0);
       return { gaps: infos, slack: room };
@@ -1017,7 +1035,7 @@ export class Elide {
       const ellipses = byLine.get(line)!;
       const lineRoom = run.right - (this.lineBoxes()[line]?.right ?? run.right);
       const total = ellipses.reduce((sum, j) => sum + gapsOf(plans[j]!), 0);
-      if (lineRoom <= 0 || !total) continue;
+      if (lineRoom <= 0 || total === 0) continue;
       for (const inset of insets) {
         const slack = lineRoom - inset;
         if (slack <= 0) break;
@@ -1026,7 +1044,7 @@ export class Elide {
         for (const j of ellipses) {
           const p = plans[j]!;
           const count = gapsOf(p);
-          if (!count) continue;
+          if (count === 0) continue;
           const share = (slack * count) / total;
           let left = p.marginLeft;
           let right = p.marginRight;
@@ -1106,7 +1124,9 @@ export class Elide {
     // inside is laid out, and nothing paints before they're restored.)
     const cs = getComputedStyle(host);
     const hold = cs.display !== 'inline' && cs.height.endsWith('px');
-    const held = (['height', 'overflow'] as const).map((p) => [p, host.style.getPropertyValue(p), host.style.getPropertyPriority(p)] as const);
+    const held = (['height', 'overflow'] as const).map(
+      (p) => [p, host.style.getPropertyValue(p), host.style.getPropertyPriority(p)] as const,
+    );
     if (hold) {
       host.style.setProperty('height', cs.height, 'important');
       host.style.setProperty('overflow', 'clip', 'important');
@@ -1125,14 +1145,14 @@ export class Elide {
           return this.measure(run).ok;
         };
         // Kept parts that can't all fit give way, last first.
-        while (pins.length && !fits(0)) pins = pins.slice(0, -1);
+        while (pins.length > 0 && !fits(0)) pins = pins.slice(0, -1);
         const kept = searchMax(0, n - 1, fits, this.hint);
         this.hint = kept;
         hidden = at(kept);
       }
       const plans = this.render(run, hidden);
       fit = this.measure(run);
-      if (hidden.length) ({ gaps, slack } = this.justify(run, plans, fit.lines));
+      if (hidden.length > 0) ({ gaps, slack } = this.justify(run, plans, fit.lines));
     } finally {
       if (hold) for (const [p, value, priority] of held) host.style.setProperty(p, value, priority);
     }
@@ -1173,8 +1193,9 @@ export class Elide {
       for (let i = 0; i < n; i++) {
         const was = isVisible(previous, i);
         const is = isVisible(state, i);
-        if (is && !was) shown.push(i);
-        else if (was && !is) {
+        if (is && !was) {
+          shown.push(i);
+        } else if (was && !is) {
           gone.push(i);
           const before = glyphsBefore.get(i);
           if (before) hiddenGlyphs.set(i, before);
@@ -1222,7 +1243,7 @@ export class Elide {
       length: this.g.length,
       truncated: hidden.length > 0,
       hidden: hidden.map(part),
-      kept: hidden.length ? pins.map(part) : [],
+      kept: hidden.length > 0 ? pins.map(part) : [],
       lines,
       gaps,
       slack,

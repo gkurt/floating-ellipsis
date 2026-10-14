@@ -1,8 +1,8 @@
-import { type Elide, type EllipsisStyle, type Gap, elide, separators } from '../src/index.js';
-import { growTip } from './grow-tip.js';
-import { selectableTip } from './tip-select.js';
-import { tipDelays } from './tip-delay.js';
-import { type Effect, transitions } from '../src/transitions.js';
+import { type Elide, type EllipsisStyle, type Gap, elide, separators } from '#src/index.ts';
+import { type Effect, transitions } from '#src/transitions.ts';
+import { growTip } from './grow-tip.ts';
+import { tipDelays } from './tip-delay.ts';
+import { selectableTip } from './tip-select.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
 
@@ -43,7 +43,7 @@ function resizable(box: HTMLElement, onResize?: () => void) {
   });
   handle.addEventListener('keydown', (e) => {
     const dir = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-    if (!dir) return;
+    if (dir === 0) return;
     e.preventDefault();
     onResize?.();
     setWidth(box.getBoundingClientRect().width + dir * (e.shiftKey ? 40 : 8));
@@ -61,7 +61,7 @@ function drawGuides(instance: Elide, layer: HTMLElement) {
   gaps.forEach((gap, j) => {
     const marks = instance.marks(j);
     const ink = instance.ellipsisInk(j);
-    if (!ink || !marks.length) return;
+    if (!ink || marks.length === 0) return;
     const pad = Math.max(4, ink.height * 0.8);
     const top = ink.top - base.top - pad;
     const height = ink.height + pad * 2;
@@ -158,7 +158,9 @@ function applyKeep() {
       } catch {
         valid = false;
       }
-    } else keep.push(part);
+    } else {
+      keep.push(part);
+    }
   }
   keepInput.toggleAttribute('aria-invalid', !valid);
   hero.update({ keep });
@@ -181,12 +183,12 @@ const readout = $('#readout');
 let lastReadout = '';
 function renderReadout() {
   const s = hero.state;
-  const px = (v: number | null | undefined) => (v == null ? '–' : `${v.toFixed(2)}`);
+  const px = (v: number | null | undefined) => (v == null ? '–' : v.toFixed(2));
   const g = s.gaps[0];
   const rows: [string, string][] = [
     ['truncated', String(s.truncated)],
-    ['hidden', s.hidden.length ? s.hidden.map((h) => `[${h.start}, ${h.end})`).join(' ') : '–'],
-    ['omitted', s.hidden.length ? JSON.stringify(s.hidden.map((h) => h.text).join(' | ')) : '–'],
+    ['hidden', s.hidden.length > 0 ? s.hidden.map((h) => `[${h.start}, ${h.end})`).join(' ') : '–'],
+    ['omitted', s.hidden.length > 0 ? JSON.stringify(s.hidden.map((h) => h.text).join(' | ')) : '–'],
     ['lines', String(s.lines)],
     ['gap target', g ? px(g.target) : '–'],
     ['natural gaps', g ? `${px(g.naturalLeft)} · ${px(g.naturalRight)}` : '–'],
@@ -215,7 +217,7 @@ if (matchMedia('(prefers-reduced-motion: reduce)').matches) breathe.checked = fa
 let phase = 0.62;
 let last = 0;
 function tick(now: number) {
-  const dt = last ? Math.min(64, now - last) : 16;
+  const dt = last !== 0 ? Math.min(64, now - last) : 16;
   last = now;
   if (breathe.checked) {
     phase += dt / 7000;
@@ -363,7 +365,7 @@ let carried: { tip: HTMLElement; text: string; original: Range } | null = null;
  */
 function carrySelection(instance: Elide, tip: HTMLElement) {
   const s = document.getSelection();
-  if (!s || s.isCollapsed || !s.rangeCount || tip.hidden) return;
+  if (!s || s.isCollapsed || s.rangeCount === 0 || tip.hidden !== false) return;
   const range = s.getRangeAt(0);
   if (!instance.element.contains(range.startContainer) || !instance.element.contains(range.endContainer)) return;
   const from = instance.graphemeAt(range.startContainer, range.startOffset, 'start');
@@ -385,7 +387,9 @@ function closeTip(tip: HTMLElement) {
     if (carried?.tip === tip && s.toString() === carried.text) {
       s.removeAllRanges();
       s.addRange(carried.original);
-    } else s.removeAllRanges();
+    } else {
+      s.removeAllRanges();
+    }
   }
   if (carried?.tip === tip) carried = null;
   tip.hidden = true;
@@ -437,8 +441,9 @@ function placeTip(instance: Elide): boolean {
   const natural = tip.getBoundingClientRect().width;
   tip.style.whiteSpace = '';
   let x = first.left - parseFloat(cs.paddingLeft);
-  if (natural <= room) x = Math.min(Math.max(x, EDGE), view - EDGE - natural);
-  else {
+  if (natural <= room) {
+    x = Math.min(Math.max(x, EDGE), view - EDGE - natural);
+  } else {
     x = EDGE;
     tip.style.maxWidth = `${room}px`;
   }
@@ -463,7 +468,7 @@ function showExpand(instance: Elide) {
       at = i + 1;
     }
   });
-  expandTip.replaceChildren(tipBackground(), ...pieces.flatMap((p, i) => (i ? [document.createElement('wbr'), p] : [p])));
+  expandTip.replaceChildren(tipBackground(), ...pieces.flatMap((p, i) => (i > 0 ? [document.createElement('wbr'), p] : [p])));
   if (!placeTip(instance)) hideTips();
 }
 
@@ -506,7 +511,7 @@ function showRow(row: Element) {
   if (reveal === 'grow') growTip(instance, growTipEl);
   else showExpand(instance);
   carrySelection(instance, reveal === 'grow' ? growTipEl : expandTip);
-  if (!expandTip.hidden || !growTipEl.hidden) delays.opened(row);
+  if (expandTip.hidden === false || growTipEl.hidden === false) delays.opened(row);
 }
 /** Show a row's tip once the delay allows. */
 function requestRow(row: Element) {
@@ -602,7 +607,7 @@ function showGrowRow(row: Element) {
   closeTip(growTipEl);
   growTip(instance, growTipEl);
   carrySelection(instance, growTipEl);
-  if (!growTipEl.hidden) delays.opened(row);
+  if (growTipEl.hidden === false) delays.opened(row);
 }
 function hideGrowTip() {
   if (tipHeld()) return;

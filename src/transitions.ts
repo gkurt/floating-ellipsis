@@ -1,5 +1,5 @@
-import type { Elide, ElideChange, Part } from './elide.js';
-import { isWhitespace } from './graphemes.js';
+import type { Elide, ElideChange, Part } from './elide.ts';
+import { isWhitespace } from './graphemes.ts';
 
 export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 
@@ -180,7 +180,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       const els = instance.markElements(j);
       const boxes = instance.marks(j);
       const gap = gaps[j];
-      if (!ellipsis || !els.length || !boxes.length || !gap) return [];
+      if (!ellipsis || els.length === 0 || boxes.length === 0 || !gap) return [];
       // One element may draw several dots (a single '…'): they share its shift.
       const owner = (k: number) => els[els.length === boxes.length ? k : 0]!;
       const ink = boxes.map((r, k) => {
@@ -193,15 +193,17 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         const own = ink.filter((b) => b.el === el);
         return { el, left: Math.min(...own.map((b) => b.left)), right: Math.max(...own.map((b) => b.right)) };
       });
-      return [{
-        ellipsis,
-        left: first.left - (gap.left ?? 0),
-        right: last.right + (gap.right ?? 0),
-        top: boxes[0]!.top - origin.top,
-        marks,
-        before: hidden[j]!.start - 1,
-        after: hidden[j]!.end,
-      }];
+      return [
+        {
+          ellipsis,
+          left: first.left - (gap.left ?? 0),
+          right: last.right + (gap.right ?? 0),
+          top: boxes[0]!.top - origin.top,
+          marks,
+          before: hidden[j]!.start - 1,
+          after: hidden[j]!.end,
+        },
+      ];
     });
   }
 
@@ -269,7 +271,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
 
   function tick(now: number) {
     springFrame = 0;
-    const dt = Math.min(0.05, lastTick ? (now - lastTick) / 1000 : 1 / 60);
+    const dt = Math.min(0.05, lastTick !== 0 ? (now - lastTick) / 1000 : 1 / 60);
     lastTick = now;
     for (const [el, r] of regions) {
       if (!el.isConnected) {
@@ -283,7 +285,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       if (done(r.left, r.vLeft) && done(r.right, r.vRight)) regions.delete(el);
     }
     draw();
-    if (regions.size) springFrame = requestAnimationFrame(tick);
+    if (regions.size > 0) springFrame = requestAnimationFrame(tick);
     else lastTick = 0;
   }
 
@@ -307,7 +309,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       regions.set(g.ellipsis, r);
     }
     draw();
-    if (regions.size) springFrame ||= requestAnimationFrame(tick);
+    if (regions.size > 0) springFrame ||= requestAnimationFrame(tick);
   }
 
   // ---------------------------------------------------------------------------
@@ -350,8 +352,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     el.style.cssText = `position:absolute;margin:0;width:${box.width}px;height:${box.height}px;color:${color}`;
     const inner = document.createElement('span');
     // `font` resets line-height, so it goes first.
-    inner.style.cssText =
-      `display:block;white-space:pre;font:${style.font};line-height:${box.height}px;letter-spacing:${style.letterSpacing}`;
+    inner.style.cssText = `display:block;white-space:pre;font:${style.font};line-height:${box.height}px;letter-spacing:${style.letterSpacing}`;
     inner.textContent = text;
     el.append(inner);
     layer.append(el);
@@ -448,7 +449,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     // The part it came from usually still exists, a little smaller: the
     // glyph comes out of the end of the ellipsis on its side.
     const match = change.state.hidden.findIndex((p) => p.start < prev.end && p.end > prev.start);
-    if (!marks.length) return match >= 0 ? gapPoint(match) : undefined;
+    if (marks.length === 0) return match >= 0 ? gapPoint(match) : undefined;
     const part = change.state.hidden[match];
     if (part) return i < part.start ? marks[0] : marks[marks.length - 1];
     return markOf(i, prev, marks);
@@ -560,10 +561,10 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
    * jump in position): be quick, down to nothing.
    */
   function leaveTime(change: ElideChange): number {
-    if (pace === 'fixed' || !change.hidden.length) return duration * 0.85;
+    if (pace === 'fixed' || change.hidden.length === 0) return duration * 0.85;
     let removed = 0;
     for (const i of change.hidden) removed += change.hiddenGlyphs.get(i)?.box.width ?? 0;
-    if (!removed) return duration * 0.85;
+    if (removed === 0) return duration * 0.85;
     const leeway = Math.min(1, Math.max(0, change.state.slack / removed));
     return duration * 0.85 * leeway;
   }
@@ -575,8 +576,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
    * same change (the position moved), they share its leeway.
    */
   function enterTime(change: ElideChange): number {
-    if (pace === 'fixed' || !change.shown.length) return duration;
-    if (change.hidden.length) return leaveTime(change) / 0.85;
+    if (pace === 'fixed' || change.shown.length === 0) return duration;
+    if (change.hidden.length > 0) return leaveTime(change) / 0.85;
     let run = 1;
     let longest = 1;
     for (let k = 1; k < change.shown.length; k++) {
@@ -607,9 +608,9 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const arriving = change.shown.length > 0 && effect !== 'none' && inMs >= INSTANT;
     // No time for this change means the text is moving fast: anything still
     // in flight from earlier changes lands now too, rather than piling up.
-    if ((change.hidden.length && instant) || (change.shown.length && !arriving)) {
-      for (const g of [...ghosts]) g.anims.forEach((a) => a.finish());
-    }
+    if ((change.hidden.length > 0 && instant) || (change.shown.length > 0 && !arriving))
+      for (const g of Array.from(ghosts)) g.anims.forEach((a) => a.finish());
+
     // Arriving glyphs first: the spacing may only glide over glyphs still on their way in.
     if (arriving) for (const i of change.shown) enter(i, change, inMs);
     if (glide) glideMarks(markTiming === 'after' && leaving && effect === 'merge' ? performance.now() + ms * 0.8 : 0);
@@ -622,7 +623,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       }
     }
     for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
-    if (ghosts.size) place();
+    if (ghosts.size > 0) place();
   });
 
   // After every pass, with layout final for this frame: put ghosts back on
@@ -632,7 +633,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   // (Doing this in a frame callback would see the old text reflowed at the
   // new width, before truncation catches up, often a line lower.)
   const offRender = instance.onRender(() => {
-    if (ghosts.size) place();
+    if (ghosts.size > 0) place();
     draw();
   });
   draw();
@@ -640,7 +641,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   return () => {
     offChange();
     offRender();
-    for (const g of [...ghosts]) g.anims.forEach((a) => a.cancel());
+    for (const g of Array.from(ghosts)) g.anims.forEach((a) => a.cancel());
     regions.clear();
     instance.state.hidden.forEach((_, j) => {
       for (const el of instance.markElements(j)) {

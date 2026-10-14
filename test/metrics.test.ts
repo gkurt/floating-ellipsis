@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { type GlyphMetrics, columnGaps, columnRuns, inkGap, planGap, resolveGap } from '../src/metrics.js';
+import { describe, expect, it } from 'bun:test';
+import { type GlyphMetrics, columnGaps, columnRuns, inkGap, planGap, resolveGap } from '#src/metrics.ts';
 
 const glyph = (advance: number, left: number, right: number): GlyphMetrics => ({ advance, left, right, ascent: 0, descent: 0 });
 
@@ -42,13 +42,17 @@ describe('planGap', () => {
 });
 
 describe('columnGaps', () => {
-  const cols = (s: string) => [...s].map((c) => c === '#');
+  const cols = (s: string) => s.split('').map((c) => c === '#');
   it('finds the gaps between separate marks', () => {
     expect(columnGaps(cols('..###...###...###..'))).toEqual([3, 3]);
     expect(columnGaps(cols('##.###....#'))).toEqual([1, 4]);
   });
   it('finds the runs themselves', () => {
-    expect(columnRuns(cols('..###...###..#'))).toEqual([[2, 5], [8, 11], [13, 14]]);
+    expect(columnRuns(cols('..###...###..#'))).toEqual([
+      [2, 5],
+      [8, 11],
+      [13, 14],
+    ]);
   });
   it('has no gaps for a single mark', () => {
     expect(columnGaps(cols('..#####..'))).toEqual([]);

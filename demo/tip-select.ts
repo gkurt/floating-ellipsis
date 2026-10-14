@@ -16,10 +16,7 @@
  * press elsewhere lets go of a held tip and dismisses it; Escape dismisses
  * it too, held or not.
  */
-export function selectableTip(
-  tip: HTMLElement,
-  { dismiss, keep }: { dismiss: () => void; keep: (x: number, y: number) => boolean },
-) {
+export function selectableTip(tip: HTMLElement, { dismiss, keep }: { dismiss: () => void; keep: (x: number, y: number) => boolean }) {
   let holding = false;
   let dragging = false;
   let anchor: Caret | null = null;
@@ -27,7 +24,7 @@ export function selectableTip(
   // counted here: one soon enough after the last, close enough to it, adds one.
   let presses = { count: 0, time: 0, x: 0, y: 0 };
 
-  const showing = () => !tip.hidden && tip.isConnected;
+  const showing = () => tip.hidden === false && tip.isConnected;
   const inside = (x: number, y: number) => {
     const r = tip.getBoundingClientRect();
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
@@ -144,9 +141,8 @@ const NOT_TEXT = '[data-fp-mark], .grow-tip-bg, .tip-bg';
 function textNodes(tip: HTMLElement): Text[] {
   const out: Text[] = [];
   const walker = document.createTreeWalker(tip, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (!n.parentElement?.closest(NOT_TEXT)) out.push(n as Text);
-  }
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (!n.parentElement?.closest(NOT_TEXT)) out.push(n as Text);
+
   return out;
 }
 
@@ -158,7 +154,7 @@ function caretAt(tip: HTMLElement, x: number, y: number): Caret | null {
   y = Math.min(Math.max(y, r.top + parseFloat(cs.paddingTop) + 1), r.bottom - parseFloat(cs.paddingBottom) - 1);
   let node: Node | null = null;
   let offset = 0;
-  if (document.caretPositionFromPoint) {
+  if (typeof document.caretPositionFromPoint === 'function') {
     const p = document.caretPositionFromPoint(x, y);
     node = p?.offsetNode ?? null;
     offset = p?.offset ?? 0;
@@ -172,7 +168,9 @@ function caretAt(tip: HTMLElement, x: number, y: number): Caret | null {
   if (node instanceof Text && texts.includes(node)) return { node, offset };
   // An element: the nearest text at or after that child, else the end.
   const child = node.childNodes[offset] ?? null;
-  const after = texts.find((t) => (child ? child === t || child.contains(t) || !!(child.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) : false));
+  const after = texts.find((t) =>
+    child ? child === t || child.contains(t) || (child.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
+  );
   if (after) return { node: after, offset: 0 };
   const last = texts[texts.length - 1];
   return last ? { node: last, offset: last.length } : null;
@@ -193,7 +191,7 @@ function tipText(tip: HTMLElement) {
 /** The DOM position `i` characters into the tip's text. */
 function positionAt(tip: HTMLElement, i: number): Caret | null {
   const { texts, starts } = tipText(tip);
-  if (!texts.length) return null;
+  if (texts.length === 0) return null;
   let k = texts.length - 1;
   while (k > 0 && starts[k]! > i) k--;
   return { node: texts[k]!, offset: Math.min(i - starts[k]!, texts[k]!.length) };

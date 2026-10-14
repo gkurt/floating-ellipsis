@@ -3,32 +3,71 @@
   "version": "0.1.0",
   "private": true,
   "description": "Fluid, balanced ellipsis: smart text truncation for one or many lines, with the ellipsis anywhere and optically even spacing.",
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./transitions": {
-      "types": "./dist/transitions.d.ts",
-      "default": "./dist/transitions.js"
-    }
+  "homepage": "https://github.com/gkurt/floating-ellipsis",
+  "bugs": {
+    "url": "https://github.com/gkurt/floating-ellipsis/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Gokhan Kurt",
+    "email": "krtgkn@gmail.com",
+    "url": "https://gkurt.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gkurt/floating-ellipsis.git"
   },
   "files": [
     "dist"
   ],
+  "type": "module",
   "sideEffects": false,
+  "imports": {
+    "#*": "./*"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "source": "./src/index.ts"
+    },
+    "./transitions": {
+      "import": {
+        "types": "./dist/transitions.d.ts",
+        "default": "./dist/transitions.js"
+      },
+      "source": "./src/transitions.ts"
+    }
+  },
   "scripts": {
     "dev": "vite demo --port 4181 --strictPort",
-    "build": "tsc -p tsconfig.build.json",
-    "check": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "build": "tsdown",
+    "typecheck": "tsc",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "check": "oxlint && oxfmt --check",
+    "fix": "oxlint --fix && oxfmt",
+    "test": "bun test",
+    "checks": "bun check && bun typecheck && bun run test",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "tsdown": "^0.23.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.4"
+    "vite": "^8.3.4"
+  },
+  "lint-staged": {
+    "*": [
+      "oxlint --fix --no-error-on-unmatched-pattern",
+      "oxfmt --no-error-on-unmatched-pattern"
+    ]
   }
 }

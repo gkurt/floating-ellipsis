@@ -1,18 +1,8 @@
 /**
  * The marks an ellipsis is made of: characters of a string, or drawn shapes.
  */
-import { graphemes } from './graphemes.js';
-import {
-  type Font,
-  type GlyphMetrics,
-  applyTextTransform,
-  dotSpacing,
-  fontAscent,
-  fontOf,
-  inkGap,
-  inkRuns,
-  measure,
-} from './metrics.js';
+import { graphemes } from './graphemes.ts';
+import { type Font, type GlyphMetrics, applyTextTransform, dotSpacing, fontAscent, fontOf, inkGap, inkRuns, measure } from './metrics.ts';
 
 export type Shape = 'dot' | 'bullet' | 'ring' | 'square';
 export type Length = number | `${number}em` | `${number}px`;
@@ -99,13 +89,14 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
   const font = fontOf(cs);
   const fontSize = parseFloat(cs.fontSize);
   const ascent = fontAscent(font);
-  const spacing = parseFloat(cs.letterSpacing) || 0;
+  const letterSpacing = parseFloat(cs.letterSpacing);
+  const spacing = Number.isFinite(letterSpacing) ? letterSpacing : 0;
 
   if (typeof style === 'string') {
     const marks = graphemes(applyTextTransform(style, cs.textTransform));
     const metrics = marks.map((g) => {
       const m = measure(font, g);
-      return spacing ? { ...m, advance: m.advance + spacing } : m;
+      return spacing !== 0 ? { ...m, advance: m.advance + spacing } : m;
     });
     const natural = metrics.slice(1).map((m, i) => inkGap(metrics[i]!, m));
     const single = marks.length === 1;
@@ -120,7 +111,8 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
       metrics,
       natural,
       inner: natural.map(() => 0),
-      rhythm: none ?? (single ? dotSpacing(font, marks[0]!) : natural.length ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
+      rhythm:
+        none ?? (single ? dotSpacing(font, marks[0]!) : natural.length > 0 ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
       runs: single ? inkRuns(font, marks[0]!) : null,
     };
   }
@@ -130,16 +122,15 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
   const reference = measure(font, style.like ?? (round ? '•' : '.'));
   const period = measure(font, '.');
   const parts = style.like ? inkRuns(font, style.like) : [];
-  const natural = parts.length
-    ? parts.reduce((s, [a, b]) => s + b - a, 0) / parts.length
-    : diameter(reference);
+  const natural = parts.length > 0 ? parts.reduce((s, [a, b]) => s + b - a, 0) / parts.length : diameter(reference);
   const d = style.size !== undefined ? toPx(style.size, fontSize) : natural;
   const middle = (reference.ascent - reference.descent) / 2;
   const bottom = middle - d / 2;
   const own = style.like ? dotSpacing(font, style.like) : null;
-  const rhythm = style.spacing !== undefined
-    ? toPx(style.spacing, fontSize)
-    : own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period)));
+  const rhythm =
+    style.spacing !== undefined
+      ? toPx(style.spacing, fontSize)
+      : (own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period))));
   const count = groups[0]?.length ?? style.count ?? 3;
   const m: GlyphMetrics = { advance: d, left: 0, right: d, ascent: bottom + d, descent: -bottom };
 
@@ -149,9 +140,7 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
       : `background:currentColor;border-radius:${style.shape === 'square' ? 0 : '50%'}`;
   // In forced-colors mode backgrounds are overridden, which would erase the
   // marks; opting out keeps them in the (forced) text colour.
-  const css =
-    `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;` +
-    `forced-color-adjust:none;${shapeCss}`;
+  const css = `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;forced-color-adjust:none;${shapeCss}`;
   for (const group of groups) {
     for (const el of group) {
       // Keep the margin set by spacing; only rewrite the shape when it changes.
@@ -179,7 +168,7 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */
 export function groupMetrics(layout: MarkLayout, inner: readonly number[]): GlyphMetrics {
   const { metrics } = layout;
-  if (!metrics.length) return { advance: 0, left: 0, right: 0, ascent: 0, descent: 0 };
+  if (metrics.length === 0) return { advance: 0, left: 0, right: 0, ascent: 0, descent: 0 };
   let origin = 0;
   let ascent = 0;
   let descent = 0;

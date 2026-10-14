@@ -31,19 +31,19 @@ const t = elide(document.querySelector('.filename'), {
   keep: /\.[^.]+$/, // always show the extension
 });
 
-t.truncated;          // true
-t.state.hidden;       // [{ start, end, text }], one per ellipsis
-t.ellipsisInk(0);     // DOMRect around the first ellipsis' ink
-t.destroy();          // restore the original content
+t.truncated; // true
+t.state.hidden; // [{ start, end, text }], one per ellipsis
+t.ellipsisInk(0); // DOMRect around the first ellipsis' ink
+t.destroy(); // restore the original content
 ```
 
 ## Develop
 
 ```bash
-npm install
-npm run dev     # demo at http://localhost:4181
-npm test        # unit tests (pure logic)
-npm run build   # dist/ with type declarations
+bun i
+bun dev        # demo at http://localhost:4181
+bun run test   # unit tests (pure logic)
+bun run build  # dist/ with type declarations
 ```
 
 The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
@@ -52,34 +52,34 @@ hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 
 ## Options
 
-| Option | Default | |
-|---|---|---|
-| `text` | element text | Text to show. Defaults to the element's text, with whitespace collapsed. |
-| `lines` | `1` | Maximum number of lines. |
-| `position` | `'end'` | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses. |
-| `keep` | `null` | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. When they can't all fit, the last ones give way first. |
-| `ellipsis` | `'…'` | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`. |
-| `gap` | `'dots'` | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`. |
-| `justify` | `'dots'` | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
-| `trim` | `true` | Drop whitespace next to an ellipsis. |
-| `snap` | `null` | *Experimental.* Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. See [Separators](#separators). |
-| `observe` | `true` | Re-truncate on resize (ResizeObserver) and when web fonts load. |
-| `glyphs` | `false` | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text. |
-| `title` | `false` | Put the full text in the element's `title` while it is truncated. |
-| `copy` | `'full'` | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis). |
-| `onChange` | — | Same as `instance.onChange(fn)`. |
+| Option     | Default      |                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`     | element text | Text to show. Defaults to the element's text, with whitespace collapsed.                                                                                                                                                                                                                                                                                                                                                            |
+| `lines`    | `1`          | Maximum number of lines.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `position` | `'end'`      | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses.                                                                                                                                                                                                                                                                                                                    |
+| `keep`     | `null`       | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. When they can't all fit, the last ones give way first.                                                                                                                                                                                                                             |
+| `ellipsis` | `'…'`        | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                                                                                                                                                                                                                                                       |
+| `gap`      | `'dots'`     | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
+| `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
+| `trim`     | `true`       | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `snap`     | `null`       | _Experimental._ Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. See [Separators](#separators).                                                                                                                                                                                                                                                                               |
+| `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load.                                                                                                                                                                                                                                                                                                                                                                     |
+| `glyphs`   | `false`      | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text.                                                                                                                                                                                                                                                                                       |
+| `title`    | `false`      | Put the full text in the element's `title` while it is truncated.                                                                                                                                                                                                                                                                                                                                                                   |
+| `copy`     | `'full'`     | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis).                                                                                                                                                                                                                                                                                                               |
+| `onChange` | —            | Same as `instance.onChange(fn)`.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 `instance.update(options)` changes any option, including `text`.
 
 ### Drawn marks
 
 ```js
-elide(el, { ellipsis: { shape: 'bullet' } });                 // • • •, sized like the font's •
+elide(el, { ellipsis: { shape: 'bullet' } }); // • • •, sized like the font's •
 elide(el, { ellipsis: { shape: 'ring', count: 4 } });
 elide(el, { ellipsis: { shape: 'square', size: '0.12em', spacing: 3 } });
-elide(el, { ellipsis: { shape: 'dot', like: '…' } });         // the font's … as separate dots
+elide(el, { ellipsis: { shape: 'dot', like: '…' } }); // the font's … as separate dots
 elide(el, { ellipsis: { shape: 'dot', like: '…', count: 5 } }); // five of them
-elide(el, { ellipsis: '' });                                   // no marks, just a balanced gap
+elide(el, { ellipsis: '' }); // no marks, just a balanced gap
 ```
 
 `count` can be anything from 0 up. With no marks (`count: 0` or `''`), the cut
@@ -94,9 +94,9 @@ scaled to the mark size.
 
 ```js
 import { separators } from 'floating-ellipsis';
-elide(el, { snap: separators('/\\') });                        // /Users/ada/Projects/anal…/notes/x.md
-elide(el, { snap: separators('/\\', { fragment: 'tail' }) });  // /Users/ada/Projects/…engine/notes/x.md
-elide(el, { snap: separators('/\\', { fragment: false }) });   // /Users/ada/Projects/…/notes/x.md
+elide(el, { snap: separators('/\\') }); // /Users/ada/Projects/anal…/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: 'tail' }) }); // /Users/ada/Projects/…engine/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/Projects/…/notes/x.md
 ```
 
 Each side of a cut moves to a separator, and separators next to the cut stay
@@ -153,7 +153,7 @@ start as the truncated line and grow into the full text:
   pointer-events: none;
   padding: 4px 10px;
   margin: -6px 0 0 -10px; /* puts its text, not its padding, over the line */
-  font: inherit;          /* the truncated text's font */
+  font: inherit; /* the truncated text's font */
   overflow-wrap: break-word;
   color: white;
 }
@@ -228,7 +228,13 @@ function growTip(t, tip) {
     const to = span.getBoundingClientRect();
     const top = `${from[i].top - to.top}px`;
     if (!arriving[i]) {
-      span.animate([{ left: `${from[i].left - to.left}px`, top }, { left: '0px', top: '0px' }], timing);
+      span.animate(
+        [
+          { left: `${from[i].left - to.left}px`, top },
+          { left: '0px', top: '0px' },
+        ],
+        timing,
+      );
       return;
     }
     const left = `${from[i].left - (to.left + to.width / 2)}px`;
@@ -246,7 +252,13 @@ function growTip(t, tip) {
   // The dots stay where they are and fade as the text comes in.
   for (const { el, rect } of dots) {
     const dot = el.cloneNode(true);
-    Object.assign(dot.style, { position: 'absolute', margin: '0', transform: 'none', left: `${rect.left - box.left}px`, top: `${rect.top - box.top}px` });
+    Object.assign(dot.style, {
+      position: 'absolute',
+      margin: '0',
+      transform: 'none',
+      left: `${rect.left - box.left}px`,
+      top: `${rect.top - box.top}px`,
+    });
     tip.append(dot);
     dot.animate({ opacity: [1, 0] }, { duration: 160, fill: 'forwards' });
   }
@@ -285,13 +297,13 @@ const t = elide(el, { position: 0.5, glyphs: true });
 const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
 ```
 
-| Option | Default | |
-|---|---|---|
-| `effect` | `'merge'` | `'merge'`, `'fade'`, `'blur'`, or `'none'` (glyphs come and go at once; the dots still glide). |
-| `duration` | `460` | Milliseconds for glyph effects, and roughly how long the dots take to settle. |
-| `glide` | `true` | When the cut changes, the ellipsis' spacing glides instead of jumping. The dots always sit evenly in the space between their neighbouring glyphs; that space's edges glide on a critically damped spring (velocity carries over, no overshoot). An edge only reaches past a glyph that is still on its way in, so the dots never run into the text. Works without glyph mode too. |
-| `pace` | `'leeway'` | How long glyph effects take. `'leeway'`: leaving glyphs take time in proportion to the room their removal frees, and arriving ones are compressed by how many arrive side by side. Every effect is also capped at three times the interval since the previous change, so a fast drag or slider sweep is instant, and anything still in flight finishes at once instead of piling up. `'fixed'`: always `duration`. |
-| `marks` | `'together'` | When the spacing widens as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty. |
+| Option     | Default      |                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `effect`   | `'merge'`    | `'merge'`, `'fade'`, `'blur'`, or `'none'` (glyphs come and go at once; the dots still glide).                                                                                                                                                                                                                                                                                                                     |
+| `duration` | `460`        | Milliseconds for glyph effects, and roughly how long the dots take to settle.                                                                                                                                                                                                                                                                                                                                      |
+| `glide`    | `true`       | When the cut changes, the ellipsis' spacing glides instead of jumping. The dots always sit evenly in the space between their neighbouring glyphs; that space's edges glide on a critically damped spring (velocity carries over, no overshoot). An edge only reaches past a glyph that is still on its way in, so the dots never run into the text. Works without glyph mode too.                                  |
+| `pace`     | `'leeway'`   | How long glyph effects take. `'leeway'`: leaving glyphs take time in proportion to the room their removal frees, and arriving ones are compressed by how many arrive side by side. Every effect is also capped at three times the interval since the previous change, so a fast drag or slider sweep is instant, and anything still in flight finishes at once instead of piling up. `'fixed'`: always `duration`. |
+| `marks`    | `'together'` | When the spacing widens as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty.                                                                                                                                                                                                                                                     |
 
 With `'merge'`, a glyph that leaves shrinks into the nearest mark of the
 ellipsis: glyphs on the left go into the left dot, glyphs on the right into

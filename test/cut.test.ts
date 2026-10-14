@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
   type Range,
   allocationOrder,
@@ -14,8 +14,8 @@ import {
   subtract,
   toGraphemeRanges,
   union,
-} from '../src/cut.js';
-import { graphemes } from '../src/graphemes.js';
+} from '#src/cut.ts';
+import { graphemes } from '#src/graphemes.ts';
 
 /** Render hidden ranges as text with '…' in their place. */
 const show = (g: readonly string[], hidden: readonly Range[]) => {
@@ -54,7 +54,10 @@ describe('allocationOrder', () => {
 describe('islands', () => {
   it('splits head and tail for one ellipsis', () => {
     const layout = layoutFor(10, ['middle']);
-    expect(islands(layout, 4)).toEqual([[0, 2], [8, 10]]);
+    expect(islands(layout, 4)).toEqual([
+      [0, 2],
+      [8, 10],
+    ]);
     expect(islands(layoutFor(10, ['start']), 4)).toEqual([[6, 10]]);
     expect(islands(layoutFor(10, ['end']), 4)).toEqual([[0, 4]]);
     expect(islands(layout, 0)).toEqual([]);
@@ -63,7 +66,11 @@ describe('islands', () => {
   it('centres middle islands for several ellipses', () => {
     const layout = layoutFor(20, [0.25, 0.75]);
     const parts = islands(layout, 8);
-    expect(parts).toEqual([[0, 2], [8, 12], [18, 20]]);
+    expect(parts).toEqual([
+      [0, 2],
+      [8, 12],
+      [18, 20],
+    ]);
   });
 
   it('only ever grows as the budget grows', () => {
@@ -82,15 +89,48 @@ describe('islands', () => {
 
 describe('range helpers', () => {
   it('union merges overlapping and touching ranges', () => {
-    expect(union([[5, 7], [0, 2], [2, 3], [6, 9]])).toEqual([[0, 3], [5, 9]]);
+    expect(
+      union([
+        [5, 7],
+        [0, 2],
+        [2, 3],
+        [6, 9],
+      ]),
+    ).toEqual([
+      [0, 3],
+      [5, 9],
+    ]);
   });
   it('complement fills the holes', () => {
-    expect(complement(10, [[2, 4], [6, 7]])).toEqual([[0, 2], [4, 6], [7, 10]]);
+    expect(
+      complement(10, [
+        [2, 4],
+        [6, 7],
+      ]),
+    ).toEqual([
+      [0, 2],
+      [4, 6],
+      [7, 10],
+    ]);
     expect(complement(3, [[0, 3]])).toEqual([]);
   });
   it('subtract carves cutouts out', () => {
-    expect(subtract([[0, 10]], [[3, 5]])).toEqual([[0, 3], [5, 10]]);
-    expect(subtract([[0, 4], [6, 9]], [[3, 7]])).toEqual([[0, 3], [7, 9]]);
+    expect(subtract([[0, 10]], [[3, 5]])).toEqual([
+      [0, 3],
+      [5, 10],
+    ]);
+    expect(
+      subtract(
+        [
+          [0, 4],
+          [6, 9],
+        ],
+        [[3, 7]],
+      ),
+    ).toEqual([
+      [0, 3],
+      [7, 9],
+    ]);
   });
 });
 
@@ -189,7 +229,10 @@ describe('keepRanges', () => {
   it('finds strings, regexps and offsets', () => {
     expect(keepRanges(text, ['error'])).toEqual([[0, 5]]);
     expect(keepRanges(text, [/\d+:\d+/])).toEqual([[12, 17]]);
-    expect(keepRanges(text, [/\d+:\d+/g])).toEqual([[12, 17], [30, 35]]);
+    expect(keepRanges(text, [/\d+:\d+/g])).toEqual([
+      [12, 17],
+      [30, 35],
+    ]);
     expect(keepRanges(text, [{ start: 3, end: 6 }, 'missing'])).toEqual([[3, 6]]);
   });
 

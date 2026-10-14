@@ -1,4 +1,4 @@
-import { isWhitespace } from './graphemes.js';
+import { isWhitespace } from './graphemes.ts';
 
 /** Grapheme range `[start, end)`. */
 export type Range = readonly [start: number, end: number];
@@ -56,7 +56,7 @@ export interface Layout {
  */
 export function allocationOrder(weights: readonly number[], units: number): Int32Array {
   const order = new Int32Array(units);
-  const given = new Array<number>(weights.length).fill(0);
+  const given = Array.from({ length: weights.length }, () => 0);
   for (let k = 1; k <= units; k++) {
     let best = 0;
     let most = -Infinity;
@@ -74,8 +74,8 @@ export function allocationOrder(weights: readonly number[], units: number): Int3
 }
 
 export function layoutFor(length: number, positions: readonly Position[]): Layout {
-  const p = (positions.length ? positions : ['end' as const]).map(positionValue).sort((a, b) => a - b);
-  const weights = p.map((v, i) => v - (i ? p[i - 1]! : 0));
+  const p = (positions.length > 0 ? positions : ['end' as const]).map(positionValue).sort((a, b) => a - b);
+  const weights = p.map((v, i) => v - (i > 0 ? p[i - 1]! : 0));
   weights.push(1 - p[p.length - 1]!);
   return { length, positions: p, order: allocationOrder(weights, length) };
 }
@@ -84,7 +84,7 @@ export function layoutFor(length: number, positions: readonly Position[]): Layou
 export function islands(layout: Layout, kept: number): Range[] {
   const { length: n, positions: p, order } = layout;
   const m = p.length;
-  const sizes = new Array<number>(m + 1).fill(0);
+  const sizes = Array.from({ length: m + 1 }, () => 0);
   for (let k = 0; k < Math.min(kept, order.length); k++) sizes[order[k]!]!++;
   const out: Range[] = [[0, sizes[0]!]];
   for (let i = 1; i < m; i++) {
@@ -183,7 +183,10 @@ export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, 
       lo = h;
       while (lo < hi) {
         const next = Math.min(hi, lo + step);
-        if (!fits(next)) { hi = next - 1; break; }
+        if (!fits(next)) {
+          hi = next - 1;
+          break;
+        }
         lo = next;
         step *= 2;
       }
@@ -191,7 +194,10 @@ export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, 
       hi = h - 1;
       while (hi > lo) {
         const next = Math.max(lo, hi - step + 1);
-        if (fits(next)) { lo = next; break; }
+        if (fits(next)) {
+          lo = next;
+          break;
+        }
         hi = next - 1;
         step *= 2;
       }
@@ -270,8 +276,9 @@ export function separators(chars: string | RegExp = '/\\', options: SeparatorOpt
 
       // Which side keeps a fragment, if any.
       let side: 'head' | 'tail' | null = null;
-      if (headForced || tailForced) side = headForced && !tailForced ? 'head' : !headForced && tailForced ? 'tail' : null;
-      else {
+      if (headForced || tailForced) {
+        side = headForced && !tailForced ? 'head' : !headForced && tailForced ? 'tail' : null;
+      } else {
         const headRoom = s === h0 && start - h0 + tailLoss >= min;
         const tailRoom = e === t1 && t1 - end + headLoss >= min;
         const order = fragment === 'head' ? (['head', 'tail'] as const) : fragment === 'tail' ? (['tail', 'head'] as const) : [];
@@ -284,16 +291,18 @@ export function separators(chars: string | RegExp = '/\\', options: SeparatorOpt
       // isn't worth showing.
       if (side === 'head') {
         s = Math.min(start + tailLoss, e - 1);
-        if (s >= h1 && isSep(g[s]) && s + 1 < e) s++;
-        else if (s > h1) {
+        if (s >= h1 && isSep(g[s]) && s + 1 < e) {
+          s++;
+        } else if (s > h1) {
           let s0 = s;
           while (!isSep(g[s0 - 1])) s0--;
           if (s - s0 < min) s = s0;
         }
       } else if (side === 'tail') {
         e = Math.max(end - headLoss, s + 1);
-        if (e <= t0 && isSep(g[e - 1]) && e - 1 > s) e--;
-        else if (e < t0) {
+        if (e <= t0 && isSep(g[e - 1]) && e - 1 > s) {
+          e--;
+        } else if (e < t0) {
           let e1 = e;
           while (!isSep(g[e1])) e1++;
           if (e1 - e < min) e = e1;

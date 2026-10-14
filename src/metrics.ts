@@ -57,13 +57,12 @@ export function planGap(
 ): GapPlan {
   const naturalLeft = before ? inkGap(before, ellipsis) : null;
   const naturalRight = after ? inkGap(ellipsis, after) : null;
-  if (target === 'none') {
-    return { marginLeft: 0, marginRight: 0, target: null, naturalLeft, naturalRight };
-  }
+  if (target === 'none') return { marginLeft: 0, marginRight: 0, target: null, naturalLeft, naturalRight };
+
   let t: number;
   if (target === 'natural') {
     const sides = [naturalLeft, naturalRight].filter((v): v is number => v !== null);
-    t = sides.length ? sides.reduce((s, v) => s + v, 0) / sides.length : 0;
+    t = sides.length > 0 ? sides.reduce((s, v) => s + v, 0) / sides.length : 0;
   } else {
     t = target;
   }
@@ -95,11 +94,7 @@ export function columnGaps(inked: ArrayLike<boolean>): number[] {
 }
 
 /** Turn a `gap` option into px, 'natural' or 'none'. */
-export function resolveGap(
-  gap: Gap,
-  fontSize: number,
-  dots: () => number | null,
-): number | 'natural' | 'none' {
+export function resolveGap(gap: Gap, fontSize: number, dots: () => number | null): number | 'natural' | 'none' {
   if (gap === 'none' || gap === 'natural') return gap;
   if (gap === 'dots') return dots() ?? 'natural';
   if (typeof gap === 'number') return gap;
@@ -129,9 +124,10 @@ const glyphCache = new Map<string, Map<string, GlyphMetrics>>();
 const runCache = new Map<string, [number, number][]>();
 
 function canvas(width: number, height: number): Context {
-  const c = typeof OffscreenCanvas !== 'undefined'
-    ? new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })
-    : Object.assign(document.createElement('canvas'), { width, height }).getContext('2d', { willReadFrequently: true });
+  const c =
+    typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })
+      : Object.assign(document.createElement('canvas'), { width, height }).getContext('2d', { willReadFrequently: true });
   if (!c) throw new Error('elide: 2D canvas is not available');
   c.textAlign = 'left';
   c.textBaseline = 'alphabetic';
@@ -203,11 +199,14 @@ ${text}`;
       c.font = font.css;
       c.fillText(text, pad + m.left, pad + m.ascent);
       const { data } = c.getImageData(0, 0, width, height);
-      const inked = new Array<boolean>(width).fill(false);
+      const inked = Array.from({ length: width }, () => false);
       for (let x = 0; x < width; x++) {
         for (let y = 0; y < height; y++) {
           // Half coverage approximates where the outline is.
-          if (data[(y * width + x) * 4 + 3]! >= 128) { inked[x] = true; break; }
+          if (data[(y * width + x) * 4 + 3]! >= 128) {
+            inked[x] = true;
+            break;
+          }
         }
       }
       runs = columnRuns(inked).map(([a, b]) => [a - pad, b - pad]);

@@ -1,4 +1,4 @@
-import type { Elide } from '../src/index.js';
+import type { Elide } from '#src/index.ts';
 
 // The README's example, verbatim but for the types.
 
@@ -15,9 +15,8 @@ export function growTip(t: Elide, tip: HTMLElement) {
   t.state.hidden.forEach((part, j) => {
     const area = t.ellipsisArea(j)!;
     const count = part.end - part.start;
-    for (let k = 0; k < count; k++) {
+    for (let k = 0; k < count; k++)
       from[part.start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
-    }
   });
   // The dots of every ellipsis, as drawn, and the line.
   const dots = t.state.hidden.flatMap((_, j) => t.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
@@ -62,7 +61,13 @@ export function growTip(t: Elide, tip: HTMLElement) {
     const to = span.getBoundingClientRect();
     const top = `${from[i]!.top - to.top}px`;
     if (!arriving[i]) {
-      span.animate([{ left: `${from[i]!.left - to.left}px`, top }, { left: '0px', top: '0px' }], timing);
+      span.animate(
+        [
+          { left: `${from[i]!.left - to.left}px`, top },
+          { left: '0px', top: '0px' },
+        ],
+        timing,
+      );
       return;
     }
     const left = `${from[i]!.left - (to.left + to.width / 2)}px`;
@@ -80,14 +85,21 @@ export function growTip(t: Elide, tip: HTMLElement) {
   // The dots stay where they are and fade as the text comes in.
   for (const { el, rect } of dots) {
     const dot = el.cloneNode(true) as HTMLElement;
-    Object.assign(dot.style, { position: 'absolute', margin: '0', transform: 'none', left: `${rect.left - box.left}px`, top: `${rect.top - box.top}px` });
+    Object.assign(dot.style, {
+      position: 'absolute',
+      margin: '0',
+      transform: 'none',
+      left: `${rect.left - box.left}px`,
+      top: `${rect.top - box.top}px`,
+    });
     tip.append(dot);
     dot.animate({ opacity: [1, 0] }, { duration: 160, fill: 'forwards' });
   }
 
   // The background grows from the line's box (padded like the tip) to the tip's.
   const cs = getComputedStyle(tip);
-  const lineHeight = parseFloat(cs.lineHeight) || lines[0]!.height * 1.2;
+  const cssLineHeight = parseFloat(cs.lineHeight);
+  const lineHeight = cssLineHeight > 0 ? cssLineHeight : lines[0]!.height * 1.2;
   const start = {
     left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
     right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
