@@ -323,12 +323,14 @@ segmented('reveal', (v) => {
 resizable(filesBox, hideTips);
 
 const expandTip = $('#expandTip');
+const growTipEl = $('#growTip');
 const peekTip = $('#peekTip');
 // What the tips show now, so moving within a row (or an ellipsis) doesn't restart them.
 let tipRow: Element | null = null;
 let peeking: { instance: Elide; index: number; row: Element } | null = null;
 function hideTips() {
   expandTip.hidden = true;
+  growTipEl.hidden = true;
   peekTip.hidden = true;
   tipRow = null;
   setPeeking(null);
@@ -336,18 +338,12 @@ function hideTips() {
 
 const EDGE = 8;
 const SEPARATORS = '/\\';
-const easeOut = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
 
 /** The tip's background, a layer of its own so it can change size without reflowing the text. */
 function tipBackground() {
   const bg = document.createElement('div');
   bg.className = 'tip-bg';
   return bg;
-}
-
-/** Items with a line break opportunity after each path separator. */
-function breakAfterSeparators<T extends Node | string>(items: T[], text: readonly string[]): (T | HTMLElement)[] {
-  return items.flatMap((item, i) => (SEPARATORS.includes(text[i]!) ? [item, document.createElement('wbr')] : [item]));
 }
 
 /**
@@ -402,103 +398,6 @@ function showExpand(instance: Elide) {
   if (!placeTip(instance)) hideTips();
 }
 
-/**
- * Full text grown out of the truncated text. The tip is laid out as it will
- * end up (on one line or wrapped, wherever it fits), and then every glyph
- * comes from where it is now: the ones showing from their place in the line,
- * the hidden ones out of the ellipsis that hides them, while the dots fade
- * and the background grows from the line's box to the tip's.
- */
-function showGrow(instance: Elide) {
-  if (!instance.truncated) return hideTips();
-  const g = instance.graphemes;
-  const { hidden } = instance.state;
-
-  // Where everything is now, before the tip covers it.
-  const from: ({ x: number; y: number } | { cx: number; cy: number })[] = [];
-  g.forEach((_, i) => {
-    const r = instance.graphemeRect(i);
-    if (r) from[i] = { x: r.left, y: r.top };
-  });
-  hidden.forEach((part, j) => {
-    const area = instance.ellipsisArea(j);
-    if (!area) return;
-    const count = part.end - part.start;
-    for (let k = 0; k < count; k++) {
-      from[part.start + k] = { cx: area.left + ((k + 0.5) / count) * area.width, cy: area.top + area.height / 2 };
-    }
-  });
-  const marks = hidden.flatMap((_, j) => instance.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
-  const lines = instance.lineRects();
-
-  // The tip as it will end up.
-  const bg = tipBackground();
-  const glyphs = g.map((ch) => {
-    const span = document.createElement('span');
-    span.textContent = ch;
-    return span;
-  });
-  expandTip.replaceChildren(bg, ...breakAfterSeparators(glyphs, g));
-  if (!placeTip(instance)) return hideTips();
-  const tip = expandTip.getBoundingClientRect();
-
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const timing = { duration: still ? 0 : 460, easing: easeOut, fill: 'backwards' } as const;
-
-  // Inline text can't be transformed (and inline-blocks would break lines
-  // anywhere), so glyphs travel by relative offsets, which move them without
-  // reflowing anything.
-  glyphs.forEach((span, i) => {
-    const start = from[i];
-    if (!start) return;
-    const to = span.getBoundingClientRect();
-    if ('x' in start) {
-      const dx = start.x - to.left;
-      const dy = start.y - to.top;
-      if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) return;
-      span.animate([{ left: `${dx}px`, top: `${dy}px` }, { left: '0px', top: '0px' }], timing);
-    } else {
-      const dx = start.cx - (to.left + to.width / 2);
-      const dy = start.cy - (to.top + to.height / 2);
-      span.animate(
-        [
-          { left: `${dx}px`, top: `${dy}px`, opacity: 0, filter: 'blur(3px)' },
-          { offset: 0.15, opacity: 0 },
-          { offset: 0.6, opacity: 1, filter: 'blur(0px)' },
-          { left: '0px', top: '0px', opacity: 1, filter: 'blur(0px)' },
-        ],
-        timing,
-      );
-    }
-  });
-
-  // The ellipses' dots, as drawn, where they are, fading as the text arrives.
-  for (const { el, rect } of marks) {
-    const dot = el.cloneNode(true) as HTMLElement;
-    dot.classList.add('tip-dot');
-    dot.style.margin = '0';
-    dot.style.transform = 'none';
-    dot.style.left = `${rect.left - tip.left}px`;
-    dot.style.top = `${rect.top - tip.top}px`;
-    expandTip.append(dot);
-    dot.animate([{ opacity: 1 }, { offset: 0.35, opacity: 0 }, { opacity: 0 }], { ...timing, easing: 'linear', fill: 'both' });
-  }
-
-  // The background, from the line's box (with the tip's padding) to the tip's.
-  const cs = getComputedStyle(expandTip);
-  const lineHeight = parseFloat(cs.lineHeight);
-  const firstLine = lines[0]!;
-  const lastLine = lines[lines.length - 1]!;
-  const box = {
-    left: Math.min(...lines.map((l) => l.left)) - parseFloat(cs.paddingLeft),
-    right: Math.max(...lines.map((l) => l.right)) + parseFloat(cs.paddingRight),
-    top: firstLine.top - (lineHeight - firstLine.height) / 2 - parseFloat(cs.paddingTop),
-    bottom: lastLine.top - (lineHeight - lastLine.height) / 2 + lineHeight + parseFloat(cs.paddingBottom),
-  };
-  const inset = `${box.top - tip.top}px ${tip.right - box.right}px ${tip.bottom - box.bottom}px ${box.left - tip.left}px`;
-  bg.animate([{ inset }, { inset: '0px' }], timing);
-}
-
 /** Only what one ellipsis hides, anchored to that ellipsis' ink. */
 function showPeek(instance: Elide, index: number) {
   const ink = instance.ellipsisInk(index);
@@ -534,7 +433,8 @@ function showRow(row: Element) {
   if (!instance || row === tipRow) return;
   hideTips();
   tipRow = row;
-  if (reveal === 'grow') showGrow(instance);
+  // The same tooltip as the README's example (see grow-tip.ts).
+  if (reveal === 'grow') growTip(instance, growTipEl);
   else showExpand(instance);
 }
 list.addEventListener('pointermove', (e) => {
@@ -585,7 +485,6 @@ const longPaths = [
   '/srv/media/photos/2026/iceland/day-04/glacier-lagoon/IMG_4821.HEIC',
 ];
 const growList = $('#growFiles');
-const growTipEl = $('#growTip');
 const growInstances: Elide[] = [];
 for (const path of longPaths) {
   const li = document.createElement('li');

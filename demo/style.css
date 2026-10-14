@@ -421,13 +421,7 @@ input[type='range'] {
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
 }
-.tip.expand > span:not(.tip-dot) {
-  position: relative;
-}
-.tip .tip-dot {
-  position: absolute;
-  color: color-mix(in oklab, var(--accent) 55%, var(--bg));
-}
+
 .tip.peek {
   padding: 6px 10px;
   font: 13px/18px var(--mono);
@@ -458,8 +452,17 @@ input[type='range'] {
   font: 14px/22px var(--mono);
   overflow-wrap: break-word;
   color: var(--bg);
+}
+.grow-tip-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--ink);
   border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+}
+.grow-tip [data-fp-mark] {
+  color: color-mix(in oklab, var(--accent) 55%, var(--bg));
 }
 
 /* ------------------------------------------------------------------------ */
