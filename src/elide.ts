@@ -1,95 +1,143 @@
 import { graphemes, isWhitespace } from './graphemes.js';
-import { type Cut, type Position, type Snap, positionValue, rawCut, refineCut, searchMax } from './cut.js';
 import {
+  type Keep,
+  type Layout,
+  type Position,
+  type Range,
+  type Snap,
+  hiddenRanges,
+  keepRanges,
+  layoutFor,
+  searchMax,
+  toGraphemeRanges,
+} from './cut.js';
+import {
+  type Font,
   type Gap,
   type GapPlan,
   type GlyphMetrics,
-  type Font,
   applyTextTransform,
   clearMetrics,
-  dotSpacing,
   fontAscent,
   fontOf,
   measure,
   planGap,
   resolveGap,
 } from './metrics.js';
+import { type EllipsisStyle, type MarkLayout, buildMarks, ellipsisText, groupMetrics, layoutMarks } from './marks.js';
+
+/**
+ * The marks actually drawn. `justify: 'dots'` needs separate marks, so a
+ * single glyph like '…' is redrawn as dots sized and placed like its own.
+ */
+function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown }): EllipsisStyle {
+  const e = settings.ellipsis;
+  if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1) {
+    return { shape: 'dot', like: e, count: 3 };
+  }
+  return e;
+}
 
 export interface ElideOptions {
   /** Text to show. Defaults to the element's text content (whitespace collapsed). */
   text?: string;
   /** Maximum number of lines. Default 1. */
   lines?: number;
-  /** Where the ellipsis goes: 'start' | 'middle' | 'end' or 0..1. Default 'end'. */
-  position?: Position;
-  /** Ellipsis string. Default '…'. */
-  ellipsis?: string;
+  /**
+   * Where the ellipsis goes: 'start' | 'middle' | 'end' or 0..1. Default 'end'.
+   * An array places several ellipses, e.g. `[0.33, 0.67]`.
+   */
+  position?: Position | Position[];
+  /**
+   * Parts that always stay visible: a string (first match), a RegExp (every
+   * match if global, else the first) or `{ start, end }` string offsets. Text
+   * hidden on both sides of a kept part gets an ellipsis on each side.
+   * Earlier entries win when not all of them fit.
+   */
+  keep?: Keep | Keep[] | null;
+  /**
+   * What the ellipsis looks like: a string ('…' by default, '...', '·····')
+   * or drawn marks, e.g. `{ shape: 'bullet' }`. See `MarkStyle`.
+   */
+  ellipsis?: EllipsisStyle;
   /**
    * Ink gap on both sides of the ellipsis:
-   * - 'dots' (default): same as the space between the ellipsis' own dots
+   * - 'dots' (default): same as the space between the ellipsis' own marks
    * - 'natural': average of the font's natural gaps, so the total width is kept
    * - 'none': leave spacing alone
    * - a px number, or a string like '0.12em' / '2px'
    */
   gap?: Gap;
-  /** Drop whitespace touching the ellipsis. Default true. */
-  trim?: boolean;
-  /** Experimental: move the cut to nicer boundaries, see `separators()`. */
-  snap?: Snap | null;
   /**
    * Make a truncated line end exactly at the edge of the available area, so
    * resizing flows smoothly instead of stepping a glyph at a time:
-   * - 'ellipsis' (default): the slack goes into the two gaps around the
-   *   ellipsis, equally. Head and tail stay put; the ellipsis floats between.
+   * - 'ellipsis' (default): the slack goes into the gaps around the
+   *   ellipsis, equally. The text stays put; the ellipsis floats between.
+   * - 'dots': the slack evens out every gap, so text, marks and text again
+   *   are all equally spaced. Needs an ellipsis of several marks ('...' or
+   *   drawn); with a single '…' it behaves like 'ellipsis'.
    * - 'spread': the slack is spread over the line as letter-spacing, like
-   *   justified text. Single-line only; multi-line falls back to 'ellipsis'.
+   *   justified text. Single-line only; otherwise behaves like 'ellipsis'.
    * - false: leave the slack at the end of the line.
-   * Applies when the ellipsis is on the last line.
+   * Applies to ellipses on the last line.
    */
-  justify?: 'ellipsis' | 'spread' | false;
+  justify?: 'ellipsis' | 'dots' | 'spread' | false;
+  /** Drop whitespace touching an ellipsis. Default true. */
+  trim?: boolean;
+  /** Experimental: move cuts to nicer boundaries, see `separators()`. */
+  snap?: Snap | null;
   /** Re-truncate when the element is resized. Default true. */
   observe?: boolean;
   /**
    * Wrap every grapheme in its own element so it can be styled or animated
-   * (see `floating-points/transitions`). Costs more DOM; meant for small texts and demos.
+   * (see `floating-points/transitions`). Costs more DOM; meant for short texts.
    */
   glyphs?: boolean;
+  /** Put the full text in the element's `title` while truncated. Default false. */
+  title?: boolean;
+  /**
+   * What a copied selection contains where it crosses an ellipsis:
+   * 'full' (default) the hidden text, 'visible' the ellipsis itself.
+   */
+  copy?: 'full' | 'visible';
   /** Shorthand for `instance.onChange(fn)`. */
   onChange?: (change: ElideChange) => void;
 }
 
 type Settings = Required<Omit<ElideOptions, 'text' | 'onChange'>>;
 
+/** A stretch of text, by grapheme index. */
+export interface Part {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** Spacing around one ellipsis. All gaps are ink to ink, in px. */
+export interface GapInfo extends GapPlan {
+  /** Final gap left of the ellipsis (null = no glyph there). */
+  left: number | null;
+  /** Final gap right of the ellipsis (null = no glyph there). */
+  right: number | null;
+  /** Final gaps between the ellipsis' marks. */
+  inner: number[];
+  /** Space this ellipsis took in from justification. */
+  slack: number;
+}
+
 export interface ElideState {
   text: string;
   /** Number of graphemes in `text`. */
   length: number;
   truncated: boolean;
-  /** Graphemes `[0, start)` are shown before the ellipsis. */
-  start: number;
-  /** Graphemes `[end, length)` are shown after the ellipsis. */
-  end: number;
-  /** Visible text before the ellipsis (the whole text when not truncated). */
-  head: string;
-  /** Visible text after the ellipsis. */
-  tail: string;
-  /** Text replaced by the ellipsis. */
-  omitted: string;
+  /** The hidden parts, one per ellipsis, in order. */
+  hidden: Part[];
+  /** Kept parts (from `keep`) that are showing while truncated. */
+  kept: Part[];
   /** Rendered line count. */
   lines: number;
-  /** Spacing applied around the ellipsis. */
-  gap: GapInfo | null;
-}
-
-export interface GapInfo extends GapPlan {
-  /** Final ink gap left of the ellipsis, after justification (null = no glyph there). */
-  left: number | null;
-  /** Final ink gap right of the ellipsis, after justification (null = no glyph there). */
-  right: number | null;
-  /** Slack that justification added to the line, in px. */
-  slack: number;
-  /** Letter-spacing added to the line by `justify: 'spread'`, in px. */
-  spread: number;
+  /** Spacing around each ellipsis. */
+  gaps: GapInfo[];
 }
 
 export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
@@ -104,21 +152,27 @@ export interface ElideChange {
   shown: number[];
   /** Grapheme indices that became hidden. */
   hidden: number[];
-  /** Glyph mode only: where each newly hidden glyph was just before the update. */
-  hiddenRects: Map<number, DOMRect>;
-  /** Ellipsis box before and after the update (null when there was none). */
-  ellipsis: { from: DOMRect | null; to: DOMRect | null };
+  /** Glyph mode only: box and ink box of each newly hidden glyph just before the update. */
+  hiddenGlyphs: Map<number, { box: DOMRect; ink: DOMRect }>;
+  /** Mark boxes of each ellipsis just before the update. */
+  marksBefore: DOMRect[][];
 }
 
 interface Run {
   font: Font;
-  ellipsisFont: Font;
   letterSpacing: number;
   transform: string;
-  ellipsis: GlyphMetrics;
-  target: number | 'natural' | 'none';
   left: number;
   right: number;
+  marks: MarkLayout | null;
+}
+
+interface Join {
+  el: HTMLSpanElement;
+  before: HTMLSpanElement;
+  ellipsis: HTMLSpanElement;
+  after: HTMLSpanElement;
+  marks: HTMLSpanElement[];
 }
 
 const SR_ONLY =
@@ -128,21 +182,28 @@ const SR_ONLY =
 const DEFAULTS: Settings = {
   lines: 1,
   position: 'end',
+  keep: null,
   ellipsis: '…',
   gap: 'dots',
+  justify: 'ellipsis',
   trim: true,
   snap: null,
-  justify: 'ellipsis',
   observe: true,
   glyphs: false,
+  title: false,
+  copy: 'full',
 };
 
 const instances = new Set<Elide>();
-let fontsHooked = false;
+const byId = new Map<string, Elide>();
+let nextId = 1;
+let hooked = false;
 
-function hookFonts() {
-  if (fontsHooked || typeof document === 'undefined' || !document.fonts) return;
-  fontsHooked = true;
+function hookDocument() {
+  if (hooked || typeof document === 'undefined') return;
+  hooked = true;
+  document.addEventListener('copy', onCopy);
+  if (!document.fonts) return;
   const refresh = () => {
     clearMetrics();
     for (const instance of instances) instance.refresh('fonts');
@@ -151,28 +212,62 @@ function hookFonts() {
   void document.fonts.ready.then(refresh);
 }
 
+/**
+ * When a selection crosses an ellipsis, copy what it stands for. The
+ * selection is cloned, each ellipsis in it replaced by its hidden text, and
+ * the result laid out offscreen so `innerText` keeps the page's line breaks.
+ */
+function onCopy(event: ClipboardEvent) {
+  const selection = document.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount || !event.clipboardData) return;
+  const range = selection.getRangeAt(0);
+  let touched = false;
+  for (const instance of instances) {
+    if (instance.ellipses.some((e) => range.intersectsNode(e))) touched = true;
+  }
+  if (!touched) return;
+
+  const fragment = range.cloneContents();
+  for (const el of fragment.querySelectorAll('[data-fp-full], [data-fp-ghosts]')) el.remove();
+  for (const el of fragment.querySelectorAll<HTMLElement>('[data-fp-ellipsis]')) {
+    const [id, index] = (el.dataset.fpEllipsis ?? '').split(':');
+    const instance = byId.get(id ?? '');
+    const part = instance?.state.hidden[Number(index)];
+    const full = instance?.options.copy === 'full';
+    el.replaceWith(full && part ? part.text : ellipsisText(instance?.options.ellipsis ?? '…'));
+  }
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:pre-wrap';
+  holder.append(fragment);
+  document.body.append(holder);
+  event.clipboardData.setData('text/plain', holder.innerText);
+  event.clipboardData.setData('text/html', holder.innerHTML);
+  holder.remove();
+  event.preventDefault();
+}
+
 function defined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
+const asArray = <T,>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+
 export class Elide {
   readonly element: HTMLElement;
-  /** The ellipsis element. Stable for the lifetime of the instance, so listeners can stay attached. */
-  readonly ellipsisElement: HTMLSpanElement;
 
   private settings: Settings;
+  private readonly id = String(nextId++);
   private text = '';
   private g: string[] = [];
   private offsets: number[] = [0];
   private glyphEls: HTMLSpanElement[] = [];
+  private pins: Range[] = [];
+  private layout: Layout = layoutFor(0, ['end']);
   private readonly original: Node[];
   private readonly srEl: HTMLSpanElement;
   private readonly lineEl: HTMLSpanElement;
-  private readonly headEl: HTMLSpanElement;
-  private readonly joinEl: HTMLSpanElement;
-  private readonly tailEl: HTMLSpanElement;
-  private readonly leftSlot: HTMLSpanElement;
-  private readonly rightSlot: HTMLSpanElement;
+  private readonly runs: HTMLSpanElement[] = [];
+  private readonly joins: Join[] = [];
   private readonly listeners = new Set<(change: ElideChange) => void>();
   private observer: ResizeObserver | null = null;
   private lastWidth = -1;
@@ -180,7 +275,10 @@ export class Elide {
   private current: ElideState | null = null;
   private lastRun: Run | null = null;
   private pendingReset = false;
+  private titled = false;
   private destroyed = false;
+  private style: EllipsisStyle = '…';
+  private painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { text, onChange, ...rest } = options;
@@ -188,37 +286,33 @@ export class Elide {
     this.settings = { ...DEFAULTS, ...defined(rest) };
     this.original = Array.from(element.childNodes);
 
-    const span = (attr: string, style = '') => {
-      const el = document.createElement('span');
-      el.setAttribute(attr, '');
-      if (style) el.style.cssText = style;
-      return el;
-    };
-    this.srEl = span('data-fp-full', SR_ONLY);
-    this.lineEl = span('data-fp-text');
+    this.srEl = document.createElement('span');
+    this.srEl.setAttribute('data-fp-full', '');
+    this.srEl.style.cssText = SR_ONLY;
+    this.lineEl = document.createElement('span');
+    this.lineEl.setAttribute('data-fp-text', '');
     this.lineEl.setAttribute('aria-hidden', 'true');
-    this.headEl = span('data-fp-head');
-    this.joinEl = span('data-fp-join', 'white-space:nowrap');
-    this.tailEl = span('data-fp-tail');
-    this.leftSlot = span('data-fp-before');
-    this.rightSlot = span('data-fp-after');
-    this.ellipsisElement = span('data-fp-ellipsis');
-    this.ellipsisElement.textContent = this.settings.ellipsis;
-    this.lineEl.append(this.headEl, this.joinEl, this.tailEl);
+    this.join(0);
 
     this.setText(text ?? (element.textContent ?? '').replace(/\s+/g, ' ').trim());
     element.replaceChildren(this.srEl, this.lineEl);
 
     if (onChange) this.listeners.add(onChange);
     instances.add(this);
-    hookFonts();
+    byId.set(this.id, this);
+    hookDocument();
     this.run('init');
     this.observe(this.settings.observe);
   }
 
+  /** Current settings. */
+  get options(): Readonly<Settings> {
+    return this.settings;
+  }
+
   /** Current result. Before the first layout it describes the untruncated text. */
   get state(): ElideState {
-    return this.current ?? this.makeState(null, 0, null);
+    return this.current ?? this.makeState([], 0, []);
   }
 
   get truncated(): boolean {
@@ -230,19 +324,61 @@ export class Elide {
     return this.g;
   }
 
-  /** Box of the ellipsis element in viewport coordinates, or null when not truncated. */
-  ellipsisRect(): DOMRect | null {
-    return this.truncated ? this.ellipsisElement.getBoundingClientRect() : null;
+  /** The first ellipsis element. Stable for the lifetime of the instance. */
+  get ellipsisElement(): HTMLSpanElement {
+    return this.joins[0]!.ellipsis;
   }
 
-  /** Tight box around the ellipsis' ink in viewport coordinates, or null when not truncated. */
-  ellipsisInk(): DOMRect | null {
-    const run = this.lastRun;
-    if (!this.truncated || !run) return null;
-    const box = this.ellipsisElement.getBoundingClientRect();
-    const baseline = box.top + fontAscent(run.ellipsisFont);
-    const e = run.ellipsis;
-    return new DOMRect(box.left - e.left, baseline - e.ascent, e.left + e.right, e.ascent + e.descent);
+  /** The ellipsis elements currently showing, in order. */
+  get ellipses(): HTMLSpanElement[] {
+    return this.joins.slice(0, this.current?.hidden.length ?? 0).map((j) => j.ellipsis);
+  }
+
+  /** Index of the ellipsis containing `node` (e.g. an event target), or -1. */
+  ellipsisIndex(node: Node | null): number {
+    return node ? this.ellipses.findIndex((e) => e.contains(node)) : -1;
+  }
+
+  /** Box of ellipsis `index` in viewport coordinates, or null. */
+  ellipsisRect(index = 0): DOMRect | null {
+    const e = this.ellipses[index];
+    return e ? e.getBoundingClientRect() : null;
+  }
+
+  /** Tight box around the ink of ellipsis `index`, or null. */
+  ellipsisInk(index = 0): DOMRect | null {
+    const marks = this.marks(index);
+    if (!marks.length) return null;
+    const left = Math.min(...marks.map((r) => r.left));
+    const top = Math.min(...marks.map((r) => r.top));
+    const right = Math.max(...marks.map((r) => r.right));
+    const bottom = Math.max(...marks.map((r) => r.bottom));
+    return new DOMRect(left, top, right - left, bottom - top);
+  }
+
+  /**
+   * Ink box of each mark of ellipsis `index`: each dot, bullet or character.
+   * For a single glyph like '…' the dots are found in the glyph itself.
+   */
+  marks(index = 0): DOMRect[] {
+    const join = this.joins[index];
+    const layout = this.lastRun?.marks;
+    if (!join || !layout || index >= (this.current?.hidden.length ?? 0)) return [];
+    if (layout.metrics.length !== join.marks.length) return [];
+    if (layout.drawn) return join.marks.map((m) => m.getBoundingClientRect());
+    const box = join.ellipsis.getBoundingClientRect();
+    const baseline = box.top + layout.ascent;
+    const boxes = join.marks.map((el, i) => {
+      const r = el.getBoundingClientRect();
+      const m = layout.metrics[i]!;
+      return new DOMRect(r.left - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
+    });
+    const runs = layout.runs;
+    if (boxes.length === 1 && runs && runs.length > 1) {
+      const ink = boxes[0]!;
+      return runs.map(([a, b]) => new DOMRect(ink.left + a, ink.top, b - a, ink.height));
+    }
+    return boxes;
   }
 
   /** One box per rendered line of visible text, in viewport coordinates. */
@@ -253,6 +389,13 @@ export class Elide {
   /** Element of grapheme `index` in glyph mode (null otherwise or when out of range). */
   glyph(index: number): HTMLSpanElement | null {
     return this.glyphEls[index] ?? null;
+  }
+
+  /** Ink box of grapheme `index` in glyph mode, or null when it isn't showing. */
+  glyphInk(index: number): DOMRect | null {
+    const el = this.glyphEls[index];
+    if (!el?.isConnected || !this.lastRun) return null;
+    return this.inkOf(this.lastRun, index, el.getBoundingClientRect());
   }
 
   /** Subscribe to visible-text changes. Returns an unsubscribe function. */
@@ -267,11 +410,24 @@ export class Elide {
     if (onChange) this.listeners.add(onChange);
     const before = this.settings;
     this.settings = { ...before, ...defined(rest) };
-    if (this.settings.ellipsis !== before.ellipsis) this.ellipsisElement.textContent = this.settings.ellipsis;
-    if (this.settings.observe !== before.observe) this.observe(this.settings.observe);
-    if ((text !== undefined && text !== this.text) || this.settings.glyphs !== before.glyphs) {
+    const s = this.settings;
+    if (markStyleFor(s) !== this.style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify)) {
+      for (const join of this.joins) this.fillMarks(join);
+      // The old measurements describe marks that are gone.
+      if (this.lastRun) this.lastRun.marks = null;
+    }
+    if (s.observe !== before.observe) this.observe(s.observe);
+    if ((text !== undefined && text !== this.text) || s.glyphs !== before.glyphs) {
       this.setText(text ?? this.text);
       this.pendingReset = true;
+      this.painted = null;
+    } else {
+      if (s.keep !== before.keep) this.setPins();
+      if (s.position !== before.position) this.setLayout();
+    }
+    if (!s.title && this.titled) {
+      this.element.removeAttribute('title');
+      this.titled = false;
     }
     this.run('update');
   }
@@ -287,12 +443,15 @@ export class Elide {
     this.destroyed = true;
     this.observe(false);
     instances.delete(this);
+    byId.delete(this.id);
     this.listeners.clear();
     this.element.removeAttribute('data-truncated');
+    if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
   }
 
   // -------------------------------------------------------------------------
+  // Setup
 
   private observe(on: boolean) {
     if (!on) {
@@ -327,36 +486,90 @@ export class Elide {
         })
       : [];
     this.srEl.textContent = text;
+    this.setPins();
+    this.setLayout();
+  }
+
+  private setPins() {
+    this.pins = toGraphemeRanges(keepRanges(this.text, asArray(this.settings.keep)), this.offsets);
+    for (const el of this.glyphEls) el.removeAttribute('data-fp-kept');
+    for (const [s, e] of this.pins) for (let i = s; i < e; i++) this.glyphEls[i]?.setAttribute('data-fp-kept', '');
     this.hint = null;
   }
 
+  private setLayout() {
+    this.layout = layoutFor(this.g.length, asArray(this.settings.position));
+    this.hint = null;
+  }
+
+  /** The join (ellipsis with its neighbouring glyphs) at `index`, created on demand. */
+  private join(index: number): Join {
+    let join = this.joins[index];
+    if (!join) {
+      const span = (attr: string) => {
+        const el = document.createElement('span');
+        el.setAttribute(attr, '');
+        return el;
+      };
+      const el = span('data-fp-join');
+      el.style.whiteSpace = 'nowrap';
+      const ellipsis = span('data-fp-ellipsis');
+      ellipsis.dataset.fpEllipsis = `${this.id}:${index}`;
+      join = { el, before: span('data-fp-before'), ellipsis, after: span('data-fp-after'), marks: [] };
+      el.append(join.before, ellipsis, join.after);
+      this.fillMarks(join);
+      this.joins[index] = join;
+    }
+    return join;
+  }
+
+  /** The marks being drawn: `options.ellipsis`, unless `justify: 'dots'` needs it split into dots. */
+  get markStyle(): EllipsisStyle {
+    return this.style;
+  }
+
+  private fillMarks(join: Join) {
+    this.style = markStyleFor(this.settings);
+    join.marks = buildMarks(this.style);
+    join.ellipsis.replaceChildren(...join.marks);
+  }
+
+  private runEl(index: number): HTMLSpanElement {
+    let el = this.runs[index];
+    if (!el) {
+      el = document.createElement('span');
+      el.setAttribute('data-fp-run', '');
+      this.runs[index] = el;
+    }
+    return el;
+  }
+
+  // -------------------------------------------------------------------------
+  // Measuring
+
   private prepare(cs: CSSStyleDeclaration): Run {
-    const font = fontOf(cs);
-    const letterSpacing = parseFloat(cs.letterSpacing) || 0;
-    const transform = cs.textTransform;
-    const { ellipsis: ellipsisText, gap } = this.settings;
-
-    // The ellipsis may be styled on its own (weight, size, family), so read
-    // its style in place. Rendering resets the join afterwards.
-    if (!this.ellipsisElement.isConnected) this.joinEl.replaceChildren(this.leftSlot, this.ellipsisElement, this.rightSlot);
-    const ecs = getComputedStyle(this.ellipsisElement);
-    const ellipsisFont = fontOf(ecs);
-    const shownEllipsis = applyTextTransform(ellipsisText, ecs.textTransform);
-    const marks = graphemes(shownEllipsis).length;
-    const spacing = parseFloat(ecs.letterSpacing) || 0;
-    const m = measure(ellipsisFont, shownEllipsis);
-    const ellipsis = spacing ? { ...m, advance: m.advance + spacing * marks } : m;
-    const target = resolveGap(gap, parseFloat(ecs.fontSize), () => {
-      const dots = dotSpacing(ellipsisFont, shownEllipsis);
-      // Letter-spacing widens the gaps between separate characters like '...'.
-      return dots === null ? null : dots + (marks > 1 ? spacing : 0);
-    });
-
     const host = this.element;
     const box = host.getBoundingClientRect();
     const left = box.left + host.clientLeft + parseFloat(cs.paddingLeft);
     const right = box.left + host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight);
-    return { font, ellipsisFont, letterSpacing, transform, ellipsis, target, left, right };
+    return {
+      font: fontOf(cs),
+      letterSpacing: parseFloat(cs.letterSpacing) || 0,
+      transform: cs.textTransform,
+      left,
+      right,
+      marks: null,
+    };
+  }
+
+  /** Mark measurements, read from the first ellipsis once it is in the DOM. */
+  private markLayout(run: Run): MarkLayout {
+    run.marks ??= layoutMarks(
+      this.style,
+      getComputedStyle(this.joins[0]!.ellipsis),
+      this.joins.map((j) => j.marks),
+    );
+    return run.marks;
   }
 
   private glyphMetrics(run: Run, g: string): GlyphMetrics {
@@ -364,74 +577,12 @@ export class Elide {
     return run.letterSpacing ? { ...m, advance: m.advance + run.letterSpacing } : m;
   }
 
-  /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
-  private fill(el: HTMLElement, from: number, to: number) {
-    if (this.settings.glyphs) {
-      el.replaceChildren(...this.glyphEls.slice(from, to));
-      return;
-    }
-    const text = this.text.slice(this.offsets[from], this.offsets[to]);
-    const node = el.firstChild;
-    if (node instanceof Text && el.childNodes.length === 1) {
-      if (node.data !== text) node.data = text;
-    } else {
-      el.textContent = text;
-    }
-  }
-
-  /** Put a cut (or the full text, when null) into the DOM. */
-  private render(run: Run, cut: Cut | null): GapPlan | null {
-    const n = this.g.length;
-    if (!cut) {
-      this.lineEl.style.letterSpacing = '';
-      this.fill(this.headEl, 0, n);
-      if (this.joinEl.firstChild) this.joinEl.replaceChildren();
-      this.fill(this.tailEl, n, n);
-      return null;
-    }
-    const { start, end } = cut;
-    const hasHead = start > 0;
-    const hasTail = end < n;
-    this.fill(this.headEl, 0, hasHead ? start - 1 : 0);
-    // The ellipsis keeps its place in the DOM while only the neighbouring
-    // glyphs change: re-inserting it would restart its animations and reset
-    // its hover state on every resize.
-    const join = this.joinEl;
-    if (join.childNodes.length !== 3 || join.childNodes[1] !== this.ellipsisElement) {
-      join.replaceChildren(this.leftSlot, this.ellipsisElement, this.rightSlot);
-    }
-    this.fill(this.leftSlot, hasHead ? start - 1 : 0, hasHead ? start : 0);
-    this.fill(this.rightSlot, hasTail ? end : n, hasTail ? end + 1 : n);
-    this.fill(this.tailEl, hasTail ? end + 1 : n, n);
-    this.lineEl.style.letterSpacing = '';
-
-    const before = hasHead && !isWhitespace(this.g[start - 1]) ? this.glyphMetrics(run, this.g[start - 1]!) : null;
-    const after = hasTail && !isWhitespace(this.g[end]) ? this.glyphMetrics(run, this.g[end]!) : null;
-    const plan = planGap(before, run.ellipsis, after, run.target);
-    this.applyMargins(plan);
-    return plan;
-  }
-
-  /**
-   * Full text, for testing whether it fits. If the ellipsis is showing it
-   * stays where it is, cancelled out by a negative margin, rather than being
-   * taken out and put back on every resize.
-   */
-  private renderFull(run: Run) {
-    const e = this.ellipsisElement;
-    if (!e.isConnected) {
-      this.render(run, null);
-      return;
-    }
-    const width = e.getBoundingClientRect().width;
-    const n = this.g.length;
-    this.lineEl.style.letterSpacing = '';
-    this.fill(this.headEl, 0, n);
-    this.fill(this.leftSlot, 0, 0);
-    this.fill(this.rightSlot, n, n);
-    this.fill(this.tailEl, n, n);
-    e.style.marginLeft = '';
-    e.style.marginRight = `${-width}px`;
+  private inkOf(run: Run, index: number, box: DOMRect): DOMRect {
+    const g = this.g[index];
+    if (g === undefined || isWhitespace(g)) return box;
+    const m = this.glyphMetrics(run, g);
+    const baseline = box.top + fontAscent(run.font);
+    return new DOMRect(box.left - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
   }
 
   /** Does the rendered text fit? Reads layout. */
@@ -447,167 +598,9 @@ export class Elide {
     return { ok: ok && lines <= this.settings.lines, lines };
   }
 
-  private run(reason: ChangeReason) {
-    const host = this.element;
-    if (this.destroyed || !host.isConnected || host.getClientRects().length === 0) return;
-
-    const run = this.prepare(getComputedStyle(host));
-    this.lastRun = run;
-    const previous = this.current;
-    const reset = this.pendingReset || !previous;
-    this.pendingReset = false;
-
-    // Capture "before" geometry for listeners that animate the change.
-    const tracking = this.listeners.size > 0;
-    const before = new Map<number, DOMRect>();
-    let ellipsisFrom: DOMRect | null = null;
-    if (tracking && previous && !reset) {
-      ellipsisFrom = this.ellipsisRect();
-      if (this.settings.glyphs) {
-        for (let i = 0; i < previous.length; i++) {
-          if (isVisible(previous, i)) before.set(i, this.glyphEls[i]!.getBoundingClientRect());
-        }
-      }
-    }
-
-    const n = this.g.length;
-    const position = positionValue(this.settings.position);
-    const cutAt = (k: number) => refineCut(this.g, rawCut(n, k, position), position, this.settings.snap, this.settings.trim);
-
-    // Trying the full text means taking the ellipsis out of the DOM, so only
-    // do it when the text might fit: its glyph widths summed can't exceed the
-    // room on all lines (with some leeway for kerning and collapsed spaces).
-    let cut: Cut | null = null;
-    let fit = { ok: false, lines: 0 };
-    let width = 0;
-    for (const g of this.g) width += this.glyphMetrics(run, g).advance;
-    if (width <= (run.right - run.left) * this.settings.lines * 1.1 + 1) {
-      this.renderFull(run);
-      fit = this.measure(run);
-    }
-    if (!fit.ok && n > 0) {
-      const kept = searchMax(0, n - 1, (k) => {
-        this.render(run, cutAt(k));
-        return this.measure(run).ok;
-      }, this.hint);
-      this.hint = kept;
-      cut = cutAt(kept);
-    }
-    const plan = this.render(run, cut);
-    let gap: GapInfo | null = null;
-    if (cut && plan) {
-      fit = this.measure(run);
-      gap = this.justify(run, cut, plan, fit.lines);
-    }
-
-    const state = this.makeState(cut, fit.lines, gap);
-    this.current = state;
-    host.toggleAttribute('data-truncated', state.truncated);
-
-    if (!tracking) return;
-    const same = previous && !reset && previous.truncated === state.truncated
-      && previous.start === state.start && previous.end === state.end;
-    if (same && (reason === 'resize' || reason === 'refresh')) return;
-
-    const shown: number[] = [];
-    const hidden: number[] = [];
-    const hiddenRects = new Map<number, DOMRect>();
-    if (!reset && previous) {
-      for (let i = 0; i < n; i++) {
-        const was = isVisible(previous, i);
-        const is = isVisible(state, i);
-        if (is && !was) shown.push(i);
-        else if (was && !is) {
-          hidden.push(i);
-          const rect = before.get(i);
-          if (rect) hiddenRects.set(i, rect);
-        }
-      }
-    }
-    const change: ElideChange = {
-      reason,
-      state,
-      previous: reset ? null : previous,
-      reset,
-      shown,
-      hidden,
-      hiddenRects,
-      ellipsis: { from: ellipsisFrom, to: this.ellipsisRect() },
-    };
-    for (const fn of this.listeners) fn(change);
-  }
-
-  /**
-   * Stretch the line holding the ellipsis so it ends exactly at the right
-   * edge. Only for the last line: on earlier lines the slack comes from word
-   * wrapping and would make a hole.
-   */
-  private justify(run: Run, cut: Cut, plan: GapPlan, lines: number): GapInfo {
-    const info = (slack: number, spread: number): GapInfo => ({
-      ...plan,
-      left: plan.naturalLeft === null ? null : plan.naturalLeft + plan.marginLeft + spread,
-      right: plan.naturalRight === null ? null : plan.naturalRight + plan.marginRight + spread,
-      slack,
-      spread,
-    });
-    const mode = this.settings.justify;
-    const last = this.lastLine();
-    if (!mode || !last) return info(0, 0);
-    const e = this.ellipsisElement.getBoundingClientRect();
-    const middle = e.top + e.height / 2;
-    if (middle < last.top || middle > last.bottom) return info(0, 0);
-    const room = run.right - last.right;
-    if (room <= 0) return info(0, 0);
-
-    const holds = () => {
-      const m = this.measure(run);
-      return m.ok && m.lines === lines;
-    };
-    const hasHead = cut.start > 0;
-    const hasTail = cut.end < this.g.length;
-
-    // Layout snaps each inline piece to 1/64 px, so filling the line exactly
-    // can tip it over and wrap. Stay a hair inside, backing off if needed.
-    for (const inset of [1 / 16, 0.25, 1]) {
-      const slack = room - inset;
-      if (slack <= 0) break;
-
-      if (mode === 'spread' && lines === 1) {
-        // Letter-spacing goes after every character, so the line grows by
-        // spacing x characters; measure the growth instead of counting.
-        const probe = slack / Math.max(1, this.lineEl.textContent?.length ?? 1);
-        this.lineEl.style.letterSpacing = `${run.letterSpacing + probe}px`;
-        const grown = (this.lastLine()?.right ?? last.right) - last.right;
-        const spread = grown > 0 ? (probe * slack) / grown : 0;
-        this.lineEl.style.letterSpacing = `${run.letterSpacing + spread}px`;
-        if (holds()) return info(slack, spread);
-        continue;
-      }
-
-      const share = hasHead && hasTail ? slack / 2 : slack;
-      const stretched = {
-        ...plan,
-        marginLeft: plan.marginLeft + (hasHead ? share : 0),
-        marginRight: plan.marginRight + (hasTail ? share : 0),
-      };
-      this.applyMargins(stretched);
-      if (holds()) {
-        return {
-          ...info(slack, 0),
-          left: plan.naturalLeft === null ? null : plan.naturalLeft + stretched.marginLeft,
-          right: plan.naturalRight === null ? null : plan.naturalRight + stretched.marginRight,
-        };
-      }
-    }
-    this.lineEl.style.letterSpacing = '';
-    this.applyMargins(plan);
-    return info(0, 0);
-  }
-
   /**
    * Vertical extent and right edge of the last rendered line. A line can come
-   * back as several boxes (e.g. around absolutely positioned children), so
-   * take the union of the boxes that share the last line.
+   * back as several boxes, so take the union of the boxes on the last line.
    */
   private lastLine(): { top: number; bottom: number; right: number } | null {
     const rects = Array.from(this.lineEl.getClientRects());
@@ -621,34 +614,355 @@ export class Elide {
     };
   }
 
-  private applyMargins(plan: { marginLeft: number; marginRight: number }) {
-    const style = this.ellipsisElement.style;
-    style.marginLeft = plan.marginLeft ? `${plan.marginLeft}px` : '';
-    style.marginRight = plan.marginRight ? `${plan.marginRight}px` : '';
+  // -------------------------------------------------------------------------
+  // Rendering
+
+  /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
+  private fill(el: HTMLElement, from: number, to: number) {
+    if (this.settings.glyphs) {
+      const want = this.glyphEls.slice(from, to);
+      const have = el.childNodes;
+      if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
+      return;
+    }
+    const text = this.text.slice(this.offsets[from], this.offsets[to]);
+    const node = el.firstChild;
+    if (node instanceof Text && el.childNodes.length === 1) {
+      if (node.data !== text) node.data = text;
+    } else if (el.textContent !== text || el.childNodes.length > 1) {
+      el.textContent = text;
+    }
   }
 
-  private makeState(cut: Cut | null, lines: number, gap: GapInfo | null): ElideState {
+  /**
+   * Make `lineEl`'s children exactly `want`, moving as little as possible:
+   * ellipses that stay keep their place, so their animations and hover
+   * state survive resizing.
+   */
+  private reconcile(want: Node[]) {
+    const parent = this.lineEl;
+    want.forEach((node, i) => {
+      const at = parent.childNodes[i];
+      if (at !== node) parent.insertBefore(node, at ?? null);
+    });
+    while (parent.childNodes.length > want.length) parent.lastChild!.remove();
+  }
+
+  /** Full text, keeping a showing ellipsis in place but cancelled out by a negative margin. */
+  private renderFull(run: Run) {
+    const first = this.joins[0]!;
+    if (!first.ellipsis.isConnected) {
+      this.render(run, []);
+      return;
+    }
+    const width = first.ellipsis.getBoundingClientRect().width;
     const n = this.g.length;
-    const at = (i: number) => this.offsets[i]!;
-    const start = cut ? cut.start : n;
-    const end = cut ? cut.end : n;
-    return {
-      text: this.text,
-      length: n,
-      truncated: cut !== null,
+    this.lineEl.style.letterSpacing = '';
+    this.reconcile([this.runEl(0), first.el]);
+    this.fill(this.runEl(0), 0, n);
+    this.fill(first.before, 0, 0);
+    this.fill(first.after, n, n);
+    first.ellipsis.style.marginLeft = '';
+    first.ellipsis.style.marginRight = `${-width}px`;
+  }
+
+  /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
+  private render(run: Run, hidden: readonly Range[]): GapPlan[] {
+    const n = this.g.length;
+    const m = hidden.length;
+    this.lineEl.style.letterSpacing = '';
+    const want: Node[] = [this.runEl(0)];
+    for (let j = 0; j < m; j++) want.push(this.join(j).el, this.runEl(j + 1));
+    this.reconcile(want);
+    if (!m) {
+      this.fill(this.runEl(0), 0, n);
+      return [];
+    }
+
+    // Visible run r lies between ellipsis r - 1 and ellipsis r. Its first
+    // glyph sits in the join before it and its last in the join after it,
+    // so a line break can't separate an ellipsis from its neighbours.
+    for (let r = 0; r <= m; r++) {
+      let a = r === 0 ? 0 : hidden[r - 1]![1];
+      let b = r === m ? n : hidden[r]![0];
+      if (r > 0) {
+        const take = a < b ? 1 : 0;
+        this.fill(this.joins[r - 1]!.after, a, a + take);
+        a += take;
+      }
+      if (r < m) {
+        const take = a < b ? 1 : 0;
+        this.fill(this.joins[r]!.before, b - take, b);
+        b -= take;
+      }
+      this.fill(this.runEl(r), a, b);
+    }
+
+    const layout = this.markLayout(run);
+    const target = resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm);
+    const group = groupMetrics(layout, layout.inner);
+    return hidden.map(([s, e], j) => {
+      const before = s > 0 && !isWhitespace(this.g[s - 1]) ? this.glyphMetrics(run, this.g[s - 1]!) : null;
+      const after = e < n && !isWhitespace(this.g[e]) ? this.glyphMetrics(run, this.g[e]!) : null;
+      const plan = planGap(before, group, after, target);
+      this.applySpacing(j, plan.marginLeft, plan.marginRight, layout.inner);
+      return plan;
+    });
+  }
+
+  private applySpacing(index: number, left: number, right: number, inner: readonly number[]) {
+    const join = this.joins[index]!;
+    const style = join.ellipsis.style;
+    style.marginLeft = left ? `${left}px` : '';
+    style.marginRight = right ? `${right}px` : '';
+    join.marks.forEach((mark, i) => {
+      if (i > 0) mark.style.marginLeft = inner[i - 1] ? `${inner[i - 1]}px` : '';
+    });
+  }
+
+  /**
+   * Stretch the last line so it ends exactly at the right edge, putting the
+   * slack into the ellipses on that line. Earlier lines are left alone: their
+   * slack comes from word wrapping and would make a hole.
+   */
+  private justify(run: Run, plans: GapPlan[], lines: number): GapInfo[] {
+    const layout = run.marks!;
+    const info = (plan: GapPlan, left: number, right: number, inner: readonly number[], extra: number, slack: number): GapInfo => ({
+      ...plan,
+      left: plan.naturalLeft === null ? null : plan.naturalLeft + left + extra,
+      right: plan.naturalRight === null ? null : plan.naturalRight + right + extra,
+      inner: layout.natural.map((v, i) => v + (inner[i] ?? 0) + extra),
+      slack,
+    });
+    const base = plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, 0, 0));
+    const mode = this.settings.justify;
+    const last = this.lastLine();
+    if (!mode || !last) return base;
+
+    const onLast = plans
+      .map((_, j) => j)
+      .filter((j) => {
+        const r = this.joins[j]!.ellipsis.getBoundingClientRect();
+        const middle = r.top + r.height / 2;
+        return middle >= last.top && middle <= last.bottom;
+      });
+    const room = run.right - last.right;
+    if (!onLast.length || room <= 0) return base;
+
+    const holds = () => {
+      const m = this.measure(run);
+      return m.ok && m.lines === lines;
+    };
+    const restore = () => {
+      this.lineEl.style.letterSpacing = '';
+      plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight, layout.inner));
+    };
+    const sides = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
+    const dots = mode === 'dots';
+    const gapsOf = (p: GapPlan) => sides(p) + (dots ? layout.natural.length : 0);
+    const total = onLast.reduce((sum, j) => sum + gapsOf(plans[j]!), 0);
+
+    // Layout snaps each inline piece to 1/64 px, so filling the line exactly
+    // can tip it over and wrap. Stay a hair inside, backing off if needed.
+    for (const inset of [1 / 16, 0.25, 1]) {
+      const slack = room - inset;
+      if (slack <= 0) break;
+
+      if (mode === 'spread' && lines === 1) {
+        // Letter-spacing goes after every character; drawn marks get the
+        // same as margins. Measure how the line grows rather than count.
+        const apply = (ls: number) => {
+          this.lineEl.style.letterSpacing = `${run.letterSpacing + ls}px`;
+          if (layout.drawn) {
+            plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight + ls, layout.inner.map((v) => v + ls)));
+          }
+        };
+        const probe = slack / Math.max(1, this.lineEl.textContent?.length ?? 1);
+        apply(probe);
+        const grown = (this.lastLine()?.right ?? last.right) - last.right;
+        const ls = grown > 0 ? (probe * slack) / grown : 0;
+        apply(ls);
+        if (holds()) return plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, ls, slack / plans.length));
+        restore();
+        continue;
+      }
+
+      if (!total) return base;
+      // Each ellipsis on the last line takes a share of the slack in
+      // proportion to the gaps it spreads it over.
+      const infos = base.slice();
+      for (const j of onLast) {
+        const p = plans[j]!;
+        const count = gapsOf(p);
+        if (!count) continue;
+        const share = (slack * count) / total;
+        let left = p.marginLeft;
+        let right = p.marginRight;
+        let inner = layout.inner;
+        if (dots) {
+          // Every gap of this ellipsis becomes the same width.
+          const current = [
+            ...(p.naturalLeft !== null ? [p.naturalLeft + p.marginLeft] : []),
+            ...layout.natural.map((v, i) => v + layout.inner[i]!),
+            ...(p.naturalRight !== null ? [p.naturalRight + p.marginRight] : []),
+          ];
+          const even = (current.reduce((s, v) => s + v, 0) + share) / count;
+          if (p.naturalLeft !== null) left = even - p.naturalLeft;
+          if (p.naturalRight !== null) right = even - p.naturalRight;
+          inner = layout.natural.map((v) => even - v);
+        } else {
+          const each = share / count;
+          if (p.naturalLeft !== null) left += each;
+          if (p.naturalRight !== null) right += each;
+        }
+        this.applySpacing(j, left, right, inner);
+        infos[j] = info(p, left, right, inner, 0, share);
+      }
+      if (holds()) return infos;
+      restore();
+    }
+    restore();
+    return base;
+  }
+
+  // -------------------------------------------------------------------------
+
+  private run(reason: ChangeReason) {
+    const host = this.element;
+    if (this.destroyed || !host.isConnected || host.getClientRects().length === 0) return;
+
+    const run = this.prepare(getComputedStyle(host));
+    const previous = this.current;
+    const reset = this.pendingReset || !previous;
+    this.pendingReset = false;
+
+    // Where things were when last painted, for listeners that animate the
+    // change. (Measuring now would see the old text reflowed at the new size.)
+    const tracking = this.listeners.size > 0;
+    const host0 = host.getBoundingClientRect();
+    const moved = (r: DOMRect) => new DOMRect(r.x + host0.x, r.y + host0.y, r.width, r.height);
+    const glyphsBefore = new Map<number, { box: DOMRect; ink: DOMRect }>();
+    let marksBefore: DOMRect[][] = [];
+    if (tracking && previous && !reset && this.painted) {
+      marksBefore = this.painted.marks.map((marks) => marks.map(moved));
+      for (const [i, g] of this.painted.glyphs) glyphsBefore.set(i, { box: moved(g.box), ink: moved(g.ink) });
+    }
+    this.lastRun = run;
+
+    const n = this.g.length;
+    const { snap, trim } = this.settings;
+
+    // Trying the full text means cancelling the ellipsis, so only do it when
+    // the text might fit: its glyph widths summed can't exceed the room on
+    // all lines (with some leeway for kerning and collapsed spaces).
+    let hidden: Range[] = [];
+    let fit = { ok: false, lines: 0 };
+    let width = 0;
+    for (const g of this.g) width += this.glyphMetrics(run, g).advance;
+    if (width <= (run.right - run.left) * this.settings.lines * 1.1 + 1) {
+      this.renderFull(run);
+      fit = this.measure(run);
+    }
+    let pins = this.pins;
+    if (!fit.ok && n > 0) {
+      const at = (k: number) => hiddenRanges(this.g, this.layout, k, pins, snap, trim);
+      const fits = (k: number) => {
+        this.render(run, at(k));
+        return this.measure(run).ok;
+      };
+      // Kept parts that can't all fit give way, last first.
+      while (pins.length && !fits(0)) pins = pins.slice(0, -1);
+      const kept = searchMax(0, n - 1, fits, this.hint);
+      this.hint = kept;
+      hidden = at(kept);
+    }
+    const plans = this.render(run, hidden);
+    fit = this.measure(run);
+    const gaps = hidden.length ? this.justify(run, plans, fit.lines) : [];
+
+    const state = this.makeState(hidden, fit.lines, gaps, pins);
+    this.current = state;
+    host.toggleAttribute('data-truncated', state.truncated);
+    if (this.settings.title && state.truncated !== this.titled) {
+      if (state.truncated) host.title = this.text;
+      else host.removeAttribute('title');
+      this.titled = state.truncated;
+    }
+
+    if (!tracking) return;
+    this.recordPainted(run);
+    const same = previous && !reset && sameParts(previous.hidden, state.hidden);
+    if (same && (reason === 'resize' || reason === 'refresh')) return;
+
+    const shown: number[] = [];
+    const gone: number[] = [];
+    const hiddenGlyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
+    if (!reset && previous) {
+      for (let i = 0; i < n; i++) {
+        const was = isVisible(previous, i);
+        const is = isVisible(state, i);
+        if (is && !was) shown.push(i);
+        else if (was && !is) {
+          gone.push(i);
+          const before = glyphsBefore.get(i);
+          if (before) hiddenGlyphs.set(i, before);
+        }
+      }
+    }
+    const change: ElideChange = {
+      reason,
+      state,
+      previous: reset ? null : previous,
+      reset,
+      shown,
+      hidden: gone,
+      hiddenGlyphs,
+      marksBefore,
+    };
+    for (const fn of this.listeners) fn(change);
+  }
+
+  /** Remember glyph and mark positions, relative to the host, as they are about to be painted. */
+  private recordPainted(run: Run) {
+    const origin = this.element.getBoundingClientRect();
+    const local = (r: DOMRect) => new DOMRect(r.x - origin.x, r.y - origin.y, r.width, r.height);
+    const glyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
+    if (this.settings.glyphs) {
+      this.glyphEls.forEach((el, i) => {
+        if (!el.isConnected) return;
+        const box = el.getBoundingClientRect();
+        glyphs.set(i, { box: local(box), ink: local(this.inkOf(run, i, box)) });
+      });
+    }
+    const marks = (this.current?.hidden ?? []).map((_, j) => this.marks(j).map(local));
+    this.painted = { glyphs, marks };
+  }
+
+  private makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.pins): ElideState {
+    const part = ([start, end]: Range): Part => ({
       start,
       end,
-      head: this.text.slice(0, at(start)),
-      tail: cut ? this.text.slice(at(end)) : '',
-      omitted: cut ? this.text.slice(at(start), at(end)) : '',
+      text: this.text.slice(this.offsets[start], this.offsets[end]),
+    });
+    return {
+      text: this.text,
+      length: this.g.length,
+      truncated: hidden.length > 0,
+      hidden: hidden.map(part),
+      kept: hidden.length ? pins.map(part) : [],
       lines,
-      gap,
+      gaps,
     };
   }
 }
 
+function sameParts(a: readonly Part[], b: readonly Part[]): boolean {
+  return a.length === b.length && a.every((p, i) => p.start === b[i]!.start && p.end === b[i]!.end);
+}
+
 function isVisible(state: ElideState, i: number): boolean {
-  return !state.truncated || i < state.start || i >= state.end;
+  for (const h of state.hidden) if (i >= h.start && i < h.end) return false;
+  return true;
 }
 
 /** Truncate `element`'s text. Returns a live instance; call `destroy()` to undo. */

@@ -1,27 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { positionValue, rawCut, refineCut, searchMax, separators } from '../src/cut.js';
+import {
+  type Range,
+  allocationOrder,
+  complement,
+  hiddenRanges,
+  islands,
+  keepRanges,
+  layoutFor,
+  positionValue,
+  searchMax,
+  separators,
+  subtract,
+  toGraphemeRanges,
+  union,
+} from '../src/cut.js';
 import { graphemes } from '../src/graphemes.js';
 
-describe('rawCut', () => {
-  it('splits the kept budget by position', () => {
-    expect(rawCut(10, 4, 0.5)).toEqual({ start: 2, end: 8 });
-    expect(rawCut(10, 4, 0)).toEqual({ start: 0, end: 6 });
-    expect(rawCut(10, 4, 1)).toEqual({ start: 4, end: 10 });
-    expect(rawCut(10, 0, 0.5)).toEqual({ start: 0, end: 10 });
-  });
-
-  it('only ever grows head and tail as the budget grows', () => {
-    for (const p of [0, 0.2, 0.5, 0.73, 1]) {
-      let prev = rawCut(50, 0, p);
-      for (let k = 1; k < 50; k++) {
-        const c = rawCut(50, k, p);
-        expect(c.start).toBeGreaterThanOrEqual(prev.start);
-        expect(c.end).toBeLessThanOrEqual(prev.end);
-        prev = c;
-      }
-    }
-  });
-});
+/** Render hidden ranges as text with '…' in their place. */
+const show = (g: readonly string[], hidden: readonly Range[]) => {
+  let out = '';
+  let at = 0;
+  for (const [s, e] of hidden) {
+    out += g.slice(at, s).join('') + '…';
+    at = e;
+  }
+  return out + g.slice(at).join('');
+};
 
 describe('positionValue', () => {
   it('maps keywords and clamps numbers', () => {
@@ -33,47 +37,146 @@ describe('positionValue', () => {
   });
 });
 
-describe('refineCut', () => {
+describe('allocationOrder', () => {
+  it('takes turns in proportion to the weights', () => {
+    expect([...allocationOrder([0.5, 0.5], 6)]).toEqual([0, 1, 0, 1, 0, 1]);
+    const counts = [0, 0, 0];
+    for (const i of allocationOrder([0.25, 0.5, 0.25], 100)) counts[i]!++;
+    expect(counts).toEqual([25, 50, 25]);
+  });
+
+  it('never feeds a zero-weight island', () => {
+    expect([...allocationOrder([0, 1], 5)]).toEqual([1, 1, 1, 1, 1]);
+  });
+});
+
+describe('islands', () => {
+  it('splits head and tail for one ellipsis', () => {
+    const layout = layoutFor(10, ['middle']);
+    expect(islands(layout, 4)).toEqual([[0, 2], [8, 10]]);
+    expect(islands(layoutFor(10, ['start']), 4)).toEqual([[6, 10]]);
+    expect(islands(layoutFor(10, ['end']), 4)).toEqual([[0, 4]]);
+    expect(islands(layout, 0)).toEqual([]);
+  });
+
+  it('centres middle islands for several ellipses', () => {
+    const layout = layoutFor(20, [0.25, 0.75]);
+    const parts = islands(layout, 8);
+    expect(parts).toEqual([[0, 2], [8, 12], [18, 20]]);
+  });
+
+  it('only ever grows as the budget grows', () => {
+    for (const positions of [['middle'], [0.3], [0.2, 0.6], [0, 0.5, 1], [0.1, 0.4, 0.8]] as const) {
+      const layout = layoutFor(40, positions);
+      let prev = new Set<number>();
+      for (let k = 0; k < 40; k++) {
+        const now = new Set<number>();
+        for (const [s, e] of islands(layout, k)) for (let i = s; i < e; i++) now.add(i);
+        for (const i of prev) expect(now.has(i)).toBe(true);
+        prev = now;
+      }
+    }
+  });
+});
+
+describe('range helpers', () => {
+  it('union merges overlapping and touching ranges', () => {
+    expect(union([[5, 7], [0, 2], [2, 3], [6, 9]])).toEqual([[0, 3], [5, 9]]);
+  });
+  it('complement fills the holes', () => {
+    expect(complement(10, [[2, 4], [6, 7]])).toEqual([[0, 2], [4, 6], [7, 10]]);
+    expect(complement(3, [[0, 3]])).toEqual([]);
+  });
+  it('subtract carves cutouts out', () => {
+    expect(subtract([[0, 10]], [[3, 5]])).toEqual([[0, 3], [5, 10]]);
+    expect(subtract([[0, 4], [6, 9]], [[3, 7]])).toEqual([[0, 3], [7, 9]]);
+  });
+});
+
+describe('hiddenRanges', () => {
   const g = graphemes('Hello wide world');
+
   it('trims whitespace next to the ellipsis', () => {
-    expect(refineCut(g, { start: 6, end: 10 }, 0.5, null, true)).toEqual({ start: 5, end: 11 });
-    expect(refineCut(g, { start: 6, end: 10 }, 0.5, null, false)).toEqual({ start: 6, end: 10 });
+    const layout = layoutFor(g.length, ['middle']);
+    // 12 kept: "Hello " + " world" → the spaces next to the cut go.
+    const hidden = hiddenRanges(g, layout, 12, [], null, true);
+    expect(show(g, hidden)).toBe('Hello…world');
+    expect(show(g, hiddenRanges(g, layout, 12, [], null, false))).toBe('Hello … world');
   });
 
   it('never lets a snap reveal more text', () => {
     const greedy = () => ({ start: 100, end: 0 });
-    expect(refineCut(g, { start: 3, end: 12 }, 0.5, greedy, false)).toEqual({ start: 3, end: 12 });
+    const layout = layoutFor(g.length, ['middle']);
+    expect(hiddenRanges(g, layout, 6, [], greedy, false)).toEqual(hiddenRanges(g, layout, 6, [], null, false));
+  });
+
+  it('keeps pinned parts, splitting the cut around them', () => {
+    const text = graphemes('The quick brown fox jumps over the lazy dog');
+    const layout = layoutFor(text.length, ['end']);
+    const fox = text.join('').indexOf('fox');
+    const hidden = hiddenRanges(text, layout, 4, [[fox, fox + 3]], null, true);
+    expect(show(text, hidden)).toBe('The…fox…');
+  });
+
+  it('keeps an extension at the end', () => {
+    const text = graphemes('quarterly-report-final-v3.pdf');
+    const layout = layoutFor(text.length, ['end']);
+    const ext = keepRanges(text.join(''), [/\.[^.]+$/]);
+    expect(show(text, hiddenRanges(text, layout, 9, ext, null, true))).toBe('quarterly….pdf');
+  });
+
+  it('places several ellipses', () => {
+    const text = graphemes('0123456789abcdefghij');
+    const layout = layoutFor(text.length, [0.25, 0.75]);
+    expect(show(text, hiddenRanges(text, layout, 8, [], null, true))).toBe('01…89ab…ij');
   });
 });
 
 describe('separators', () => {
   const path = graphemes('/abc/def/ghj/klm/nop');
+  const layout = layoutFor(path.length, ['middle']);
   const snap = separators('/');
-  const show = (c: { start: number; end: number }) => path.slice(0, c.start).join('') + '…' + path.slice(c.end).join('');
 
   it('cuts at path segments', () => {
-    const raw = rawCut(path.length, 12, 0.5); // "/abc/d" … "lm/nop"
-    expect(show(raw)).toBe('/abc/d…lm/nop');
-    expect(show(refineCut(path, raw, 0.5, snap, true))).toBe('/abc/…/nop');
-    const wider = rawCut(path.length, 16, 0.5); // "/abc/def" … "/klm/nop"
-    expect(show(refineCut(path, wider, 0.5, snap, true))).toBe('/abc/…/klm/nop');
-  });
-
-  it('falls back to the plain cut where no separator is in reach', () => {
-    const g = graphemes('abcdef/xyz');
-    expect(refineCut(g, { start: 3, end: 8 }, 0.5, separators('/'), true)).toEqual({ start: 3, end: 8 });
+    expect(show(path, hiddenRanges(path, layout, 12, [], null, true))).toBe('/abc/d…lm/nop');
+    expect(show(path, hiddenRanges(path, layout, 12, [], snap, true))).toBe('/abc/…/nop');
+    expect(show(path, hiddenRanges(path, layout, 16, [], snap, true))).toBe('/abc/…/klm/nop');
   });
 
   it('does word boundaries with a space', () => {
     const g = graphemes('The quick brown fox');
-    const c = refineCut(g, { start: 7, end: 14 }, 0.5, separators(' '), true);
-    expect(g.slice(0, c.start).join('') + '…' + g.slice(c.end).join('')).toBe('The…fox');
+    const s = separators(' ')({ graphemes: g, start: 7, end: 14, position: 0.5 });
+    expect(s).toEqual({ start: 4, end: 15 });
+  });
+
+  it('falls back to the plain cut where no separator is in reach', () => {
+    const g = graphemes('abcdef/xyz');
+    expect(separators('/')({ graphemes: g, start: 3, end: 8, position: 0.5 })).toEqual({ start: 3, end: 8 });
   });
 
   it('accepts a RegExp', () => {
     const g = graphemes('a.b-c');
-    const c = refineCut(g, { start: 3, end: 4 }, 0.5, separators(/[.-]/g), false);
-    expect(c).toEqual({ start: 2, end: 4 });
+    expect(separators(/[.-]/g)({ graphemes: g, start: 3, end: 4, position: 0.5 })).toEqual({ start: 2, end: 4 });
+  });
+});
+
+describe('keepRanges', () => {
+  const text = 'error 42 at 10:31, error 7 at 10:32';
+  it('finds strings, regexps and offsets', () => {
+    expect(keepRanges(text, ['error'])).toEqual([[0, 5]]);
+    expect(keepRanges(text, [/\d+:\d+/])).toEqual([[12, 17]]);
+    expect(keepRanges(text, [/\d+:\d+/g])).toEqual([[12, 17], [30, 35]]);
+    expect(keepRanges(text, [{ start: 3, end: 6 }, 'missing'])).toEqual([[3, 6]]);
+  });
+
+  it('maps to grapheme ranges', () => {
+    const t = 'a👩‍👩‍👧bc';
+    const g = graphemes(t);
+    const offsets = [0];
+    for (const s of g) offsets.push(offsets[offsets.length - 1]! + s.length);
+    expect(toGraphemeRanges(keepRanges(t, ['b']), offsets)).toEqual([[2, 3]]);
+    // A range that starts inside a cluster keeps the whole cluster.
+    expect(toGraphemeRanges([[2, 4]], offsets)).toEqual([[1, 2]]);
   });
 });
 
@@ -88,15 +191,11 @@ describe('searchMax', () => {
   };
 
   it('finds the largest fitting value', () => {
-    for (const max of [0, 1, 7, 63, 99]) {
-      expect(searchMax(0, 99, limit(max).fits)).toBe(max);
-    }
+    for (const max of [0, 1, 7, 63, 99]) expect(searchMax(0, 99, limit(max).fits)).toBe(max);
   });
 
   it('uses the hint from either side', () => {
-    for (const hint of [0, 10, 40, 41, 42, 90, 99]) {
-      expect(searchMax(0, 99, limit(41).fits, hint)).toBe(41);
-    }
+    for (const hint of [0, 10, 40, 41, 42, 90, 99]) expect(searchMax(0, 99, limit(41).fits, hint)).toBe(41);
   });
 
   it('needs few probes when the hint is close', () => {

@@ -76,19 +76,22 @@ export function planGap(
   };
 }
 
-/**
- * Gaps between separate marks along a row of pixel columns (true = inked),
- * e.g. the two gaps between the three dots of an ellipsis.
- */
-export function columnGaps(inked: ArrayLike<boolean>): number[] {
-  const gaps: number[] = [];
-  let lastInk = -1;
+/** Separate marks along a row of pixel columns (true = inked), as `[start, end)` column runs. */
+export function columnRuns(inked: ArrayLike<boolean>): [number, number][] {
+  const runs: [number, number][] = [];
   for (let x = 0; x < inked.length; x++) {
     if (!inked[x]) continue;
-    if (lastInk >= 0 && x - lastInk > 1) gaps.push(x - lastInk - 1);
-    lastInk = x;
+    const last = runs[runs.length - 1];
+    if (last && last[1] === x) last[1] = x + 1;
+    else runs.push([x, x + 1]);
   }
-  return gaps;
+  return runs;
+}
+
+/** Gaps between consecutive runs, e.g. the two gaps between the dots of an ellipsis. */
+export function columnGaps(inked: ArrayLike<boolean>): number[] {
+  const runs = columnRuns(inked);
+  return runs.slice(1).map(([start], i) => start - runs[i]![1]);
 }
 
 /** Turn a `gap` option into px, 'natural' or 'none'. */
@@ -123,7 +126,7 @@ type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 let ctx: Context | null = null;
 const glyphCache = new Map<string, Map<string, GlyphMetrics>>();
-const dotCache = new Map<string, number | null>();
+const runCache = new Map<string, [number, number][]>();
 
 function canvas(width: number, height: number): Context {
   const c = typeof OffscreenCanvas !== 'undefined'
@@ -181,19 +184,20 @@ export function fontAscent(font: Font): number {
 }
 
 /**
- * Average space between the separate marks of `text` (the dots of an
- * ellipsis), found by drawing it and scanning for empty pixel columns.
- * Null when it is a single mark, like '→'.
+ * The separate marks of `text` (the dots of an ellipsis) as horizontal
+ * `[start, end)` spans in px from the left edge of its ink, found by drawing
+ * it and scanning for empty pixel columns.
  */
-export function dotSpacing(font: Font, text: string): number | null {
-  const key = `${font.css}\n${text}`;
-  let gap = dotCache.get(key);
-  if (gap === undefined) {
+export function inkRuns(font: Font, text: string): [number, number][] {
+  const key = `${font.css}
+${text}`;
+  let runs = runCache.get(key);
+  if (!runs) {
     const m = measureRaw(font, text);
     const pad = 2;
     const width = Math.ceil(m.left + m.right) + pad * 2;
     const height = Math.ceil(m.ascent + m.descent) + pad * 2;
-    gap = null;
+    runs = [];
     if (width > pad * 2 && height > pad * 2) {
       const c = canvas(width, height);
       c.font = font.css;
@@ -206,18 +210,27 @@ export function dotSpacing(font: Font, text: string): number | null {
           if (data[(y * width + x) * 4 + 3]! >= 128) { inked[x] = true; break; }
         }
       }
-      const gaps = columnGaps(inked);
-      gap = gaps.length ? gaps.reduce((s, g) => s + g, 0) / gaps.length : null;
+      runs = columnRuns(inked).map(([a, b]) => [a - pad, b - pad]);
     }
-    dotCache.set(key, gap);
+    runCache.set(key, runs);
   }
-  return gap === null ? null : gap * font.scale;
+  return runs.map(([a, b]) => [a * font.scale, b * font.scale]);
+}
+
+/**
+ * Average space between the separate marks of `text` (the dots of an
+ * ellipsis). Null when it is a single mark, like '→'.
+ */
+export function dotSpacing(font: Font, text: string): number | null {
+  const runs = inkRuns(font, text);
+  if (runs.length < 2) return null;
+  return (runs[runs.length - 1]![0] - runs[0]![1] - runs.slice(1, -1).reduce((s, [a, b]) => s + b - a, 0)) / (runs.length - 1);
 }
 
 /** Forget cached metrics, e.g. after web fonts finish loading. */
 export function clearMetrics(): void {
   glyphCache.clear();
-  dotCache.clear();
+  runCache.clear();
 }
 
 export function applyTextTransform(text: string, transform: string): string {
