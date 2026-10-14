@@ -1,0 +1,34 @@
+{
+  "name": "floating-points",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fluid, balanced ellipsis: smart text truncation for one or many lines, with the ellipsis anywhere and optically even spacing.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./transitions": {
+      "types": "./dist/transitions.d.ts",
+      "default": "./dist/transitions.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite demo --port 4181 --strictPort",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.4"
+  }
+}
