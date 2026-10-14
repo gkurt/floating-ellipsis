@@ -16,6 +16,25 @@ export interface TransitionOptions {
   easing?: string;
   /** Blur radius in px. Default 4. */
   blur?: number;
+  /**
+   * Slide the ellipsis' marks, and glyphs that stay but move, from where they
+   * were to their new place instead of letting them jump. Default true.
+   */
+  slide?: boolean;
+  /**
+   * How long glyphs take to leave:
+   * - 'leeway' (default): in proportion to the room their removal frees. When
+   *   text is squeezed hard (a fast drag), removing a glyph frees almost
+   *   nothing and there is nowhere to animate into, so it goes at once.
+   * - 'fixed': always `duration`.
+   */
+  pace?: 'leeway' | 'fixed';
+  /**
+   * When the marks move as glyphs leave: 'together' (default) with them, or
+   * 'after' they have merged, so the dots only spread into the freed space
+   * once it is empty.
+   */
+  marks?: 'together' | 'after';
   /** Skip animations when the user prefers reduced motion. Default true. */
   respectReducedMotion?: boolean;
 }
@@ -32,6 +51,8 @@ interface Ghost {
   cleanup?: () => void;
 }
 
+type Before = { box: DOMRect; ink: DOMRect };
+
 const center = (r: DOMRect) => [r.left + r.width / 2, r.top + r.height / 2] as const;
 
 /** The same curve played backwards: cubic-bezier(a, b, c, d) → (1 - c, 1 - d, 1 - a, 1 - b). */
@@ -43,14 +64,20 @@ function reversed(easing: string): string {
   return `cubic-bezier(${1 - c},${1 - d},${1 - a},${1 - b})`;
 }
 
+/** Below this, an animation isn't worth showing. */
+const INSTANT = 60;
+
 /**
- * Animate glyphs as truncation reveals or hides them. Needs an instance
- * created with `glyphs: true`. Returns a function that stops the transitions.
+ * Animate glyphs as truncation reveals or hides them. Glyph effects need an
+ * instance created with `glyphs: true`; sliding marks works either way.
+ * Returns a function that stops the transitions.
  *
  * Ghosts live in an overlay next to the text, never inside it: anything
  * positioned inside the line would disturb its measurement, and the line's
  * elements move around while fitting. A frame loop keeps each ghost on its
- * glyph (or on its ellipsis) while the text reflows.
+ * glyph (or on its ellipsis) while the text reflows. Slides are visual only
+ * (a transform, or a relative offset for inline glyphs), so the layout the
+ * library measures is never disturbed.
  */
 export function transitions(instance: Elide, options: TransitionOptions = {}): () => void {
   const {
@@ -58,10 +85,14 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     duration = 460,
     easing = 'cubic-bezier(.45,0,.2,1)',
     blur = 4,
+    slide = true,
+    pace = 'leeway',
+    marks: markTiming = 'together',
     respectReducedMotion = true,
   } = options;
   const ghosts = new Set<Ghost>();
   const entering = new Map<HTMLElement, Ghost>();
+  const slides = new Map<HTMLElement, Animation>();
   let frame = 0;
 
   // Absolutely positioned without offsets, the layer sits at the start of the
@@ -110,6 +141,65 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     }
     if (!frame) frame = requestAnimationFrame(loop);
   }
+
+  // ---------------------------------------------------------------------------
+  // Slides
+
+  function stopSlide(el: HTMLElement) {
+    slides.get(el)?.cancel();
+  }
+
+  /** Move `el` visually from `dx, dy` away back to where layout put it. */
+  function startSlide(el: HTMLElement, dx: number, dy: number, ms: number, delay: number, inline = false) {
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    // Inline glyphs can't be transformed; a relative offset moves them just
+    // as well without touching layout. Marks are inline-blocks.
+    if (inline) el.style.position = 'relative';
+    const frames: Keyframe[] = inline
+      ? [{ left: `${dx}px`, top: `${dy}px` }, { left: '0px', top: '0px' }]
+      : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }];
+    const anim = el.animate(frames, { duration: ms, delay, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'backwards' });
+    slides.set(el, anim);
+    const done = () => {
+      if (slides.get(el) !== anim) return;
+      slides.delete(el);
+      if (inline) el.style.position = '';
+    };
+    anim.addEventListener('finish', done);
+    anim.addEventListener('cancel', done);
+  }
+
+  /** Slide marks from where they were painted. `now` are their layout positions. */
+  function slideMarks(change: ElideChange, now: DOMRect[][], ms: number, delay: number) {
+    now.forEach((marks, j) => {
+      const before = change.marksBefore[j];
+      const els = instance.markElements(j);
+      if (!before?.length || !marks.length) return;
+      if (els.length === marks.length && before.length === marks.length) {
+        els.forEach((el, k) => startSlide(el, before[k]!.left - marks[k]!.left, before[k]!.top - marks[k]!.top, ms, delay));
+      } else if (els.length === 1) {
+        // One glyph drawing several dots: move it by its first dot.
+        startSlide(els[0]!, before[0]!.left - marks[0]!.left, before[0]!.top - marks[0]!.top, ms, delay);
+      }
+    });
+  }
+
+  /** Slide glyphs that stayed visible but moved along their line. */
+  function slideGlyphs(change: ElideChange, ms: number) {
+    const moves: [HTMLElement, number][] = [];
+    for (const [i, before] of change.glyphsBefore) {
+      const el = instance.glyph(i);
+      if (!el?.isConnected || entering.has(el)) continue;
+      const box = el.getBoundingClientRect();
+      // A glyph that changed lines just goes there; sliding across lines reads as noise.
+      if (Math.abs(before.box.top - box.top) > box.height / 2) continue;
+      moves.push([el, before.box.left - box.left]);
+    }
+    for (const [el, dx] of moves) startSlide(el, dx, 0, ms, 0, true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ghosts
 
   /** A copy of a glyph over `box`: a wrapper (moves, changes colour) around its text. */
   function ghostOf(text: string, box: DOMRect, style: CSSStyleDeclaration, color: string) {
@@ -184,18 +274,18 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   }
 
   /** The mark a newly shown glyph grows out of. */
-  function sourceMark(i: number, change: ElideChange): DOMRect | undefined {
+  function sourceMark(i: number, change: ElideChange, now: DOMRect[][]): DOMRect | undefined {
     const was = change.previous?.hidden.findIndex((p) => i >= p.start && i < p.end) ?? -1;
     const prev = change.previous?.hidden[was];
     if (!prev) return undefined;
     // The part it came from usually still exists, a little smaller.
-    const now = change.state.hidden
+    const match = change.state.hidden
       .map((p, j) => ({ p, j }))
       .filter(({ p }) => p.start < prev.end && p.end > prev.start)
       .sort((a, b) => Math.abs((a.p.start + a.p.end) / 2 - i) - Math.abs((b.p.start + b.p.end) / 2 - i))[0];
-    if (now) {
-      const marks = instance.marks(now.j);
-      return i < now.p.start ? marks[0] : marks[marks.length - 1];
+    if (match) {
+      const marks = now[match.j] ?? [];
+      return i < match.p.start ? marks[0] : marks[marks.length - 1];
     }
     return markOf(i, prev, change.marksBefore[was] ?? []);
   }
@@ -205,7 +295,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     { opacity: 1, filter: 'blur(0px)' },
   ];
 
-  function enter(i: number, change: ElideChange) {
+  function enter(i: number, change: ElideChange, now: DOMRect[][]) {
     const el = instance.glyph(i);
     const ink = instance.glyphInk(i);
     if (!el || !ink) return;
@@ -215,7 +305,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     let anims: Animation[];
     const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
     if (effect === 'merge') {
-      const mark = sourceMark(i, change);
+      const mark = sourceMark(i, change, now);
       if (!mark) {
         ghost.el.remove();
         return;
@@ -241,7 +331,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     track(g);
   }
 
-  function leave(i: number, before: { box: DOMRect; ink: DOMRect }, change: ElideChange) {
+  function leave(i: number, before: Before, change: ElideChange, now: DOMRect[][], ms: number) {
     const j = change.state.hidden.findIndex((p) => i >= p.start && i < p.end);
     const part = change.state.hidden[j];
     const follow = instance.ellipses[j];
@@ -253,15 +343,15 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
     let anims: Animation[];
     if (effect === 'merge') {
-      const mark = markOf(i, part, instance.marks(j));
+      const mark = markOf(i, part, now[j] ?? []);
       if (!mark) {
         ghost.el.remove();
         return;
       }
       const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(ghost, box, ink, mark, [style.color, markColor], duration * 0.85, false);
+      anims = morph(ghost, box, ink, mark, [style.color, markColor], ms, false);
     } else {
-      anims = [ghost.el.animate(fadeFrames(), { duration: duration * 0.8, easing, direction: 'reverse', fill: 'both' })];
+      anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing, direction: 'reverse', fill: 'both' })];
     }
     track({ el: ghost.el, anims, follow, dx: box.left - anchor.left, dy: box.top - anchor.top });
   }
@@ -288,6 +378,20 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     });
   }
 
+  /**
+   * How long leaving glyphs get. Removing glyphs frees their width, minus
+   * whatever the text was overflowing by; what is left over is the room the
+   * animation has. Little room means the text is squeezed: be quick.
+   */
+  function leaveTime(change: ElideChange): number {
+    if (pace === 'fixed' || !change.hidden.length || change.shown.length) return duration * 0.85;
+    let removed = 0;
+    for (const i of change.hidden) removed += change.hiddenGlyphs.get(i)?.box.width ?? 0;
+    if (!removed) return duration * 0.85;
+    const leeway = Math.min(1, Math.max(0, change.state.slack / removed));
+    return duration * 0.85 * leeway;
+  }
+
   const off = instance.onChange((change: ElideChange) => {
     // Glyphs hidden mid-entrance stop entering.
     for (const i of change.hidden) {
@@ -297,10 +401,30 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     if (change.reset || !change.previous) return;
     if (respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    for (const i of change.shown) enter(i, change);
-    for (const i of change.hidden) {
-      const before = change.hiddenGlyphs.get(i);
-      if (before) leave(i, before, change);
+    // Where the marks are laid out now, with any running slides undone.
+    const now = change.state.hidden.map((_, j) => {
+      for (const el of instance.markElements(j)) stopSlide(el);
+      return instance.marks(j);
+    });
+    const ms = leaveTime(change);
+    const instant = ms < INSTANT;
+    const leaving = change.hidden.length > 0;
+
+    if (slide && !instant) {
+      for (const el of slides.keys()) if (!el.isConnected) stopSlide(el);
+      const stays = [...slides.keys()].filter((el) => el.hasAttribute('data-fp-glyph'));
+      for (const el of stays) stopSlide(el);
+      slideGlyphs(change, leaving ? ms : duration);
+      const after = markTiming === 'after' && leaving && effect === 'merge';
+      slideMarks(change, now, after ? ms * 0.6 : leaving ? ms : duration, after ? ms * 0.8 : 0);
+    }
+
+    for (const i of change.shown) enter(i, change, now);
+    if (!instant) {
+      for (const i of change.hidden) {
+        const before = change.hiddenGlyphs.get(i);
+        if (before) leave(i, before, change, now, ms);
+      }
     }
     for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
     if (ghosts.size) place();
@@ -309,6 +433,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   return () => {
     off();
     for (const g of [...ghosts]) g.anims.forEach((a) => a.cancel());
+    for (const a of [...slides.values()]) a.cancel();
     cancelAnimationFrame(frame);
     layer.remove();
   };

@@ -69,17 +69,17 @@ export interface ElideOptions {
    */
   gap?: Gap;
   /**
-   * Make a truncated line end exactly at the edge of the available area, so
-   * resizing flows smoothly instead of stepping a glyph at a time:
-   * - 'ellipsis' (default): the slack goes into the gaps around the
-   *   ellipsis, equally. The text stays put; the ellipsis floats between.
-   * - 'dots': the slack evens out every gap, so text, marks and text again
-   *   are all equally spaced. Needs an ellipsis of several marks ('...' or
-   *   drawn); with a single '…' it behaves like 'ellipsis'.
+   * Make every line holding an ellipsis end exactly at the edge of the
+   * available area, so resizing flows smoothly instead of stepping a glyph
+   * at a time:
+   * - 'dots' (default): the slack evens out every gap, so text, marks and
+   *   text again are all equally spaced. A single glyph like '…' is redrawn
+   *   as separate dots shaped like its own.
+   * - 'ellipsis': the slack goes into the two gaps around the ellipsis,
+   *   equally. The dots keep their spacing and float between the text.
    * - 'spread': the slack is spread over the line as letter-spacing, like
    *   justified text. Single-line only; otherwise behaves like 'ellipsis'.
    * - false: leave the slack at the end of the line.
-   * Applies to ellipses on the last line.
    */
   justify?: 'ellipsis' | 'dots' | 'spread' | false;
   /** Drop whitespace touching an ellipsis. Default true. */
@@ -138,6 +138,11 @@ export interface ElideState {
   lines: number;
   /** Spacing around each ellipsis. */
   gaps: GapInfo[];
+  /**
+   * Room that was left on the lines holding ellipses before justification
+   * took it in, in px. Small values mean the text is tightly packed.
+   */
+  slack: number;
 }
 
 export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
@@ -152,8 +157,10 @@ export interface ElideChange {
   shown: number[];
   /** Grapheme indices that became hidden. */
   hidden: number[];
-  /** Glyph mode only: box and ink box of each newly hidden glyph just before the update. */
+  /** Glyph mode only: box and ink box of each newly hidden glyph as last painted. */
   hiddenGlyphs: Map<number, { box: DOMRect; ink: DOMRect }>;
+  /** Glyph mode only: box and ink box of every glyph that was showing, as last painted. */
+  glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>;
   /** Mark boxes of each ellipsis just before the update. */
   marksBefore: DOMRect[][];
 }
@@ -185,7 +192,7 @@ const DEFAULTS: Settings = {
   keep: null,
   ellipsis: '…',
   gap: 'dots',
-  justify: 'ellipsis',
+  justify: 'dots',
   trim: true,
   snap: null,
   observe: true,
@@ -381,6 +388,14 @@ export class Elide {
     return boxes;
   }
 
+  /**
+   * The elements drawing the marks of ellipsis `index`. A single glyph like
+   * '…' is one element even though `marks()` reports its dots separately.
+   */
+  markElements(index = 0): HTMLElement[] {
+    return index < (this.current?.hidden.length ?? 0) ? [...(this.joins[index]?.marks ?? [])] : [];
+  }
+
   /** One box per rendered line of visible text, in viewport coordinates. */
   lineRects(): DOMRect[] {
     return Array.from(this.lineEl.getClientRects());
@@ -461,15 +476,34 @@ export class Elide {
     }
     if (this.observer || typeof ResizeObserver === 'undefined') return;
     this.lastWidth = -1;
-    this.observer = new ResizeObserver((entries) => {
+    const host = this.element;
+    const observer = new ResizeObserver((entries) => {
       const entry = entries[entries.length - 1]!;
       const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+      const height = entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
       // Height changes are usually our own doing (fewer lines); only width matters.
       if (Math.abs(width - this.lastWidth) < 0.01) return;
       this.lastWidth = width;
       this.run('resize');
+      // Truncating usually changes the height the observer just reported
+      // (the old text was reflowed at the new width first). Left alone, that
+      // is an undelivered notification, which browsers report as an error.
+      // Look away until the next frame instead; picking up again reports the
+      // same width, which is a no-op.
+      const cs = getComputedStyle(host);
+      const now =
+        host.getBoundingClientRect().height -
+        parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) -
+        parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
+      if (Math.abs(now - height) > 0.5) {
+        observer.unobserve(host);
+        requestAnimationFrame(() => {
+          if (this.observer === observer) observer.observe(host);
+        });
+      }
     });
-    this.observer.observe(this.element);
+    this.observer = observer;
+    observer.observe(host);
   }
 
   private setText(text: string) {
@@ -599,19 +633,26 @@ export class Elide {
   }
 
   /**
-   * Vertical extent and right edge of the last rendered line. A line can come
-   * back as several boxes, so take the union of the boxes on the last line.
+   * Rendered lines, top to bottom: vertical extent and right edge. A line can
+   * come back as several boxes, so boxes sharing a top are merged.
    */
-  private lastLine(): { top: number; bottom: number; right: number } | null {
-    const rects = Array.from(this.lineEl.getClientRects());
-    if (!rects.length) return null;
-    const top = Math.max(...rects.map((r) => r.top));
-    const line = rects.filter((r) => r.top > top - 1);
-    return {
-      top,
-      bottom: Math.max(...line.map((r) => r.bottom)),
-      right: Math.max(...line.map((r) => r.right)),
-    };
+  private lineBoxes(): { top: number; bottom: number; right: number }[] {
+    const lines: { top: number; bottom: number; right: number }[] = [];
+    for (const r of this.lineEl.getClientRects()) {
+      const line = lines.find((l) => Math.abs(l.top - r.top) < 1);
+      if (line) {
+        line.bottom = Math.max(line.bottom, r.bottom);
+        line.right = Math.max(line.right, r.right);
+      } else lines.push({ top: r.top, bottom: r.bottom, right: r.right });
+    }
+    return lines.sort((a, b) => a.top - b.top);
+  }
+
+  /** Index of the line ellipsis `index` is on, or -1. */
+  private lineOf(index: number, lines: { top: number; bottom: number }[]): number {
+    const r = this.joins[index]!.ellipsis.getBoundingClientRect();
+    const middle = r.top + r.height / 2;
+    return lines.findIndex((l) => middle >= l.top && middle <= l.bottom);
   }
 
   // -------------------------------------------------------------------------
@@ -721,11 +762,11 @@ export class Elide {
   }
 
   /**
-   * Stretch the last line so it ends exactly at the right edge, putting the
-   * slack into the ellipses on that line. Earlier lines are left alone: their
-   * slack comes from word wrapping and would make a hole.
+   * Stretch every line holding an ellipsis so it ends exactly at the right
+   * edge, putting that line's slack into its ellipses. Lines are done top to
+   * bottom; filling a line up to the edge keeps its line break where it was.
    */
-  private justify(run: Run, plans: GapPlan[], lines: number): GapInfo[] {
+  private justify(run: Run, plans: GapPlan[], lines: number): { gaps: GapInfo[]; slack: number } {
     const layout = run.marks!;
     const info = (plan: GapPlan, left: number, right: number, inner: readonly number[], extra: number, slack: number): GapInfo => ({
       ...plan,
@@ -734,95 +775,105 @@ export class Elide {
       inner: layout.natural.map((v, i) => v + (inner[i] ?? 0) + extra),
       slack,
     });
-    const base = plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, 0, 0));
+    const infos = plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, 0, 0));
+
+    // Group the ellipses by line, and total the room they could take in.
+    const boxes = this.lineBoxes();
+    const byLine = new Map<number, number[]>();
+    plans.forEach((_, j) => {
+      const line = this.lineOf(j, boxes);
+      if (line >= 0) byLine.set(line, [...(byLine.get(line) ?? []), j]);
+    });
+    let room = 0;
+    for (const line of byLine.keys()) room += Math.max(0, run.right - boxes[line]!.right);
     const mode = this.settings.justify;
-    const last = this.lastLine();
-    if (!mode || !last) return base;
+    if (!mode || room <= 0) return { gaps: infos, slack: room };
 
-    const onLast = plans
-      .map((_, j) => j)
-      .filter((j) => {
-        const r = this.joins[j]!.ellipsis.getBoundingClientRect();
-        const middle = r.top + r.height / 2;
-        return middle >= last.top && middle <= last.bottom;
-      });
-    const room = run.right - last.right;
-    if (!onLast.length || room <= 0) return base;
-
-    const holds = () => {
+    const holds = (line: number, ellipses: number[]) => {
       const m = this.measure(run);
-      return m.ok && m.lines === lines;
+      if (!m.ok || m.lines !== lines) return false;
+      const now = this.lineBoxes();
+      return ellipses.every((j) => this.lineOf(j, now) === line);
     };
-    const restore = () => {
-      this.lineEl.style.letterSpacing = '';
-      plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight, layout.inner));
-    };
-    const sides = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
-    const dots = mode === 'dots';
-    const gapsOf = (p: GapPlan) => sides(p) + (dots ? layout.natural.length : 0);
-    const total = onLast.reduce((sum, j) => sum + gapsOf(plans[j]!), 0);
-
-    // Layout snaps each inline piece to 1/64 px, so filling the line exactly
+    // Layout snaps each inline piece to 1/64 px, so filling a line exactly
     // can tip it over and wrap. Stay a hair inside, backing off if needed.
-    for (const inset of [1 / 16, 0.25, 1]) {
-      const slack = room - inset;
-      if (slack <= 0) break;
+    const insets = [1 / 16, 0.25, 1];
 
-      if (mode === 'spread' && lines === 1) {
-        // Letter-spacing goes after every character; drawn marks get the
-        // same as margins. Measure how the line grows rather than count.
-        const apply = (ls: number) => {
-          this.lineEl.style.letterSpacing = `${run.letterSpacing + ls}px`;
-          if (layout.drawn) {
-            plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight + ls, layout.inner.map((v) => v + ls)));
-          }
-        };
+    if (mode === 'spread' && lines === 1) {
+      // Letter-spacing goes after every character; drawn marks get the same
+      // as margins. Measure how the line grows rather than count characters.
+      const apply = (ls: number) => {
+        this.lineEl.style.letterSpacing = ls ? `${run.letterSpacing + ls}px` : '';
+        if (layout.drawn) {
+          plans.forEach((p, j) => this.applySpacing(j, p.marginLeft, p.marginRight + ls, layout.inner.map((v) => v + ls)));
+        }
+      };
+      const start = boxes[0]!.right;
+      for (const inset of insets) {
+        const slack = room - inset;
+        if (slack <= 0) break;
         const probe = slack / Math.max(1, this.lineEl.textContent?.length ?? 1);
         apply(probe);
-        const grown = (this.lastLine()?.right ?? last.right) - last.right;
+        const grown = (this.lineBoxes()[0]?.right ?? start) - start;
         const ls = grown > 0 ? (probe * slack) / grown : 0;
         apply(ls);
-        if (holds()) return plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, ls, slack / plans.length));
-        restore();
-        continue;
-      }
-
-      if (!total) return base;
-      // Each ellipsis on the last line takes a share of the slack in
-      // proportion to the gaps it spreads it over.
-      const infos = base.slice();
-      for (const j of onLast) {
-        const p = plans[j]!;
-        const count = gapsOf(p);
-        if (!count) continue;
-        const share = (slack * count) / total;
-        let left = p.marginLeft;
-        let right = p.marginRight;
-        let inner = layout.inner;
-        if (dots) {
-          // Every gap of this ellipsis becomes the same width.
-          const current = [
-            ...(p.naturalLeft !== null ? [p.naturalLeft + p.marginLeft] : []),
-            ...layout.natural.map((v, i) => v + layout.inner[i]!),
-            ...(p.naturalRight !== null ? [p.naturalRight + p.marginRight] : []),
-          ];
-          const even = (current.reduce((s, v) => s + v, 0) + share) / count;
-          if (p.naturalLeft !== null) left = even - p.naturalLeft;
-          if (p.naturalRight !== null) right = even - p.naturalRight;
-          inner = layout.natural.map((v) => even - v);
-        } else {
-          const each = share / count;
-          if (p.naturalLeft !== null) left += each;
-          if (p.naturalRight !== null) right += each;
+        if (holds(0, plans.map((_, j) => j))) {
+          return { gaps: plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, ls, slack / plans.length)), slack: room };
         }
-        this.applySpacing(j, left, right, inner);
-        infos[j] = info(p, left, right, inner, 0, share);
       }
-      if (holds()) return infos;
-      restore();
+      apply(0);
+      return { gaps: infos, slack: room };
     }
-    restore();
-    return base;
+
+    const dots = mode === 'dots';
+    const sides = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
+    const gapsOf = (p: GapPlan) => sides(p) + (dots ? layout.natural.length : 0);
+
+    for (const line of [...byLine.keys()].sort((a, b) => a - b)) {
+      const ellipses = byLine.get(line)!;
+      const lineRoom = run.right - (this.lineBoxes()[line]?.right ?? run.right);
+      const total = ellipses.reduce((sum, j) => sum + gapsOf(plans[j]!), 0);
+      if (lineRoom <= 0 || !total) continue;
+      for (const inset of insets) {
+        const slack = lineRoom - inset;
+        if (slack <= 0) break;
+        // Each ellipsis takes a share in proportion to the gaps it spreads it over.
+        const tried = new Map<number, GapInfo>();
+        for (const j of ellipses) {
+          const p = plans[j]!;
+          const count = gapsOf(p);
+          if (!count) continue;
+          const share = (slack * count) / total;
+          let left = p.marginLeft;
+          let right = p.marginRight;
+          let inner = layout.inner;
+          if (dots) {
+            // Every gap of this ellipsis becomes the same width.
+            const current = [
+              ...(p.naturalLeft !== null ? [p.naturalLeft + p.marginLeft] : []),
+              ...layout.natural.map((v, i) => v + layout.inner[i]!),
+              ...(p.naturalRight !== null ? [p.naturalRight + p.marginRight] : []),
+            ];
+            const even = (current.reduce((sum, v) => sum + v, 0) + share) / count;
+            if (p.naturalLeft !== null) left = even - p.naturalLeft;
+            if (p.naturalRight !== null) right = even - p.naturalRight;
+            inner = layout.natural.map((v) => even - v);
+          } else {
+            const each = share / count;
+            if (p.naturalLeft !== null) left += each;
+            if (p.naturalRight !== null) right += each;
+          }
+          this.applySpacing(j, left, right, inner);
+          tried.set(j, info(p, left, right, inner, 0, share));
+        }
+        if (holds(line, ellipses)) {
+          for (const [j, g] of tried) infos[j] = g;
+          break;
+        }
+        for (const j of ellipses) this.applySpacing(j, plans[j]!.marginLeft, plans[j]!.marginRight, layout.inner);
+      }
+    }
+    return { gaps: infos, slack: room };
   }
 
   // -------------------------------------------------------------------------
@@ -878,9 +929,9 @@ export class Elide {
     }
     const plans = this.render(run, hidden);
     fit = this.measure(run);
-    const gaps = hidden.length ? this.justify(run, plans, fit.lines) : [];
+    const { gaps, slack } = hidden.length ? this.justify(run, plans, fit.lines) : { gaps: [], slack: 0 };
 
-    const state = this.makeState(hidden, fit.lines, gaps, pins);
+    const state = this.makeState(hidden, fit.lines, gaps, pins, slack);
     this.current = state;
     host.toggleAttribute('data-truncated', state.truncated);
     if (this.settings.title && state.truncated !== this.titled) {
@@ -917,6 +968,7 @@ export class Elide {
       shown,
       hidden: gone,
       hiddenGlyphs,
+      glyphsBefore,
       marksBefore,
     };
     for (const fn of this.listeners) fn(change);
@@ -938,7 +990,7 @@ export class Elide {
     this.painted = { glyphs, marks };
   }
 
-  private makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.pins): ElideState {
+  private makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.pins, slack = 0): ElideState {
     const part = ([start, end]: Range): Part => ({
       start,
       end,
@@ -952,6 +1004,7 @@ export class Elide {
       kept: hidden.length ? pins.map(part) : [],
       lines,
       gaps,
+      slack,
     };
   }
 }
