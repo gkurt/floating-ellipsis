@@ -159,21 +159,37 @@ function growTip(t, tip) {
       from[i] = new DOMRect(area.left + area.width / 2, area.top, 0, area.height);
     }
   });
+  // And the dots of every ellipsis, as drawn.
+  const dots = t.state.hidden.flatMap((_, j) => t.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
 
-  // The tip as it ends up: the full text, one span per grapheme, over the
-  // line, wrapping at the window's edge (after a separator, where it can).
+  // The tip as it ends up: the full text, one span per grapheme, over the line.
   const spans = t.graphemes.map((g) => {
     const span = document.createElement('span');
     span.textContent = g;
     span.style.position = 'relative';
     return span;
   });
-  tip.replaceChildren(...spans.flatMap((span, i) => ('/\\'.includes(t.graphemes[i]) ? [span, document.createElement('wbr')] : [span])));
+  tip.replaceChildren(...spans);
   const line = t.lineRects()[0];
+  const view = document.documentElement.clientWidth;
   tip.style.left = `${line.left}px`;
   tip.style.top = `${line.top}px`;
-  tip.style.maxWidth = `${document.documentElement.clientWidth - line.left - 24}px`;
+  tip.style.maxWidth = '';
+  tip.style.whiteSpace = 'nowrap';
   tip.hidden = false;
+  // One line, slid left if that's what it takes to stay on screen. Only text
+  // wider than the window wraps (after a separator, where it can).
+  let box = tip.getBoundingClientRect();
+  if (box.width > view - 16) {
+    // (Chrome breaks at <wbr> even with nowrap, so they only go in now.)
+    spans.forEach((span, i) => '/\\'.includes(t.graphemes[i]) && span.after(document.createElement('wbr')));
+    tip.style.whiteSpace = '';
+    tip.style.maxWidth = `${view - 16}px`;
+    tip.style.left = `${line.left - (box.left - 8)}px`;
+  } else if (box.right > view - 8) {
+    tip.style.left = `${line.left - (box.right - (view - 8))}px`;
+  }
+  box = tip.getBoundingClientRect();
 
   // Every grapheme travels from where it was. (Inline text can't be
   // transformed, so they move by relative offsets, which don't reflow anything.)
@@ -189,8 +205,15 @@ function growTip(t, tip) {
     );
   });
 
+  // The dots stay where they are and fade as the text comes in.
+  for (const { el, rect } of dots) {
+    const dot = el.cloneNode(true);
+    Object.assign(dot.style, { position: 'absolute', margin: '0', transform: 'none', left: `${rect.left - box.left}px`, top: `${rect.top - box.top}px` });
+    tip.append(dot);
+    dot.animate({ opacity: [1, 0] }, { duration: 180, fill: 'forwards' });
+  }
+
   // And the tip opens out from the line's box to its own.
-  const box = tip.getBoundingClientRect();
   const inset = `${line.top - box.top}px ${box.right - line.right}px ${box.bottom - line.bottom}px ${line.left - box.left}px`;
   tip.animate([{ clipPath: `inset(${inset} round 4px)` }, { clipPath: 'inset(0 round 8px)' }], timing);
 }
@@ -199,11 +222,13 @@ el.addEventListener('pointerenter', () => growTip(t, tip));
 el.addEventListener('pointerleave', () => (tip.hidden = true));
 ```
 
-The graphemes start exactly where they are on screen, whatever the tip's
-padding or line height, since each one is measured, and long text wraps onto
-as many lines as it needs: they travel there too. The demo runs this very
-function in "A tooltip grown from the line"; its paths section goes further
-(sliding to stay on screen, dots that fade out).
+The tip starts as an exact copy of the line, dots included, however many
+ellipses it has: each hidden part comes out of its own. The graphemes start
+exactly where they are on screen, whatever the tip's padding or line height,
+since each one is measured. The tip stays on one line, sliding left to stay on
+screen; only text wider than the window wraps, and the graphemes travel to
+wherever they end up. The demo runs this very function in "A tooltip grown
+from the line".
 
 ## Transitions
 

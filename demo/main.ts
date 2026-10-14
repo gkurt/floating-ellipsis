@@ -579,6 +579,7 @@ const longPaths = [
   '/Users/ada/Library/Mobile Documents/com~apple~CloudDocs/Projects/analytical-engine/archive/2026/notes/drafts/second-pass/reviewed/with-comments-from-charles/final-final/do-not-touch/really-final/sketches-of-the-analytical-engine-invented-by-charles-babbage-with-notes-by-the-translator-and-a-few-more-by-the-editor-who-could-not-resist-adding-their-own.md',
   'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState\\settings\\backups\\2026-10-14\\profiles\\defaults\\color-schemes\\campbell-powershell.json',
   'node_modules/.pnpm/@babel+plugin-transform-modules-commonjs@7.27.1_@babel+core@7.28.0/node_modules/@babel/plugin-transform-modules-commonjs/lib/index.js',
+  '/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/typescript-language-features/package.nls.json',
   '/var/log/nginx/access.log.2026-10-14.gz',
   'https://example.com/docs/guides/typography/truncation/balanced-ellipsis/measuring-ink/raster-scans/why-canvas-metrics-lie-about-dots?ref=floating-ellipsis&utm_source=readme#the-128px-reference',
   '/srv/media/photos/2026/iceland/day-04/glacier-lagoon/IMG_4821.HEIC',
@@ -595,7 +596,9 @@ for (const path of longPaths) {
   span.textContent = path;
   li.append(span);
   growList.append(li);
-  const instance = elide(span, { position: 0.5, snap: snaps.head });
+  // The Windows path has two ellipses: each hidden part comes out of its own.
+  const position = path.startsWith('C:') ? [0.3, 0.7] : 0.5;
+  const instance = elide(span, { position, snap: snaps.head });
   transitions(instance);
   growInstances.push(instance);
   const show = () => growTip(instance, growTipEl);
