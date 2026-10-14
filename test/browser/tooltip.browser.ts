@@ -10,17 +10,6 @@ import { PATH, PROSE, box, frames, make, spacer } from './helpers.ts';
 const slack = server.browser === 'webkit' ? 1 : 0.5;
 const expectNear = (actual: number, expected: number, what = '') => expect(Math.abs(actual - expected), what).toBeLessThan(slack);
 
-/**
- * A test that fails in `engine` because of a bug found there, until it's fixed:
- * - webkit: it fires `pointerleave` on the tip when it lets go of the pointer
- *   captured on a press, though the pointer is still over it, so a press lets
- *   go of the tip again at once.
- * - webkit: a run of the growing text that starts with a space is lined up by
- *   that space's box, which WebKit puts elsewhere once the run collapses it,
- *   so the words after an ellipsis start the animation out of place.
- */
-const knownBug = (engine: string) => (server.browser === engine ? it.fails : it);
-
 const tips: Tooltip[] = [];
 const make_tip = (options: TooltipOptions): Tooltip => {
   const tip = tooltip(options);
@@ -104,7 +93,7 @@ describe('tooltip', () => {
     return { t, tip };
   }
 
-  knownBug('webkit')('grows from the line: every grapheme showing starts where it is', () => {
+  it('grows from the line: every grapheme showing starts where it is', () => {
     const { t, tip } = growing();
     for (const a of tip.element.getAnimations({ subtree: true })) {
       a.pause();
@@ -273,7 +262,7 @@ describe('tooltip', () => {
       return { tip, line, at };
     }
 
-    knownBug('webkit')('holds the tip after a press, until a press elsewhere', async () => {
+    it('holds the tip after a press, until a press elsewhere', async () => {
       const { tip, line, at } = await hovered();
       await press(...at);
       expect(tip.held).toBe(true);

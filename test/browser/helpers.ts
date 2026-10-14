@@ -1,5 +1,6 @@
 /** What the browser suites share: fixtures that clean up after themselves, and layout readings. */
-import { afterEach } from 'vitest';
+import { afterEach, it } from 'vitest';
+import { server } from 'vitest/browser';
 import { type Elide, elide } from '#src/elide.ts';
 import { fontOf, measure } from '#src/metrics.ts';
 import { type ElideOptions, isVisible } from '#src/options.ts';
@@ -18,6 +19,12 @@ export const FONTS = ['16px/20px serif', '15px/20px sans-serif', '14px/20px mono
 export const PROSE =
   'The quick brown fox jumps over the lazy dog while the five boxing wizards jump quickly past a sphinx of black quartz.';
 export const PATH = '/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md';
+
+/**
+ * `it` for a test that fails in `engine` because of a bug found there: an
+ * expected failure until it's fixed. Describe the bug in a comment by the test.
+ */
+export const knownBug = (engine: string): typeof it.fails => (server.browser === engine ? it.fails : it);
 
 const elements: HTMLElement[] = [];
 const created: Elide[] = [];

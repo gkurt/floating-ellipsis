@@ -76,37 +76,53 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   if (mode === 'spread' && t.lines === 1) {
     // Letter-spacing goes after every character; drawn marks get the same
     // as margins. Measure how the line grows rather than count characters.
-    const apply = (ls: number) => {
+    // Firefox rounds letter-spacing to 1/60 px, so it is snapped down to
+    // that, and what that leaves over goes into the ellipses' gaps.
+    const snap = (ls: number) => Math.floor(ls * 60 + 1e-6) / 60;
+    const sidesOf = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
+    const sides = plans.reduce((sum, p) => sum + sidesOf(p), 0);
+    const margins = (p: GapPlan, ls: number, rest: number) => {
+      const each = sidesOf(p) > 0 ? rest / sides : 0;
+      return {
+        left: p.marginLeft + (p.naturalLeft !== null ? each : 0),
+        right: p.marginRight + (p.naturalRight !== null ? each : 0) + (layout.drawn ? ls : 0),
+        inner: layout.drawn ? layout.inner.map((v) => v + ls) : layout.inner,
+      };
+    };
+    const apply = (ls: number, rest: number) => {
       t.spread(ls);
-      if (layout.drawn) {
-        plans.forEach((p, j) =>
-          t.space(
-            j,
-            p.marginLeft,
-            p.marginRight + ls,
-            layout.inner.map((v) => v + ls),
-          ),
-        );
-      }
+      plans.forEach((p, j) => {
+        const m = margins(p, ls, rest);
+        t.space(j, m.left, m.right, m.inner);
+      });
     };
     const start = boxes[0]!.right;
     for (const inset of insets) {
       const slack = room - inset;
       if (slack <= 0) break;
-      const probe = slack / Math.max(1, t.characters);
+      const probe = snap(slack / Math.max(1, t.characters));
+      let grown = 0;
+      if (probe > 0) {
+        yield* phase.write();
+        apply(probe, 0);
+        yield* phase.read();
+        grown = (t.boxes()[0]?.right ?? start) - start;
+      }
+      const ls = grown > 0 ? snap((probe * slack) / grown) : 0;
+      const rest = sides > 0 ? slack - (grown > 0 ? (grown * ls) / probe : 0) : 0;
       yield* phase.write();
-      apply(probe);
+      apply(ls, rest);
       yield* phase.read();
-      const grown = (t.boxes()[0]?.right ?? start) - start;
-      const ls = grown > 0 ? (probe * slack) / grown : 0;
-      yield* phase.write();
-      apply(ls);
-      yield* phase.read();
-      if (holds(0, [...plans.keys()]))
-        return { gaps: plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, ls, slack / plans.length)), slack: room };
+      if (holds(0, [...plans.keys()])) {
+        const gaps = plans.map((p) => {
+          const m = margins(p, 0, rest);
+          return info(p, m.left, m.right, layout.inner, ls, slack / plans.length);
+        });
+        return { gaps, slack: room };
+      }
     }
     yield* phase.write();
-    apply(0);
+    apply(0, 0);
     return { gaps: infos, slack: room };
   }
 

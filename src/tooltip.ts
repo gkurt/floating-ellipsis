@@ -1,4 +1,5 @@
 import type { Elide } from './elide.ts';
+import { isWhitespace } from './graphemes.ts';
 
 /**
  * What a tip shows, and where:
@@ -183,7 +184,8 @@ export class Tooltip {
     tip.addEventListener('pointermove', this.onDrag, on);
     tip.addEventListener('pointerup', this.onRelease, on);
     tip.addEventListener('pointercancel', this.onRelease, on);
-    tip.addEventListener('pointerleave', (e) => this.leave(e.clientX, e.clientY), on);
+    // WebKit also fires it on letting go of a captured pointer still over the tip.
+    tip.addEventListener('pointerleave', (e) => !this.inside(e.clientX, e.clientY, true) && this.leave(e.clientX, e.clientY), on);
   }
 
   get options(): Readonly<TooltipOptions> {
@@ -563,11 +565,12 @@ export class Tooltip {
       });
       return group;
     });
-    // A run drops a space it starts with, which the text keeps, so each is
-    // lined up by its first grapheme with any width.
+    // A run drops a space it starts with, which the text keeps (and engines
+    // disagree on where a dropped space is), so each is lined up by its first
+    // grapheme with ink.
     const lead = runs.map(({ start, end }) => {
       let i = start;
-      while (i < end - 1 && targets[i]!.width === 0) i++;
+      while (i < end - 1 && (targets[i]!.width === 0 || isWhitespace(spans[i]!.textContent ?? ''))) i++;
       return i;
     });
     const range = document.createRange();
@@ -688,8 +691,10 @@ export class Tooltip {
     return this.settings.selectable && this.current !== null && this.settings.reveal !== 'peek' && this.spans.length > 0;
   }
 
-  private inside(x: number, y: number) {
+  /** Whether a point is on the tip; `strictly` inside it, off its edges. */
+  private inside(x: number, y: number, strictly = false) {
     const r = this.element.getBoundingClientRect();
+    if (strictly) return x > r.left && x < r.right && y > r.top && y < r.bottom;
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
   }
 

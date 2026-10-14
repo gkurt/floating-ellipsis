@@ -47,7 +47,7 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 ## Architecture
 
 - Pure logic (`cut`, the math in `metrics`) is DOM-free and unit-tested with `bun test`. Layout is tested in real engines (`test/browser/`) by invariants that hold whatever fonts an engine maps to: lines fit the content box, ellipsis lines end flush, gaps balance, a wider box never shows less, and the tooltip's glyphs land on the line's. The demo is for looking.
-- A test failing in one engine because of a bug found there is marked `knownBug(engine)` (an expected failure, so CI turns red once it's fixed), with the bug described next to the helper. Don't loosen an invariant to make an engine pass.
+- A test failing in one engine because of a bug found there is marked `knownBug(engine)` from `helpers.ts` (an expected failure, so CI turns red once it's fixed), with the bug described in a comment by the test. Don't loosen an invariant to make an engine pass.
 - A layout pass searches for the most visible graphemes that still fit in `lines`, then plans the ink gap on each side of every ellipsis and spreads leftover slack so ellipsis lines end flush with the box.
 - Passes are generators run in lockstep (`lockstep.ts`): all instances read layout, then all write, so N instances share each layout instead of forcing their own. Never read layout in a write phase or write in a read phase; `yield* phase.read()` / `phase.write()` before each. Passes are queued and flushed in a microtask; public getters call `sync()` to flush first.
 - Measure performance on the demo's table page (`/table.html`) and with many instances; a single instance hides layout costs that grow with the page.

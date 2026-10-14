@@ -87,6 +87,8 @@ const SR_ONLY =
   'position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;' +
   'clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;user-select:none';
 
+const WORD_JOINER = '\u2060';
+
 /** Whether wrapping can be turned off without touching how white space collapses. */
 const WRAP_MODE = typeof CSS !== 'undefined' && CSS.supports('text-wrap-mode', 'nowrap');
 
@@ -444,7 +446,8 @@ export class Elide {
     const before = this.settings;
     this.settings = { ...before, ...defined(rest) };
     const s = this.settings;
-    if (markStyleFor(s) !== this.style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify)) {
+    const restyled = markStyleFor(s) !== this.style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify);
+    if (restyled || s.lines > 1 !== before.lines > 1) {
       for (const join of this.joins) this.fillMarks(join);
       // The old measurements describe marks that are gone.
       if (this.lastRun) this.lastRun.marks = null;
@@ -574,7 +577,11 @@ export class Elide {
   private fillMarks(join: Join) {
     this.style = markStyleFor(this.settings);
     join.marks = buildMarks(this.style);
-    join.ellipsis.replaceChildren(...join.marks);
+    // WebKit breaks a line after the (inline-block) marks despite the join's
+    // `nowrap`, unless text sits right before and after them in the ellipsis.
+    // Only text that can wrap needs it: Firefox letter-spaces the joiners.
+    const glue = this.settings.lines > 1 && join.marks.length > 0;
+    join.ellipsis.replaceChildren(...(glue ? [WORD_JOINER, ...join.marks, WORD_JOINER] : join.marks));
   }
 
   private runEl(index: number): HTMLSpanElement {

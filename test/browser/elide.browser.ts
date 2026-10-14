@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { server } from 'vitest/browser';
 import type { Position } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
 import { FONTS, PATH, PROSE, box, content, errors, frames, inkGaps, make, rendered, shown, spacer, track, visible } from './helpers.ts';
@@ -43,16 +42,6 @@ function expectConsistent(t: Elide) {
   }
   expect(rebuilt + t.graphemes.slice(at).join('')).toBe(text);
 }
-
-/**
- * A test that fails in `engine` because of a bug found there, until it's fixed:
- * - webkit: a line can break after an inline-block inside the `nowrap` join, so
- *   drawn marks (justify: 'dots' draws them) part from the glyph after them, and
- *   filling that line wraps it. Lines holding an ellipsis are left short.
- * - firefox: letter-spacing is rounded to 1/60 px per character, so the
- *   measured fill for justify: 'spread' overshoots and is given up.
- */
-const knownBug = (engine: string) => (server.browser === engine ? it.fails : it);
 
 /** Widths from narrow to wide, applying each and re-truncating right away. */
 function* sweep(t: Elide, from: number, to: number, step: number) {
@@ -98,7 +87,7 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
-  knownBug('webkit').each([2, 3])('fits %i lines at every width', (lines) => {
+  it.each([2, 3])('fits %i lines at every width', (lines) => {
     const t = make(box(PROSE, `font:${font}`), { lines, position: 'middle' });
     let before = -1;
     for (const _w of sweep(t, 60, 420, 23)) {
@@ -144,7 +133,7 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
-  knownBug('firefox')('spreads the slack as letter-spacing with justify: "spread"', () => {
+  it('spreads the slack as letter-spacing with justify: "spread"', () => {
     const t = make(box(PROSE, `font:${font}`), { justify: 'spread', position: 'middle' });
     for (const _w of sweep(t, 120, 300, 30)) {
       expectFits(t);
@@ -294,10 +283,12 @@ describe('elide', () => {
   });
 
   it.each([
-    ['full', PROSE],
-    ['visible', null],
-  ] as const)('copies %s text across an ellipsis', (copy, expected) => {
-    const t = make(box(PROSE), { position: 'middle', copy });
+    ['full', PROSE, 1],
+    ['visible', null, 1],
+    ['full', PROSE, 2],
+    ['visible', null, 2],
+  ] as const)('copies %s text across an ellipsis, on %i line(s)', (copy, expected, lines) => {
+    const t = make(box(PROSE), { position: 'middle', copy, lines });
     expect(t.truncated).toBe(true);
     const range = document.createRange();
     range.selectNodeContents(t.element.querySelector('[data-fp-text]')!);
@@ -335,6 +326,17 @@ describe('elide', () => {
     const mark = t.ellipses[0]!.firstChild!;
     expect(t.graphemeAt(mark, 0, 'start')).toBe(part.start);
     expect(t.graphemeAt(mark, 0, 'end')).toBe(part.end);
+  });
+
+  it.each([1, 2])('maps any position in an ellipsis to what it hides, on %i line(s)', (lines) => {
+    const t = make(box(PROSE), { position: 'middle', lines });
+    const part = t.state.hidden[0]!;
+    const nodes = [...t.ellipses[0]!.childNodes];
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      expect(t.graphemeAt(node, 0, 'start')).toBe(part.start);
+      expect(t.graphemeAt(node, 0, 'end')).toBe(part.end);
+    }
   });
 
   it('finds the ellipsis under a point, gaps included', () => {
