@@ -153,6 +153,7 @@ renderReadout();
 
 // Breathing: sweep the width back and forth.
 const breathe = $<HTMLInputElement>('#breathe');
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) breathe.checked = false;
 let phase = 0.62;
 let last = 0;
 function tick(now: number) {

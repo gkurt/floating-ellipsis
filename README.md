@@ -1,29 +1,39 @@
 # floating-points
 
-Smart text truncation for the DOM.
+Fluid, balanced ellipsis. Smart text truncation for the DOM.
 
 - **One line or many.** Clamp to any number of lines.
-- **Ellipsis anywhere.** `'start'`, `'middle'`, `'end'` or any position from 0 to 1.
+- **Ellipsis anywhere.** `'start'`, `'middle'`, `'end'`, any position from 0 to
+  1, or several positions at once.
+- **Keep what matters.** Pin words, patterns or ranges so they stay visible. A
+  pinned word in the middle of a cut gets an ellipsis on each side.
 - **Balanced spacing.** The visible (ink) gap on both sides of the ellipsis is
   equal. By default it matches the gap between the ellipsis' own dots.
 - **Flush ends.** The truncated line ends exactly at the edge of the box, so
   resizing flows continuously instead of stepping a glyph at a time.
-- **Hooks.** Whether the text is truncated, what was left out, the line boxes
-  and the ellipsis' exact ink box: enough to build tooltips that line up letter
-  for letter, or that only respond to the ellipsis.
-- **Change diffs.** Glyphs shown and hidden on every resize, with their
-  positions, plus an optional transitions add-on (fade, blur, merge into the
-  ellipsis).
+- **Any ellipsis.** The font's `…`, any string, or drawn dots, bullets, rings
+  and squares sized from the font itself.
+- **Copy-friendly.** Selecting across an ellipsis and copying gives the hidden
+  text. Screen readers get the full text.
+- **Hooks.** Whether the text is truncated, what each ellipsis hides, the line
+  boxes, and the exact ink box of every dot: enough to build tooltips that line
+  up letter for letter, or that only respond to the ellipsis.
+- **Change diffs and transitions.** Glyphs shown and hidden on every resize,
+  with their positions, plus an optional add-on that morphs glyphs into the
+  nearest dot.
 
 ```js
 import { elide } from 'floating-points';
 
-const t = elide(document.querySelector('.filename'), { position: 'middle' });
+const t = elide(document.querySelector('.filename'), {
+  position: 'middle',
+  keep: /\.[^.]+$/, // always show the extension
+});
 
-t.truncated;        // true
-t.state.omitted;    // the text the ellipsis stands for
-t.ellipsisInk();    // DOMRect around the ellipsis' ink
-t.destroy();        // restore the original content
+t.truncated;          // true
+t.state.hidden;       // [{ start, end, text }], one per ellipsis
+t.ellipsisInk(0);     // DOMRect around the first ellipsis' ink
+t.destroy();          // restore the original content
 ```
 
 ## Develop
@@ -35,8 +45,8 @@ npm test        # unit tests (pure logic)
 npm run build   # dist/ with type declarations
 ```
 
-The demo is in `demo/`. In it, `window.hero` and `window.pathInstances` are
-live instances you can try from the console.
+The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
+`window.pathInstances` are live instances you can try from the console.
 
 ## Options
 
@@ -44,33 +54,52 @@ live instances you can try from the console.
 |---|---|---|
 | `text` | element text | Text to show. Defaults to the element's text, with whitespace collapsed. |
 | `lines` | `1` | Maximum number of lines. |
-| `position` | `'end'` | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. The kept text is split head:tail in that ratio. |
-| `ellipsis` | `'…'` | Any string. |
+| `position` | `'end'` | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses. |
+| `keep` | `null` | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. When they can't all fit, the last ones give way first. |
+| `ellipsis` | `'…'` | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`. |
 | `gap` | `'dots'` | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`. |
-| `justify` | `'ellipsis'` | Where the leftover space goes so the line ends flush. `'ellipsis'`: into both ellipsis gaps, equally. `'spread'`: letter-spacing across the line (single-line only). `false`: leave it at the end. |
-| `trim` | `true` | Drop whitespace next to the ellipsis. |
-| `snap` | `null` | *Experimental.* Move the cut to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. |
+| `justify` | `'ellipsis'` | Where the leftover space goes so the line ends flush. `'ellipsis'`: into both gaps around the ellipsis, equally. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'spread'`: letter-spacing across the line (single-line only). `false`: leave it at the end. |
+| `trim` | `true` | Drop whitespace next to an ellipsis. |
+| `snap` | `null` | *Experimental.* Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. |
 | `observe` | `true` | Re-truncate on resize (ResizeObserver) and when web fonts load. |
-| `glyphs` | `false` | Wrap each grapheme in its own element, for per-glyph styling and transitions. Adds DOM; meant for short text. |
+| `glyphs` | `false` | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text. |
+| `title` | `false` | Put the full text in the element's `title` while it is truncated. |
+| `copy` | `'full'` | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis). |
 | `onChange` | — | Same as `instance.onChange(fn)`. |
 
 `instance.update(options)` changes any option, including `text`.
 
+### Drawn marks
+
+```js
+elide(el, { ellipsis: { shape: 'bullet' } });                 // • • •, sized like the font's •
+elide(el, { ellipsis: { shape: 'ring', count: 4 } });
+elide(el, { ellipsis: { shape: 'square', size: '0.12em', spacing: 3 } });
+elide(el, { ellipsis: { shape: 'dot', like: '…' } });         // the font's … as separate dots
+```
+
+Dots and squares take their size and height from the font's `.`; bullets and
+rings from its `•`. The spacing defaults to the font's own ellipsis rhythm,
+scaled to the mark size.
+
 ## Instance API
 
-- `state`: `{ text, length, truncated, start, end, head, tail, omitted, lines, gap }`.
-  Visible text is graphemes `[0, start)` + ellipsis + `[end, length)`.
-  `gap` holds the target, the natural gaps, the final gaps (`left`/`right`)
-  and the justification `slack`.
-- `truncated`, `graphemes`
-- `ellipsisElement`: stable for the life of the instance, so listeners can stay attached.
-- `ellipsisRect()`: the ellipsis box, or `null`.
-- `ellipsisInk()`: a tight box around the ellipsis' ink, or `null`.
+- `state`: `{ text, length, truncated, hidden, kept, lines, gaps }`.
+  - `hidden` and `kept` are lists of `{ start, end, text }`, in grapheme indices.
+  - `gaps[i]` describes ellipsis `i`: the target, the natural gaps, the final
+    gaps (`left`, `inner[]`, `right`) and the `slack` it absorbed.
+- `truncated`, `graphemes`, `options`, `markStyle` (the marks actually drawn).
+- `ellipsisElement`: the first ellipsis. Stable for the life of the instance,
+  so listeners can stay attached. `ellipses`: all showing ellipses.
+- `ellipsisIndex(node)`: which ellipsis an event target is in, or -1.
+- `ellipsisRect(i)`, `ellipsisInk(i)`: the box, or the tight ink box, of ellipsis `i`.
+- `marks(i)`: the ink box of every dot, bullet or character of ellipsis `i`.
+  For a single `…` glyph, the dots are found inside the glyph.
 - `lineRects()`: one box per rendered line.
-- `glyph(i)`: the element for grapheme `i` (glyph mode).
+- `glyph(i)`, `glyphInk(i)`: the element and ink box of grapheme `i` (glyph mode).
 - `onChange(fn)`: called when the visible text changes. Returns an unsubscribe function.
-  The event has `shown` / `hidden` grapheme indices, `hiddenRects` (where hidden
-  glyphs were, in glyph mode), and `ellipsis.from` / `ellipsis.to`.
+  The event has `shown` / `hidden` grapheme indices, `hiddenGlyphs` (box and
+  ink of each hidden glyph as last painted, in glyph mode) and `marksBefore`.
 - `refresh()`, `update(options)`, `destroy()`
 
 The element also gets a `data-truncated` attribute, for CSS.
@@ -85,9 +114,14 @@ const t = elide(el, { position: 0.5, glyphs: true });
 const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
 ```
 
-Glyphs that appear fly out of the ellipsis, and glyphs that disappear fly into it.
-Ghost glyphs are drawn in an overlay next to the text, never inside it, so
-they don't disturb measurement. They follow their glyph while the text reflows.
+With `'merge'`, a glyph that leaves shrinks into the nearest mark of the
+ellipsis: glyphs on the left go into the left dot, glyphs on the right into
+the right one, and big jumps spread across the middle dots. On the way it
+takes the ellipsis' colour and cross-fades into the mark's shape. Arriving
+glyphs grow back out the same way.
+
+Ghost glyphs are drawn in an overlay next to the text, never inside it, so they
+don't disturb measurement, and they follow the layout while it reflows.
 Respects `prefers-reduced-motion`.
 
 ## How it works
@@ -95,23 +129,43 @@ Respects `prefers-reduced-motion`.
 1. **Fit.** The text is rendered into the element and measured with
    `getClientRects()`, so every CSS property that affects layout is respected.
    A search finds the most graphemes that fit in `lines` lines. On resize it
-   starts from the previous answer, which usually takes 2–3 layout passes.
-2. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
+   starts from the previous answer, which usually takes 2–3 layout passes. The
+   full text is only tried when its summed glyph widths could fit.
+2. **Islands.** With N ellipses, the kept text forms N + 1 islands: the first
+   anchored at the start, the last at the end, and the ones in between centred
+   where they sit in the text. Kept graphemes are handed out one at a time in
+   proportion to the positions, so every island only grows as space grows. Kept
+   parts are added on top, and each gap left over becomes an ellipsis.
+3. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
    because browsers round glyph boxes to whole pixels. The gaps between ink
    edges are computed with kerning ignored, and margins on the ellipsis make
-   both gaps equal the target. For `'dots'`, the ellipsis is drawn on a canvas
-   and scanned for the empty columns between its marks.
-3. **Justify.** Whatever space is left on the ellipsis' line goes into the gaps
-   (or the letter-spacing), backing off by a fraction of a pixel if layout
-   rounding would make the line wrap.
+   both gaps equal the target. The ellipsis is also drawn on a canvas and
+   scanned for the empty columns between its dots, which gives the dot rhythm
+   and the position of each dot.
+4. **Justify.** Whatever space is left on the last line goes into the gaps (or
+   the letter-spacing), backing off by a fraction of a pixel if layout rounding
+   would make the line wrap.
+5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
+   only its neighbours change. Re-inserting it would restart animations and
+   reset hover state on every resize.
+
+## Accessibility
+
+- Screen readers get the full text from a visually hidden copy; the truncated
+  rendering is `aria-hidden`.
+- The visible text stays selectable, and copying across an ellipsis gives the
+  hidden text (`copy: 'full'`).
+- `title: true` adds a native tooltip with the full text while truncated.
+- Drawn marks stay visible in forced-colors (high contrast) mode.
+- Transitions respect `prefers-reduced-motion`.
 
 ## Limits
 
 - Plain text only. Left-to-right text only.
 - The element's width must not depend on its content. Use a block, or a flex
-  item with `min-width: 0`.
-- With several lines, justification only applies when the ellipsis is on the
-  last line. On earlier lines the leftover space comes from word wrapping and
-  would leave a hole.
+  or grid item with `min-width: 0`.
+- With several lines, justification only applies to ellipses on the last line.
+  On earlier lines the leftover space comes from word wrapping and would leave
+  a hole.
 - `snap` is a first pass. Snapping can drop a whole segment, which then shows
-  as wide ellipsis gaps when `justify: 'ellipsis'` is on.
+  as wide ellipsis gaps when `justify` is on.

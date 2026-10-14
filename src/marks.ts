@@ -144,7 +144,11 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, group
     style.shape === 'ring'
       ? `box-sizing:border-box;border:${Math.max(1, d * 0.16)}px solid currentColor;border-radius:50%`
       : `background:currentColor;border-radius:${style.shape === 'square' ? 0 : '50%'}`;
-  const css = `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;${shapeCss}`;
+  // In forced-colors mode backgrounds are overridden, which would erase the
+  // marks; opting out keeps them in the (forced) text colour.
+  const css =
+    `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;` +
+    `forced-color-adjust:none;${shapeCss}`;
   for (const group of groups) {
     for (const el of group) {
       // Keep the margin set by spacing; only rewrite the shape when it changes.
