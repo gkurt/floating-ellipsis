@@ -38,6 +38,13 @@ describe('<elide-text>', () => {
     expect(el.text).toBe(PATH);
   });
 
+  it('highlights what it keeps with keep-class', () => {
+    const el = make(`<elide-text position="middle" keep="/engine/" keep-class="hit" style="width:200px">${PATH}</elide-text>`);
+    expect(el.instance!.truncated).toBe(true);
+    const hits = [...el.querySelectorAll('[data-fp-text] .hit')].map((e) => e.textContent).join('');
+    expect(hits).toBe('engine');
+  });
+
   it('follows attribute and property changes', () => {
     const el = make(`<elide-text style="width:200px">${PROSE}</elide-text>`);
     expect(el.instance!.state.hidden[0]!.end).toBe(el.instance!.state.length);

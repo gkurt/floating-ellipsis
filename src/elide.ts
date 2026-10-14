@@ -4,6 +4,8 @@ import {
   asArray,
   estimateKept,
   hiddenRanges,
+  graphemeClasses,
+  keepClasses,
   keepRanges,
   layoutFor,
   sameRanges,
@@ -12,6 +14,7 @@ import {
 } from './cut.ts';
 import { byId, hookDocument, instances } from './document.ts';
 import { graphemes, isWhitespace } from './graphemes.ts';
+import { childRanges, classRuns, fillPiece, textAt } from './highlight.ts';
 import { type Justified, justify } from './justify.ts';
 import { lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
@@ -121,6 +124,8 @@ export class Elide {
   private offsets: number[] = [0];
   private glyphEls: HTMLSpanElement[] = [];
   private pins: Range[] = [];
+  /** The classes `keep` gives each grapheme, or null. */
+  private classes: (string | null)[] = [];
   private layout: Layout = layoutFor(0, ['end']);
   private readonly original: Node[];
   private readonly srEl: HTMLSpanElement;
@@ -327,7 +332,7 @@ export class Elide {
     if (j >= 0) return side === 'start' ? this.current.hidden[j]!.start : this.current.hidden[j]!.end;
     const pieces = this.pieces();
     if (node instanceof Text) {
-      const range = node.parentElement ? pieces.get(node.parentElement) : undefined;
+      const range = pieces.get(node) ?? (node.parentElement ? pieces.get(node.parentElement) : undefined);
       if (!range) return null;
       const at = this.offsets[range[0]]! + offset;
       let i = range[0];
@@ -346,6 +351,11 @@ export class Elide {
     const hidden = this.current?.hidden ?? [];
     const m = hidden.length;
     const map = new Map<Node, Range>([[this.lineEl, [0, n]]]);
+    // An element holding text, and in text mode each text node and highlight in it.
+    const hold = (el: HTMLElement, range: Range) => {
+      map.set(el, range);
+      if (!this.settings.glyphs) for (const [node, r] of childRanges(el, range, this.offsets)) map.set(node, r);
+    };
     // As `render` lays them out: visible run r gives its first grapheme to the
     // join before it and its last to the join after it.
     for (let r = 0; r <= m; r++) {
@@ -353,15 +363,15 @@ export class Elide {
       let b = r === m ? n : hidden[r]!.start;
       if (r > 0) {
         const take = a < b ? 1 : 0;
-        map.set(this.joins[r - 1]!.after, [a, a + take]);
+        hold(this.joins[r - 1]!.after, [a, a + take]);
         a += take;
       }
       if (r < m) {
         const take = a < b ? 1 : 0;
-        map.set(this.joins[r]!.before, [b - take, b]);
+        hold(this.joins[r]!.before, [b - take, b]);
         b -= take;
       }
-      map.set(this.runEl(r), [a, b]);
+      hold(this.runEl(r), [a, b]);
     }
     hidden.forEach((part, j) => {
       const join = this.joins[j]!;
@@ -404,12 +414,12 @@ export class Elide {
         el = this.joins[r]!.before;
         from = b - 1;
       }
-      const node = el.firstChild;
-      if (!(node instanceof Text)) return null;
-      const start = this.offsets[index]! - this.offsets[from]!;
+      const found = textAt(el, this.offsets[index]! - this.offsets[from]!);
+      if (!found) return null;
+      const [node, at] = found;
       const range = document.createRange();
-      range.setStart(node, start);
-      range.setEnd(node, start + (this.offsets[index + 1]! - this.offsets[index]!));
+      range.setStart(node, at);
+      range.setEnd(node, at + (this.offsets[index + 1]! - this.offsets[index]!));
       return range.getBoundingClientRect();
     }
     return null;
@@ -421,6 +431,11 @@ export class Elide {
     const el = this.glyphEls[index];
     if (!el?.isConnected || !this.lastRun) return null;
     return this.inkOf(this.lastRun, index, el.getBoundingClientRect());
+  }
+
+  /** The classes `keep` gives grapheme `index` (space-separated), or null. */
+  classOf(index: number): string | null {
+    return this.classes[index] ?? null;
   }
 
   /** Subscribe to visible-text changes. Returns an unsubscribe function. */
@@ -536,9 +551,12 @@ export class Elide {
   }
 
   private setPins() {
-    this.pins = toGraphemeRanges(keepRanges(this.text, asArray(this.settings.keep)), this.offsets);
+    const keep = asArray(this.settings.keep);
+    this.pins = toGraphemeRanges(keepRanges(this.text, keep), this.offsets);
+    this.classes = graphemeClasses(keepClasses(this.text, keep), this.offsets);
     for (const el of this.glyphEls) el.removeAttribute('data-fp-kept');
     for (const [s, e] of this.pins) for (let i = s; i < e; i++) this.glyphEls[i]?.setAttribute('data-fp-kept', '');
+    this.glyphEls.forEach((el, i) => (el.className = this.classes[i] ?? ''));
     this.bias = null;
   }
 
@@ -745,13 +763,7 @@ export class Elide {
       if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
       return;
     }
-    const text = this.text.slice(this.offsets[from], this.offsets[to]);
-    const node = el.firstChild;
-    if (node instanceof Text && el.childNodes.length === 1) {
-      if (node.data !== text) node.data = text;
-    } else if (el.textContent !== text || el.childNodes.length > 1) {
-      el.textContent = text;
-    }
+    fillPiece(el, classRuns(this.g, this.classes, from, to));
   }
 
   /**
@@ -775,6 +787,7 @@ export class Elide {
   private showAll() {
     const first = this.joins[0]!;
     first.el.style.display = 'none';
+    first.el.style.position = '';
     this.reconcile([this.runEl(0), first.el]);
     this.fill(this.runEl(0), 0, this.g.length);
     this.fill(first.before, 0, 0);
@@ -782,10 +795,12 @@ export class Elide {
   }
 
   /**
-   * Full text, keeping a showing ellipsis in place but cancelled out by a
-   * negative margin. `width` is the ellipsis' width as last laid out.
+   * Full text, keeping a showing ellipsis in the DOM (hiding it would restart
+   * its animations) but out of the flow, so the text is measured alone.
+   * (Cancelling its width with a margin goes wrong once trying a cut in the
+   * same pass has spaced it differently.)
    */
-  private renderFull(run: Run, width: number) {
+  private renderFull(run: Run) {
     const first = this.joins[0]!;
     if (first.el.style.display === 'none' || !first.ellipsis.isConnected) {
       this.render(run, []);
@@ -797,8 +812,7 @@ export class Elide {
     this.fill(this.runEl(0), 0, n);
     this.fill(first.before, 0, 0);
     this.fill(first.after, n, n);
-    first.ellipsis.style.marginLeft = '';
-    first.ellipsis.style.marginRight = `${-width}px`;
+    first.el.style.position = 'absolute';
   }
 
   /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
@@ -813,6 +827,7 @@ export class Elide {
     const want: Node[] = [this.runEl(0)];
     for (let j = 0; j < m; j++) want.push(this.join(j).el, this.runEl(j + 1));
     this.joins[0]!.el.style.display = '';
+    this.joins[0]!.el.style.position = '';
     this.reconcile(want);
 
     // Visible run r lies between ellipsis r - 1 and ellipsis r. Its first
@@ -1041,7 +1056,6 @@ export class Elide {
     const previous = this.current;
     const reset = this.pendingReset || !previous;
     const first = this.joins[0]!;
-    const shownWidth = first.el.style.display !== 'none' ? first.ellipsis.getBoundingClientRect().width : 0;
     if (first.ellipsis.isConnected) this.markLayout(run);
     const whiteSpace = cs.whiteSpace;
     // On one line, what is showing can be the first measurement to judge
@@ -1052,7 +1066,9 @@ export class Elide {
       WRAP_MODE &&
       this.settings.justify !== 'spread' &&
       cs.direction === 'ltr' &&
-      /^(start|left|justify)$/.test(cs.textAlign);
+      /^(start|left|justify)$/.test(cs.textAlign) &&
+      // A highlight may change the font, which the glyph widths don't know.
+      this.classes.every((c) => c === null);
     let base: { cut: Range[]; end: number } | null = null;
     if (predictable && (reason === 'resize' || reason === 'init') && !this.pendingReset && this.g.length > 0) {
       const { end } = lineSpan(this.lineEl, run.left, run.right);
@@ -1129,7 +1145,7 @@ export class Elide {
         }
         yield* phase.write();
         tried = cut;
-        if (cut.length === 0) this.renderFull(run, shownWidth);
+        if (cut.length === 0) this.renderFull(run);
         else this.render(run, cut);
         yield* phase.read();
         fit = this.measure(run);

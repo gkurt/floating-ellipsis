@@ -5,8 +5,9 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
 - **One line or many.** Clamp to any number of lines.
 - **Ellipsis anywhere.** `'start'`, `'middle'`, `'end'`, any position from 0 to
   1, or several positions at once.
-- **Keep what matters.** Pin words, patterns or ranges so they stay visible. A
-  pinned word in the middle of a cut gets an ellipsis on each side.
+- **Keep what matters.** Pin words, patterns or ranges so they stay visible,
+  and give them a class to highlight them (search results). A pinned word in
+  the middle of a cut gets an ellipsis on each side.
 - **Balanced spacing.** The visible (ink) gap on both sides of the ellipsis is
   equal. By default it matches the gap between the ellipsis' own dots.
 - **Flush ends.** Every line holding an ellipsis ends exactly at the edge of
@@ -67,8 +68,27 @@ The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
 `window.pathInstances` are live instances you can try from the console. The
 hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 `/table.html` is a crowded table: up to 2,500 rows, four truncated cells each,
-as a `<table>` or as grid rows, with draggable columns, timings and a
-tooltip on every cut-off cell.
+as a `<table>` or as grid rows, with draggable columns, timings, a tooltip on
+every cut-off cell, and a search that keeps and highlights every match.
+
+### Releasing
+
+Releases go through [Tegami](https://tegami.fuma-nama.dev) (config in
+`scripts/tegami.mts`). Every change that ships gets a changelog entry in
+`.tegami/<slug>.md`: run `bun run tegami`, or write one by hand.
+
+```md
+---
+packages:
+  'floating-ellipsis': minor
+---
+
+### Highlighted parts
+```
+
+On `main`, the release workflow opens a "chore: release vX.Y.Z" pull request
+with the versions and `CHANGELOG.md` updated; merging it publishes to npm
+through trusted publishing (no token).
 
 ## Options
 
@@ -77,7 +97,7 @@ tooltip on every cut-off cell.
 | `text`     | element text | Text to show. Defaults to the element's text, with whitespace collapsed.                                                                                                                                                                                                                                                                                                                                                            |
 | `lines`    | `1`          | Maximum number of lines.                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `position` | `'end'`      | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses.                                                                                                                                                                                                                                                                                                                    |
-| `keep`     | `null`       | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. When they can't all fit, the last ones give way first.                                                                                                                                                                                                                             |
+| `keep`     | `null`       | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. `{ match, class }` and `{ start, end, class }` also highlight them. When they can't all fit, the last ones give way first. See [Highlights](#highlights).                                                                                                                          |
 | `ellipsis` | `'…'`        | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                                                                                                                                                                                                                                                       |
 | `gap`      | `'dots'`     | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
 | `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
@@ -114,6 +134,26 @@ like any other.
 Dots and squares take their size and height from the font's `.`; bullets and
 rings from its `•`. The spacing defaults to the font's own ellipsis rhythm,
 scaled to the mark size.
+
+### Highlights
+
+```js
+elide(el, { position: 'middle', keep: { match: /engine/gi, class: 'hit' } });
+elide(el, { keep: [{ start: 4, end: 9, class: 'hit' }, /\.[^.]+$/] });
+```
+
+The object forms of `keep` take a `class`: whatever they match stays visible,
+as any kept part does, and is wrapped in a `<span>` with that class (and
+`data-fp-kept`), so it can be styled like a search hit. Text that fits is
+highlighted too. Overlapping parts get both classes. In glyph mode the class
+goes on each glyph. `classOf(i)` tells the classes of grapheme `i`, and the
+[tooltip](#tooltips) gives its copy of the text the same classes.
+
+A highlight next to an ellipsis comes in pieces: the grapheme beside an
+ellipsis is kept with it, so the two never part across lines. Flat styles
+(a background, a colour) meet seamlessly; rounded corners show the seams.
+A class may change the font (bold, say): what fits is still measured, but
+the gaps around an ellipsis are planned with the element's own font.
 
 ### Snapping
 
@@ -161,6 +201,7 @@ already there.
 - `ellipsisIndex(node)`: which ellipsis an event target is in, or -1.
 - `ellipsisRect(i)`, `ellipsisInk(i)`: the box, or the tight ink box, of ellipsis `i`.
 - `ellipsisArea(i)`: the space ellipsis `i` takes between the text before and after it, gaps included. Where the hidden text would go.
+- `classOf(i)`: the classes `keep` gives grapheme `i`, space-separated, or null. See [Highlights](#highlights).
 - `graphemeRect(i)`: the box of grapheme `i` as laid out, or null when it's hidden. Works in text mode too, so a tooltip can line its own copy of the text up with the original, glyph by glyph (the [tooltip](#tooltips) add-on does).
 - `graphemeAt(node, offset, side?)`: the grapheme index, in the full text, of a DOM position in the element's text (say, either end of a selection), or null. A position inside an ellipsis stands for the start (`side: 'start'`) or end (`'end'`) of what it hides, so a range touching an ellipsis covers all of it, as copying does. The [tooltip](#tooltips) add-on uses it to carry a selection made in the text over to its tip.
 - `ellipsisAt(x, y, slop?)`: which ellipsis' area holds a point (e.g. a pointer event's `clientX`/`clientY`), or -1. A better hover target than the ellipsis element, which only spans its marks.
@@ -211,7 +252,8 @@ the cut, then measures the result, so kerning is accounted for.
 | `snap`          | `null`  | `words()`, `separators()`; both are exported from this entry too.        |
 
 It returns `{ text, truncated, hidden, kept, width }`: `hidden` and `kept` as
-in an instance's `state`, and the measured `width` of `text`.
+in an instance's `state`, and the measured `width` of `text`. `keep` takes the
+same forms as in `elide`; a string has no room for classes, so they're ignored.
 
 ## Frameworks
 
@@ -232,6 +274,7 @@ the `text` option and leave the element empty. A `snap` made inline
 
 `<elide-text>` truncates its own text. Its attributes are `lines`, `position`
 (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`),
+`keep-class` (a class to highlight what `keep` matches),
 `ellipsis`, `gap`, `justify` (`false` turns it off), `trim`, `snap` (`words`,
 `paths`, or separator characters), `glyphs`, `tooltip-title` (the `title`
 option), `copy` and `text`. The `options` property takes anything `elide` does,

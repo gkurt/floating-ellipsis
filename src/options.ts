@@ -12,14 +12,14 @@ export interface ElideOptions {
    * Where the ellipsis goes: 'start' | 'middle' | 'end' or 0..1. Default 'end'.
    * An array places several ellipses, e.g. `[0.33, 0.67]`.
    */
-  position?: Position | Position[];
+  position?: Position | readonly Position[];
   /**
    * Parts that always stay visible: a string (first match), a RegExp (every
    * match if global, else the first) or `{ start, end }` string offsets. Text
    * hidden on both sides of a kept part gets an ellipsis on each side.
    * Earlier entries win when not all of them fit.
    */
-  keep?: Keep | Keep[] | null;
+  keep?: Keep | readonly Keep[] | null;
   /**
    * What the ellipsis looks like: a string ('…' by default, '...', '·····')
    * or drawn marks, e.g. `{ shape: 'bullet', count: 5 }`. See `MarkStyle`.

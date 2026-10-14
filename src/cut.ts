@@ -30,8 +30,10 @@ export type Snap = (ctx: SnapContext) => Cut;
 
 export type Position = number | 'start' | 'middle' | 'end';
 
+const isList = <T>(v: T | readonly T[]): v is readonly T[] => Array.isArray(v);
+
 /** One option value or several, as a list. */
-export const asArray = <T>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+export const asArray = <T>(v: T | readonly T[] | null | undefined): readonly T[] => (v == null ? [] : isList(v) ? v : [v]);
 
 export function positionValue(p: Position): number {
   if (p === 'start') return 0;
@@ -526,30 +528,53 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
 // ---------------------------------------------------------------------------
 // Kept parts
 
-export type Keep = string | RegExp | { start: number; end: number };
+/**
+ * A part to keep visible: the first match of a string, every match of a
+ * global RegExp (else the first), or string offsets. The object forms can
+ * give it a `class` too, to highlight it.
+ */
+export type Keep = string | RegExp | { match: string | RegExp; class?: string } | { start: number; end: number; class?: string };
+
+/** String ranges of one `keep` entry's matches. */
+function matches(text: string, k: Keep): Range[] {
+  if (typeof k === 'object' && !(k instanceof RegExp) && !('match' in k))
+    return k.end > k.start ? [[Math.max(0, k.start), Math.min(text.length, k.end)]] : [];
+  const m = typeof k === 'string' || k instanceof RegExp ? k : k.match;
+  if (typeof m === 'string') {
+    const at = m ? text.indexOf(m) : -1;
+    return at >= 0 ? [[at, at + m.length]] : [];
+  }
+  if (m.global || m.sticky) {
+    const re = new RegExp(m.source, m.flags.includes('g') ? m.flags : m.flags + 'g');
+    return [...text.matchAll(re)].filter((x) => x[0]).map((x): Range => [x.index, x.index + x[0].length]);
+  }
+  const x = m.exec(text);
+  return x?.[0] ? [[x.index, x.index + x[0].length]] : [];
+}
+
+/** String ranges of the parts to keep, in the order given. */
+export function keepRanges(text: string, keep: readonly Keep[]): Range[] {
+  return keep.flatMap((k) => matches(text, k));
+}
+
+/** String ranges `keep` gives a class, with the class. */
+export function keepClasses(text: string, keep: readonly Keep[]): [Range, string][] {
+  return keep.flatMap((k) => {
+    const cls = typeof k === 'object' && !(k instanceof RegExp) ? k.class : undefined;
+    return cls ? matches(text, k).map((r): [Range, string] => [r, cls]) : [];
+  });
+}
 
 /**
- * String ranges of the parts to keep: the first match of a string, every
- * match of a global RegExp (else the first), or explicit string offsets.
+ * The classes of each grapheme, from string ranges with a class each:
+ * space-separated where they overlap, null where there's none.
+ * `offsets[i]` is where grapheme `i` starts (length n + 1).
  */
-export function keepRanges(text: string, keep: readonly Keep[]): Range[] {
-  const out: Range[] = [];
-  for (const k of keep) {
-    if (typeof k === 'string') {
-      const at = k ? text.indexOf(k) : -1;
-      if (at >= 0) out.push([at, at + k.length]);
-    } else if (k instanceof RegExp) {
-      if (k.global || k.sticky) {
-        const re = new RegExp(k.source, k.flags.includes('g') ? k.flags : k.flags + 'g');
-        for (const m of text.matchAll(re)) if (m[0]) out.push([m.index, m.index + m[0].length]);
-      } else {
-        const m = k.exec(text);
-        if (m?.[0]) out.push([m.index, m.index + m[0].length]);
-      }
-    } else if (k.end > k.start) {
-      out.push([Math.max(0, k.start), Math.min(text.length, k.end)]);
-    }
-  }
+export function graphemeClasses(classes: readonly [Range, string][], offsets: readonly number[]): (string | null)[] {
+  const out: (string | null)[] = Array.from({ length: offsets.length - 1 }, () => null);
+  for (const [range, cls] of classes)
+    for (const [s, e] of toGraphemeRanges([range], offsets)) for (let i = s; i < e; i++) out[i] = out[i] ? `${out[i]} ${cls}` : cls;
+
   return out;
 }
 

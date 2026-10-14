@@ -3,7 +3,7 @@
  * attributes, for any framework or none.
  */
 import { Binding } from './bind.ts';
-import { type Keep, type Position, type Snap, separators, words } from './cut.ts';
+import { type Position, type Snap, separators, words } from './cut.ts';
 import type { Elide } from './elide.ts';
 import type { Gap } from './metrics.ts';
 import type { ElideChange, ElideOptions } from './options.ts';
@@ -12,6 +12,7 @@ const ATTRIBUTES = [
   'lines',
   'position',
   'keep',
+  'keep-class',
   'ellipsis',
   'gap',
   'justify',
@@ -34,7 +35,7 @@ function parsePosition(value: string): Position | Position[] {
 }
 
 /** A string, or `/pattern/flags`. */
-function parseKeep(value: string): Keep {
+function parseKeep(value: string): string | RegExp {
   const re = /^\/(.+)\/([a-z]*)$/.exec(value);
   return re ? new RegExp(re[1]!, re[2]) : value;
 }
@@ -50,7 +51,7 @@ function parseSnap(value: string): Snap | null {
 /**
  * Truncates its text to fit, like `elide(this, options)`. Attributes:
  * `lines`, `position` (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or
- * `/regex/flags`), `ellipsis`, `gap`, `justify` (`false` to turn it off),
+ * `/regex/flags`) and `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `justify` (`false` to turn it off),
  * `trim` (`false`), `snap` (`words`, `paths`, or separator characters),
  * `glyphs`, `tooltip-title` (the `title` option), `copy` and `text` (else
  * its text content). The `options` property takes anything `elide` does and
@@ -132,7 +133,8 @@ export class ElideElement extends HTMLElement {
     const position = attr('position');
     if (position !== null) options.position = parsePosition(position);
     const keep = attr('keep');
-    if (keep !== null) options.keep = parseKeep(keep);
+    const keepClass = attr('keep-class');
+    if (keep !== null) options.keep = keepClass ? { match: parseKeep(keep), class: keepClass } : parseKeep(keep);
     const ellipsis = attr('ellipsis');
     if (ellipsis !== null) options.ellipsis = ellipsis;
     const gap = attr('gap');

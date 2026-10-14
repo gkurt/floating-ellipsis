@@ -1,4 +1,4 @@
-import { type Elide, elide, separators } from '#src/index.ts';
+import { type Elide, type Keep, elide, separators } from '#src/index.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { $, resizable, segmented } from './ui.ts';
 
@@ -117,6 +117,8 @@ let count = 1000;
 let lines = 1;
 let instances: Elide[] = [];
 let messages: Elide[] = [];
+/** Each truncated cell: its instance, its text, what it always keeps, and its row. */
+let cells: { instance: Elide; text: string; keep: Keep[]; row: Element }[] = [];
 let headers: HTMLElement[] = [];
 let built = 0;
 let lastResize: { ms: number; passes: number } | null = null;
@@ -160,24 +162,32 @@ function setWidths() {
 
 function build() {
   for (const instance of instances) instance.destroy();
-  render(makeRows(count));
+  const rows = makeRows(count);
+  render(rows);
   const start = performance.now();
   tips.hide();
   instances = [];
   messages = [];
-  for (const row of host.querySelectorAll('tbody tr, [role="rowgroup"] > .row')) {
+  cells = [];
+  [...host.querySelectorAll('tbody tr, [role="rowgroup"] > .row')].forEach((row, r) => {
     const [file, folder, message, hash] = [...row.querySelectorAll<HTMLElement>('.cell')];
     const m = elide(message!, { lines });
     messages.push(m);
-    const cells = [
-      elide(file!, { position: 0.5, keep: /\.[^.]+$/ }),
-      elide(folder!, { position: 0.5, snap: bySlash }),
-      m,
-      elide(hash!, { position: 0.5 }),
+    const extension = [/\.[^.]+$/];
+    const made: [Elide, Keep[]][] = [
+      [elide(file!, { position: 0.5, keep: extension }), extension],
+      [elide(folder!, { position: 0.5, snap: bySlash }), []],
+      [m, []],
+      [elide(hash!, { position: 0.5 }), []],
     ];
-    for (const instance of cells) tips.attach(instance);
-    instances.push(...cells);
-  }
+    made.forEach(([instance, keep], i) => {
+      tips.attach(instance);
+      instances.push(instance);
+      cells.push({ instance, text: rows[r]![i]!, keep, row });
+    });
+  });
+  query = '';
+  search();
   for (const instance of instances) instance.onRender(() => passes++);
 
   // Reading an instance runs the passes waiting for it: here, every row
@@ -258,6 +268,38 @@ const startDrag = () => {
   animate();
   addEventListener('pointerup', () => (dragging = false), { once: true });
 };
+
+// ---------------------------------------------------------------------------
+// Search: matches stay visible and are highlighted (a class on `keep`), and
+// rows without one fade. Only cells whose matches change are updated.
+
+const searchBox = $<HTMLInputElement>('#search');
+let query = '';
+
+function search() {
+  const previous = query;
+  query = searchBox.value.trim();
+  const escaped = (q: string) => q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = query ? new RegExp(escaped(query), 'giu') : null;
+  const lower = query.toLocaleLowerCase();
+  const was = previous.toLocaleLowerCase();
+  const hits = new Set<Element>();
+  for (const { instance, text, keep, row } of cells) {
+    const folded = text.toLocaleLowerCase();
+    const hit = lower !== '' && folded.includes(lower);
+    if (hit) hits.add(row);
+    if (!hit && !(was !== '' && folded.includes(was))) continue;
+    instance.update({ keep: hit && pattern ? [{ match: pattern, class: 'hit' }, ...keep] : keep });
+  }
+  host.classList.toggle('searching', query !== '');
+  for (const row of new Set(cells.map((c) => c.row))) row.classList.toggle('miss', !hits.has(row));
+}
+
+let typing = 0;
+searchBox.addEventListener('input', () => {
+  clearTimeout(typing);
+  typing = window.setTimeout(search, 120);
+});
 
 // ---------------------------------------------------------------------------
 // Controls

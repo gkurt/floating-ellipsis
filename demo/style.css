@@ -700,6 +700,28 @@ table.grid {
 .grid [data-fp-ellipsis] {
   color: var(--accent);
 }
+/* Search: a match is kept with the class `hit`; rows without one fade. */
+.hit {
+  /* Flat: beside an ellipsis a match comes in pieces, which should meet seamlessly. */
+  background: var(--accent-2-soft);
+  color: var(--ink);
+}
+.searching .miss {
+  opacity: 0.35;
+}
+.search {
+  font: 13px/1 var(--sans);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 11px;
+  width: 220px;
+}
+.search:focus {
+  outline: 2px solid var(--accent-2-soft);
+  border-color: var(--accent-2);
+}
 .col-handle {
   position: absolute;
   top: 0;

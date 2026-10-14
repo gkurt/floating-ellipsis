@@ -35,9 +35,9 @@ export interface ElideTextOptions {
   /** Space after every grapheme, as CSS `letter-spacing` adds. Default 0. */
   letterSpacing?: number;
   /** Where the ellipsis goes, as in `elide`. Default 'end'. */
-  position?: Position | Position[];
+  position?: Position | readonly Position[];
   /** Parts that always stay visible, as in `elide`. */
-  keep?: Keep | Keep[] | null;
+  keep?: Keep | readonly Keep[] | null;
   /** The ellipsis. Default '…'. */
   ellipsis?: string;
   /** Drop whitespace touching an ellipsis. Default true. */
@@ -87,7 +87,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     sums[i + 1] = sums[i]! + w;
   });
   const mark = measure(ellipsis, graphemes(ellipsis).length);
-  const pins = toGraphemeRanges(keepRanges(text, asArray(keep)), offsets);
+  let pins = toGraphemeRanges(keepRanges(text, asArray(keep)), offsets);
   const layout = layoutFor(n, asArray(position));
   const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
 
@@ -107,6 +107,8 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     return { text: out, width: measure(out, count) };
   };
 
+  // Kept parts that can't all fit give way, last first, as in `elide`.
+  while (pins.length > 0 && render(cutsFor(0)).width > room) pins = pins.slice(0, -1);
   // The glyph widths' estimate, then measured, since a string isn't just
   // the sum of its glyphs (kerning).
   let k = estimateKept(g, layout, pins, snap, trim, sums, mark, room);

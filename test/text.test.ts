@@ -67,3 +67,50 @@ describe('elideText', () => {
     expect(() => elideText(PATH, { width: 100 })).toThrow();
   });
 });
+
+describe('elideText with unicode', () => {
+  const SAMPLES = [
+    'Family 👨‍👩‍👧‍👦 trip ✈️ to 🇯🇵 and 🇹🇷, thumbs 👍🏽👍🏿, keycaps 1️⃣ #️⃣, hearts ❤️‍🔥 and 🧑🏻‍💻 coding all night',
+    'Ångström café naïve é̂ Z̵̡͓a̶̤l̷̚g̸̦o résumé fiancée',
+    'नमस्ते दुनिया क्षत्रिय श्री हिन्दी भाषा में लिखा गया एक लंबा वाक्य है',
+    'ภาษาไทยเขียนโดยไม่มีช่องว่างระหว่างคำ ซึ่งทำให้การตัดคำยากมาก',
+    '日本語の文章はスペースを使わずに書かれるので単語の境界が分かりにくい',
+    'Bold 𝐀𝐁𝐂 script 𝒜𝒷𝒸 and hieroglyphs 𓀀𓀁 in a row',
+  ];
+  // Wide glyphs (emoji, ideographs) take two cells, everything else one.
+  const wide = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u;
+  const cells = (text: string) => graphemes(text).reduce((w, g) => w + (wide.test(g) ? 20 : 10), 0);
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+  for (const text of SAMPLES) {
+    it(`cuts ${text.slice(0, 12)}… between graphemes`, () => {
+      const g = graphemes(text);
+      const options = [
+        { position: 'middle' },
+        { position: 'start' },
+        { position: [0.3, 0.7] },
+        { position: 'middle', snap: words() },
+        { position: 'end', keep: { match: g.slice(4, 6).join(''), class: 'hit' } },
+        { position: 'middle', letterSpacing: 1.5, ellipsis: '...' },
+      ] as const;
+      for (const o of options) {
+        for (let width = 40; width < cells(text); width += 13) {
+          const r = elideText(text, { width, measure: cells, ...o });
+          expect(r.width).toBeLessThanOrEqual(width);
+          expect(r.text).not.toMatch(lone);
+          // Each hidden part is whole graphemes, and they fill the cuts back in.
+          let rebuilt = '';
+          let at = 0;
+          for (const part of r.hidden) {
+            expect(part.text).toBe(g.slice(part.start, part.end).join(''));
+            rebuilt += g.slice(at, part.start).join('') + part.text;
+            at = part.end;
+          }
+          expect(rebuilt + g.slice(at).join('')).toBe(text);
+          const shown = r.hidden.reduce((count, p) => count - (p.end - p.start), g.length);
+          expect(graphemes(r.text).length).toBe(shown + r.hidden.length * graphemes('ellipsis' in o ? o.ellipsis : '…').length);
+        }
+      }
+    });
+  }
+});

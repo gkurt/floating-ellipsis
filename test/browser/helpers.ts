@@ -1,5 +1,5 @@
 /** What the browser suites share: fixtures that clean up after themselves, and layout readings. */
-import { afterEach, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { server } from 'vitest/browser';
 import { type Elide, elide } from '#src/elide.ts';
 import { fontOf, measure } from '#src/metrics.ts';
@@ -136,4 +136,53 @@ export function errors(): { stop: () => string[] } {
       return seen;
     },
   };
+}
+
+/** Lines stay inside the content box, and there are no more of them than allowed. */
+export function expectFits(t: Elide, lines = t.options.lines) {
+  const c = content(t.element);
+  const rects = t.lineRects();
+  expect(rects.length).toBeGreaterThan(0);
+  expect(rects.length).toBeLessThanOrEqual(lines);
+  expect(t.state.lines).toBe(rects.length);
+  for (const r of rects) {
+    expect(r.left).toBeGreaterThanOrEqual(c.left - 0.5);
+    expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
+  }
+}
+
+/** Every line holding an ellipsis ends at the content box's right edge. */
+export function expectFlush(t: Elide) {
+  const right = content(t.element).right;
+  const rects = t.lineRects();
+  t.ellipses.forEach((_, j) => {
+    const e = t.ellipsisRect(j)!;
+    const middle = e.top + e.height / 2;
+    const line = rects.find((r) => middle >= r.top && middle <= r.bottom)!;
+    expect(line.right).toBeCloseTo(right, 0);
+  });
+}
+
+/** What shows is what the state says shows, and the hidden parts fill in the rest. */
+export function expectConsistent(t: Elide) {
+  const { hidden, text } = t.state;
+  expect(rendered(t)).toBe(visible(t));
+  expect(t.ellipses).toHaveLength(hidden.length);
+  expect(t.element.hasAttribute('data-truncated')).toBe(hidden.length > 0);
+  let rebuilt = '';
+  let at = 0;
+  for (const part of hidden) {
+    rebuilt += t.graphemes.slice(at, part.start).join('') + part.text;
+    at = part.end;
+  }
+  expect(rebuilt + t.graphemes.slice(at).join('')).toBe(text);
+}
+
+/** Widths from narrow to wide, applying each and re-truncating right away. */
+export function* sweep(t: Elide, from: number, to: number, step: number) {
+  for (let w = from; w <= to; w += step) {
+    t.element.style.width = `${w}px`;
+    t.refresh();
+    yield w;
+  }
 }

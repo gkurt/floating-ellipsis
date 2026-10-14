@@ -409,9 +409,12 @@ export class Tooltip {
       overflowWrap: '',
       userSelect: this.settings.selectable ? 'text' : '',
     });
-    const spans = t.graphemes.map((g) => {
+    const spans = t.graphemes.map((g, i) => {
       const span = document.createElement('span');
       span.textContent = g;
+      // Highlights (classes from `keep`) look the same in the tip.
+      const cls = t.classOf(i);
+      if (cls) span.className = cls;
       return span;
     });
     this.spans = spans;

@@ -8,6 +8,7 @@ This file provides guidance to AI agents when working with code in this reposito
 bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun run test:browser # Layout tests in Chromium, Firefox and WebKit (Vitest browser mode + Playwright)
+bun run tegami     # Write a changelog entry (.tegami/<slug>.md) interactively
 bun typecheck      # Type check (TypeScript 7, native tsc)
 bun run build      # dist/ via tsdown (one entry per subpath export, with .d.ts)
 bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
@@ -40,12 +41,13 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/graphemes.ts` — grapheme splitting; every index in state is a grapheme index.
 - `src/transitions.ts` — optional add-on (`floating-ellipsis/transitions`): animates glyphs entering/leaving (merge, fade, blur) from `ElideChange` diffs.
 - `src/tooltip.ts` — optional add-on (`floating-ellipsis/tooltip`): a headless tooltip on the public instance API. Shows the full text grown from the line, or what one ellipsis hides; owns delays, placement, the grow animation and selecting text in the tip, and leaves the looks to CSS (`data-fp-tip*` hooks).
-- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance, both with tooltips, and shared UI helpers (`ui.ts`).
+- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance and search highlights, both with tooltips, and shared UI helpers (`ui.ts`).
+- `scripts/tegami.mts` — Tegami release config; `.tegami/` holds pending changelog entries; `.github/workflows/release.yml` (+ the `tegami-pr*.yml` preview pair) versions and publishes.
 - `src/text.ts` — optional add-on (`floating-ellipsis/text`): `elideText`, the same cuts as a string with no DOM (one line, canvas or custom `measure`).
 - `src/bind.ts` — `Binding`, shared by the framework bindings: keeps an instance in step with options handed over whole each time (compared by value, `onChange` as one subscription).
 - `src/element.ts`, `src/react.ts`, `src/vue.ts`, `src/svelte.ts` — framework bindings (`floating-ellipsis/element|react|vue|svelte`): `<elide-text>` (`define()`), `useElide`/`Elided`, `vElide`, the `elide` action. React is an optional peer; Vue and Svelte bindings import nothing from them.
 - `test/` — `bun test` suites for `cut`, `metrics`, `lockstep` and `text` (`elideText` with a fake `measure`).
-- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, `tooltip`, `transitions` and the bindings (with `elideText` against real fonts), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
+- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, highlights, `tooltip`, `transitions`, the bindings (with `elideText` against real fonts) and Unicode (scripts and emoji under many option combinations), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text) and assertions (`expectFits`, `expectConsistent`, `expectFlush`, `sweep`). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
 
 ## Architecture
 
@@ -69,6 +71,12 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - Check for existing utilities/hooks/components before creating new ones. Avoid duplication.
 - Remove dead and commented-out code; don't preserve old APIs unless asked.
 - When moving or relocating code (functions, components, utilities), don't leave a re-export behind for backwards compatibility. Update every importer to point at the new location and delete the old definition, so there is a single source of truth.
+
+## Releases
+
+Every change that ships in the package needs a changelog entry, `.tegami/<slug>.md`
+(see the `changelog` skill in `.claude/skills/`). Tooling, tests and demo-only
+changes don't. Never edit `version` or `CHANGELOG.md` by hand: the release PR does.
 
 ## Documentation
 

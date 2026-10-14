@@ -5,8 +5,10 @@ import {
   complement,
   estimateKept,
   fewestSegments,
+  graphemeClasses,
   hiddenRanges,
   islands,
+  keepClasses,
   keepRanges,
   layoutFor,
   positionValue,
@@ -362,6 +364,19 @@ describe('words', () => {
 
   it('can keep a fragment of a word, as separators do', () => {
     expect(at('The quick brown fox jumps', 6, 13, words({ fragment: 'head' }))).toBe('The quic… fox jumps');
+  });
+});
+
+describe('keepClasses', () => {
+  it('gives each grapheme the classes of the parts that cover it', () => {
+    const text = 'a 👍🏽 b 👍🏽 c';
+    const keep = [{ match: /👍🏽/gu, class: 'hit' }, { start: 0, end: 4, class: 'lead' }, 'c'] as const;
+    expect(keepRanges(text, keep)).toHaveLength(4);
+    const g = graphemes(text);
+    const offsets = [0];
+    for (const s of g) offsets.push(offsets[offsets.length - 1]! + s.length);
+    const classes = graphemeClasses(keepClasses(text, keep), offsets);
+    expect(classes).toEqual(['lead', 'lead', 'hit lead', null, null, null, 'hit', null, null]);
   });
 });
 

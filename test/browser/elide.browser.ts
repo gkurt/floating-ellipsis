@@ -1,56 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { type Position, separators, words } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
-import { FONTS, PATH, PROSE, box, content, errors, frames, inkGaps, make, rendered, shown, spacer, track, visible } from './helpers.ts';
-
-/** Lines stay inside the content box, and there are no more of them than allowed. */
-function expectFits(t: Elide, lines = t.options.lines) {
-  const c = content(t.element);
-  const rects = t.lineRects();
-  expect(rects.length).toBeGreaterThan(0);
-  expect(rects.length).toBeLessThanOrEqual(lines);
-  expect(t.state.lines).toBe(rects.length);
-  for (const r of rects) {
-    expect(r.left).toBeGreaterThanOrEqual(c.left - 0.5);
-    expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
-  }
-}
-
-/** Every line holding an ellipsis ends at the content box's right edge. */
-function expectFlush(t: Elide) {
-  const right = content(t.element).right;
-  const rects = t.lineRects();
-  t.ellipses.forEach((_, j) => {
-    const e = t.ellipsisRect(j)!;
-    const middle = e.top + e.height / 2;
-    const line = rects.find((r) => middle >= r.top && middle <= r.bottom)!;
-    expect(line.right).toBeCloseTo(right, 0);
-  });
-}
-
-/** What shows is what the state says shows, and the hidden parts fill in the rest. */
-function expectConsistent(t: Elide) {
-  const { hidden, text } = t.state;
-  expect(rendered(t)).toBe(visible(t));
-  expect(t.ellipses).toHaveLength(hidden.length);
-  expect(t.element.hasAttribute('data-truncated')).toBe(hidden.length > 0);
-  let rebuilt = '';
-  let at = 0;
-  for (const part of hidden) {
-    rebuilt += t.graphemes.slice(at, part.start).join('') + part.text;
-    at = part.end;
-  }
-  expect(rebuilt + t.graphemes.slice(at).join('')).toBe(text);
-}
-
-/** Widths from narrow to wide, applying each and re-truncating right away. */
-function* sweep(t: Elide, from: number, to: number, step: number) {
-  for (let w = from; w <= to; w += step) {
-    t.element.style.width = `${w}px`;
-    t.refresh();
-    yield w;
-  }
-}
+import {
+  FONTS,
+  PATH,
+  PROSE,
+  box,
+  content,
+  errors,
+  expectConsistent,
+  expectFits,
+  expectFlush,
+  frames,
+  inkGaps,
+  make,
+  rendered,
+  shown,
+  spacer,
+  sweep,
+  track,
+  visible,
+} from './helpers.ts';
 
 describe.each(FONTS)('elide in %s', (font) => {
   it('leaves text that fits alone', () => {
