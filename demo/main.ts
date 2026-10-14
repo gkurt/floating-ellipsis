@@ -330,13 +330,10 @@ const peekTip = $('#peekTip');
 let tipRow: Element | null = null;
 let peeking: { instance: Elide; index: number; row: Element } | null = null;
 // A press on a full-text tip makes it selectable (see tip-select.ts). While
-// it's being selected in, or holds a selection, nothing closes or replaces it.
+// it's pinned like that, nothing closes or replaces it; otherwise it closes as
+// soon as the pointer leaves the row, like any hover tip.
 const tipHolds = [selectableTip(expandTip, () => hideTips()), selectableTip(growTipEl, () => hideTips())];
 const tipHeld = () => tipHolds.some((h) => h.held());
-// The tips ignore the pointer, but one that's showing counts as hovered while
-// the pointer is over it, so it can be reached (and pressed) even where it
-// sticks out past its row or over other rows.
-const tipCovers = (e: PointerEvent) => tipHolds.some((h) => h.covers(e.clientX, e.clientY));
 
 function hideTips() {
   if (tipHeld()) return;
@@ -449,7 +446,7 @@ function showRow(row: Element) {
   else showExpand(instance);
 }
 list.addEventListener('pointermove', (e) => {
-  if (tipHeld() || (reveal !== 'peek' && tipCovers(e))) return;
+  if (tipHeld()) return;
   const row = (e.target as HTMLElement).closest('li');
   const instance = rowInstance(row);
   if (!row || !instance) return hideTips();
@@ -462,7 +459,7 @@ list.addEventListener('pointermove', (e) => {
   setPeeking({ instance, index, row });
   showPeek(instance, index);
 });
-list.addEventListener('pointerleave', (e) => tipCovers(e) || hideTips());
+list.addEventListener('pointerleave', hideTips);
 // Keyboard: focusing a row shows its full text, or the first hidden part.
 list.addEventListener('focusin', (e) => {
   const row = (e.target as HTMLElement).closest('li');
@@ -531,19 +528,12 @@ const hideGrowTip = () => {
   growRow = null;
 };
 growList.addEventListener('pointermove', (e) => {
-  if (tipHeld() || tipCovers(e)) return;
+  if (tipHeld()) return;
   const row = (e.target as HTMLElement).closest('li');
   if (row) showGrowRow(row);
 });
-growList.addEventListener('pointerleave', (e) => tipCovers(e) || hideGrowTip());
+growList.addEventListener('pointerleave', hideGrowTip);
 growList.addEventListener('focusout', hideGrowTip);
-// Off the list and off the tip: close it.
-document.addEventListener('pointermove', (e) => {
-  if (tipHeld() || tipCovers(e)) return;
-  const target = e.target as Node;
-  if (tipRow && !list.contains(target)) hideTips();
-  if (growRow && !growList.contains(target)) hideGrowTip();
-});
 resizable($('#growBox'), hideGrowTip);
 let growScrolled = [scrollX, scrollY];
 window.addEventListener(

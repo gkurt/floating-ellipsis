@@ -5,10 +5,11 @@
  * But a press that lands on it (with a mouse or pen) is the tip's: it takes
  * the pointer, the press starts a selection in its text, and dragging extends
  * it, clamped to the tip's text so the selection never leaves it. A double
- * press selects a word or path segment, a triple press all of it. While the
- * drag lasts, and afterwards while the tip holds a selection, `held()` is
- * true: callers shouldn't close or replace the tip then. A press elsewhere
- * lets go of it and calls `onDismiss`; so does Escape, held or not.
+ * press selects a word or path segment, a triple press all of it. From that
+ * first press on, the tip is pinned: `held()` is true, and callers shouldn't
+ * close or replace it (hovering away included) until a press elsewhere,
+ * Escape, or `release()` lets go; the first two call `onDismiss`. Escape
+ * dismisses an unpinned tip too.
  */
 export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
   let holding = false;
@@ -79,11 +80,6 @@ export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
     if (!holding) return;
     dragging = false;
     if (tip.hasPointerCapture(e.pointerId)) tip.releasePointerCapture(e.pointerId);
-    // A click that selected nothing: back to plain hovering.
-    if (!selectionInTip()) {
-      hold(false);
-      if (!inside(e.clientX, e.clientY)) onDismiss();
-    }
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -102,9 +98,7 @@ export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
   document.addEventListener('keydown', onKey);
 
   return {
-    /** Whether the tip is showing over this point (client coordinates). */
-    covers: (x: number, y: number) => showing() && inside(x, y),
-    /** Whether the tip is being selected in, or holds a selection: keep it as it is. */
+    /** Whether the tip is pinned (pressed onto): keep it open and as it is. */
     held: () => holding,
     /** Let go (e.g. the page scrolled out from under the tip). */
     release,
