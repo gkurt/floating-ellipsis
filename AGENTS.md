@@ -9,7 +9,7 @@ bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun run test:browser # Layout tests in Chromium, Firefox and WebKit (Vitest browser mode + Playwright)
 bun typecheck      # Type check (TypeScript 7, native tsc)
-bun run build      # dist/ via tsdown (index, transitions and tooltip entries, with .d.ts)
+bun run build      # dist/ via tsdown (one entry per subpath export, with .d.ts)
 bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
 bun run lint       # Lint
 bun run format     # Format
@@ -21,7 +21,7 @@ Prefer these scripts over ad-hoc commands. Do not prefix them with `bun run` whe
 a bare alias exists (`bun check`, `bun typecheck`) — those are whitelisted for
 agent use. Before finishing, run `bun run fix` then `bun run checks` — the linter,
 formatter and `tsc` own all mechanical style rules. Fix the code; don't disable rules.
-After touching `elide`, `justify`, `lines`, `marks`, `tooltip` or `transitions`, also
+After touching `elide`, `justify`, `lines`, `marks`, `tooltip`, `transitions`, `text` or a binding, also
 run `bun run test:browser` (first time: `bunx playwright install chromium firefox webkit`).
 
 ## Project Structure
@@ -34,15 +34,18 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/predict.ts` — judges single-line cuts from glyph widths and one measurement, so they needn't be rendered.
 - `src/lines.ts` — reading the line boxes of laid-out inline text.
 - `src/document.ts` — document-wide hooks: copying across an ellipsis, re-truncating when fonts load, the instance registry.
-- `src/cut.ts` — pure range math: where ellipses go (`position`), what stays (`keep`), `separators()` snapping, the `searchMax`/`searchSteps` fit search and its `estimateKept` starting point.
+- `src/cut.ts` — pure range math: where ellipses go (`position`), what stays (`keep`), `separators()`/`words()` snapping (one segment engine; whole segments go by `fewestSegments`, the shortest run that hides enough), the `searchMax`/`searchSteps` fit search and its `estimateKept` starting point.
 - `src/metrics.ts` — glyph measurement (canvas) and the balanced-gap math (`inkGap`, `planGap`). Kerning is ignored on purpose.
 - `src/marks.ts` — what an ellipsis is made of: characters of a string, or drawn dots/bullets/rings/squares sized from the font.
 - `src/graphemes.ts` — grapheme splitting; every index in state is a grapheme index.
 - `src/transitions.ts` — optional add-on (`floating-ellipsis/transitions`): animates glyphs entering/leaving (merge, fade, blur) from `ElideChange` diffs.
 - `src/tooltip.ts` — optional add-on (`floating-ellipsis/tooltip`): a headless tooltip on the public instance API. Shows the full text grown from the line, or what one ellipsis hides; owns delays, placement, the grow animation and selecting text in the tip, and leaves the looks to CSS (`data-fp-tip*` hooks).
 - `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance, both with tooltips, and shared UI helpers (`ui.ts`).
-- `test/` — `bun test` suites for `cut`, `metrics` and `lockstep`.
-- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, `tooltip` and `transitions`, run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
+- `src/text.ts` — optional add-on (`floating-ellipsis/text`): `elideText`, the same cuts as a string with no DOM (one line, canvas or custom `measure`).
+- `src/bind.ts` — `Binding`, shared by the framework bindings: keeps an instance in step with options handed over whole each time (compared by value, `onChange` as one subscription).
+- `src/element.ts`, `src/react.ts`, `src/vue.ts`, `src/svelte.ts` — framework bindings (`floating-ellipsis/element|react|vue|svelte`): `<elide-text>` (`define()`), `useElide`/`Elided`, `vElide`, the `elide` action. React is an optional peer; Vue and Svelte bindings import nothing from them.
+- `test/` — `bun test` suites for `cut`, `metrics`, `lockstep` and `text` (`elideText` with a fake `measure`).
+- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, `tooltip`, `transitions` and the bindings (with `elideText` against real fonts), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
 
 ## Architecture
 

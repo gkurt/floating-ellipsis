@@ -16,6 +16,9 @@ export interface SnapContext {
   end: number;
   /** Requested position of this ellipsis, 0 (start) to 1 (end). */
   position: number;
+  /** Where the cut may move without running into the cuts either side: `[min, max)`. */
+  min: number;
+  max: number;
 }
 
 /**
@@ -26,6 +29,9 @@ export interface SnapContext {
 export type Snap = (ctx: SnapContext) => Cut;
 
 export type Position = number | 'start' | 'middle' | 'end';
+
+/** One option value or several, as a list. */
+export const asArray = <T>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
 export function positionValue(p: Position): number {
   if (p === 'start') return 0;
@@ -156,7 +162,9 @@ export function hiddenRanges(
   const m = layout.positions.length;
   const grown = raw.map(([s, e], j): Range => {
     if (snap) {
-      const r = snap({ graphemes, start: s, end: e, position: layout.positions[Math.min(j, m - 1)]! });
+      const min = raw[j - 1]?.[1] ?? 0;
+      const max = raw[j + 1]?.[0] ?? n;
+      const r = snap({ graphemes, start: s, end: e, position: layout.positions[Math.min(j, m - 1)]!, min, max });
       const rs = Math.max(0, r.start);
       const re = Math.min(n, r.end);
       if (rs < re) [s, e] = [rs, re];
@@ -305,49 +313,146 @@ export interface SeparatorOptions {
    * beginning of the segment the cut starts in, with the ellipsis at its end:
    * `/abc/de…/klm`. `'tail'` prefers the end of the segment the cut stops in:
    * `/abc/…hj/klm`. Either falls back to the other side when its own has no
-   * room. `false` always drops whole segments: `/abc/…/klm`. Default `'head'`.
+   * room. `false` always drops whole segments: `/abc/…/klm`. Default `'head'`
+   * for `separators`, `false` for `words`.
    */
   fragment?: 'head' | 'tail' | false;
   /** Fewest graphemes of a segment worth showing as a fragment. Default 3. */
   min?: number;
 }
 
+/** Whether grapheme `i` separates segments, for a text's graphemes. */
+type Separating = (graphemes: readonly string[]) => (i: number) => boolean;
+
 /**
- * Experimental smart boundaries: cut at separators, so `/abc/def/ghi/jkl`
- * becomes `/abc/de…/jkl` or `/abc/…/jkl` rather than `/abc/de…hi/jkl`.
+ * Cut at separators, so `/abc/def/ghi/jkl` becomes `/abc/de…/jkl` or
+ * `/abc/…/jkl` rather than `/abc/de…hi/jkl`. `chars` are the separators:
+ * a string of them, or a RegExp a separator grapheme matches.
  *
- * Each side of the cut moves to a separator, which hides a little more than
- * the plain cut would. At most one side keeps a fragment of its segment
- * instead, and that fragment takes the glyphs the other side gave up, so the
- * cut shows about as much as the plain one and leaves no wide gap. A side with
- * no separator in reach keeps the plain cut and is the fragment. Separators
- * next to the cut stay visible. `separators(' ')` gives word boundaries.
+ * Each side of the cut moves to a separator. At most one side keeps a
+ * fragment of its segment, and that fragment takes the glyphs the other side
+ * gave up, so the cut shows about as much as the plain one. A side with no
+ * separator in reach keeps the plain cut and is the fragment. Where whole
+ * segments go instead, it's the shortest run of them that hides enough, so
+ * the room left over (which justifying spreads into the gaps) stays small.
+ * Separators next to the cut stay visible.
  */
 export function separators(chars: string | RegExp = '/\\', options: SeparatorOptions = {}): Snap {
-  const { fragment = 'head', min = 3 } = options;
   const re = typeof chars === 'string' ? null : new RegExp(chars.source, chars.flags.replace(/[gy]/g, ''));
-  const isSep = (g: string | undefined) => g !== undefined && (re ? re.test(g) : (chars as string).includes(g));
-  return ({ graphemes: g, start, end }) => {
+  const test = (g: string) => (re ? re.test(g) : typeof chars === 'string' && chars.includes(g));
+  return segmentSnap((g) => (i) => test(g[i]!), { fragment: 'head', ...options });
+}
+
+const wordGaps = new WeakMap<readonly string[], Uint8Array>();
+let wordSegmenter: Intl.Segmenter | null | undefined;
+const WORD_CHAR = /[\p{L}\p{M}\p{N}_]/u;
+
+/**
+ * Cut at word boundaries: `The quick brown fox` becomes `The quick…fox`,
+ * never `The qui…own fox`. Words come from `Intl.Segmenter`, so languages
+ * written without spaces split into words too. Whole words go by default,
+ * the shortest run of them that hides enough; `fragment` lets one side keep
+ * part of a word instead, as with `separators`.
+ */
+export function words(options: SeparatorOptions = {}): Snap {
+  return segmentSnap(wordGapsOf, { fragment: false, ...options });
+}
+
+/** Which graphemes are outside words (spaces, punctuation), by index. */
+function wordGapsOf(g: readonly string[]): (i: number) => boolean {
+  let gaps = wordGaps.get(g);
+  if (!gaps) {
+    if (wordSegmenter === undefined)
+      wordSegmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
+    const found = new Uint8Array(g.length).fill(1);
+    if (wordSegmenter) {
+      // Grapheme `i` starts at string offset `offsets[i]`.
+      const offsets: number[] = [];
+      let at = 0;
+      for (const s of g) {
+        offsets.push(at);
+        at += s.length;
+      }
+      let i = 0;
+      for (const { index, segment, isWordLike } of wordSegmenter.segment(g.join(''))) {
+        while (i < g.length && offsets[i]! < index) i++;
+        for (; i < g.length && offsets[i]! < index + segment.length; i++) if (isWordLike) found[i] = 0;
+      }
+    } else {
+      g.forEach((s, i) => (found[i] = WORD_CHAR.test(s) ? 0 : 1));
+    }
+    wordGaps.set(g, (gaps = found));
+  }
+  const known = gaps;
+  return (i) => known[i] === 1;
+}
+
+/**
+ * How many graphemes a cut may move for each grapheme of room it saves:
+ * `fewestSegments` takes a run further away only when it leaves less room.
+ */
+const DRIFT = 6;
+
+/**
+ * The run of whole segments, from a segment's start to a segment's end, that
+ * hides at least as many graphemes as `[start, end)` and leaves the least
+ * room over, counting each `DRIFT` graphemes it moves away from the cut as
+ * one more. It stays within `[min, max)`. A cut at an end of the text stays
+ * there, and one that isn't never takes that end, so no island disappears.
+ * Null when there's no such run.
+ */
+export function fewestSegments(isSep: (i: number) => boolean, n: number, start: number, end: number, min = 0, max = n): Cut | null {
+  const need = end - start;
+  const starts: number[] = [];
+  const ends: number[] = [];
+  if (start === 0) starts.push(0);
+  else for (let i = Math.max(1, min); i < max; i++) if (!isSep(i) && isSep(i - 1)) starts.push(i);
+  if (end === n) ends.push(n);
+  else for (let i = min + 1; i <= Math.min(max, n - 1); i++) if (!isSep(i - 1) && isSep(i)) ends.push(i);
+  let best: Cut | null = null;
+  let lowest = Infinity;
+  let k = 0;
+  for (const s of starts) {
+    // Both are sorted: the first end far enough only moves right, and for a
+    // given start it's the best end (going further leaves more room).
+    while (k < ends.length && ends[k]! < s + need) k++;
+    const e = ends[k];
+    if (e === undefined) break;
+    const cost = e - s - need + Math.abs(s + e - start - end) / 2 / DRIFT;
+    if (cost < lowest) {
+      best = { start: s, end: e };
+      lowest = cost;
+    }
+  }
+  return best;
+}
+
+/** A snap that moves cuts to the boundaries of segments, which `separating` tells apart. */
+function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
+  const { fragment = 'head', min = 3 } = options;
+  return ({ graphemes: g, start, end, min: low, max: high }) => {
     const n = g.length;
+    const sep = separating(g);
+    const isSep = (i: number) => i >= 0 && i < n && sep(i);
     // The head's segment runs from `h0` to the separator at `h1`; the tail's
     // from just after the separator at `t0 - 1` to `t1`.
     let h0 = start;
-    while (h0 > 0 && !isSep(g[h0 - 1])) h0--;
+    while (h0 > 0 && !isSep(h0 - 1)) h0--;
     let h1 = start;
-    while (h1 < n && !isSep(g[h1])) h1++;
+    while (h1 < n && !isSep(h1)) h1++;
     let t0 = end;
-    while (t0 > 0 && !isSep(g[t0 - 1])) t0--;
+    while (t0 > 0 && !isSep(t0 - 1)) t0--;
     let t1 = end;
-    while (t1 < n && !isSep(g[t1])) t1++;
+    while (t1 < n && !isSep(t1)) t1++;
 
     // Already at a separator; or not cut at all.
     const headClean = start === h0;
     const tailClean = end === t1;
 
-    const place = (giveBack: boolean): Cut => {
+    const place = (giveBack: boolean): Cut & { whole?: Cut } => {
       // A separator right at the cut can stay visible, which makes that side clean.
-      const headBack = giveBack && !headClean && isSep(g[start]);
-      const tailBack = giveBack && !tailClean && isSep(g[end - 1]);
+      const headBack = giveBack && !headClean && isSep(start);
+      const tailBack = giveBack && !tailClean && isSep(end - 1);
       // No separator in reach: the plain cut stays, as this side's fragment.
       const headForced = !headClean && !headBack && h0 === 0;
       const tailForced = !tailClean && !tailBack && t1 === n;
@@ -369,6 +474,9 @@ export function separators(chars: string | RegExp = '/\\', options: SeparatorOpt
         const tailRoom = e === t1 && t1 - end + headLoss >= min;
         const order = fragment === 'head' ? (['head', 'tail'] as const) : fragment === 'tail' ? (['tail', 'head'] as const) : [];
         side = order.find((x) => (x === 'head' ? headRoom : tailRoom)) ?? null;
+        // Both sides at separators: whole segments go, as few as hide what
+        // the cut does, separators given back at its edges aside.
+        if (!side) return { start: s, end: e, whole: { start: headBack ? start + 1 : start, end: tailBack ? end - 1 : end } };
       }
 
       // The fragment grows by what the other side gave up, through as many
@@ -377,27 +485,40 @@ export function separators(chars: string | RegExp = '/\\', options: SeparatorOpt
       // isn't worth showing.
       if (side === 'head') {
         s = Math.min(start + tailLoss, e - 1);
-        if (s >= h1 && isSep(g[s]) && s + 1 < e) {
+        if (s >= h1 && isSep(s) && s + 1 < e) {
           s++;
         } else if (s > h1) {
           let s0 = s;
-          while (!isSep(g[s0 - 1])) s0--;
+          while (!isSep(s0 - 1)) s0--;
           if (s - s0 < min) s = s0;
         }
       } else if (side === 'tail') {
         e = Math.max(end - headLoss, s + 1);
-        if (e <= t0 && isSep(g[e - 1]) && e - 1 > s) {
+        if (e <= t0 && isSep(e - 1) && e - 1 > s) {
           e--;
         } else if (e < t0) {
           let e1 = e;
-          while (!isSep(g[e1])) e1++;
+          while (!isSep(e1)) e1++;
           if (e1 - e < min) e = e1;
         }
       }
       return { start: s, end: e };
     };
+    if (fragment === false) {
+      // Separators at the cut's edges stay visible when there's more to hide.
+      const from = isSep(start) && start + 1 < end ? start + 1 : start;
+      const to = isSep(end - 1) && end - 1 > from ? end - 1 : end;
+      const fewest = fewestSegments(isSep, n, from, to, low, high);
+      if (fewest) return fewest;
+    }
     // Unless showing that separator leaves nothing to hide.
-    for (const cut of [place(true), place(false)]) if (cut.start < cut.end) return cut;
+    for (const giveBack of [true, false]) {
+      const cut = place(giveBack);
+      if (cut.start >= cut.end) continue;
+      const { whole } = cut;
+      const fewest = whole && whole.start < whole.end ? fewestSegments(isSep, n, whole.start, whole.end, low, high) : null;
+      return fewest ?? { start: cut.start, end: cut.end };
+    }
     return { start, end };
   };
 }

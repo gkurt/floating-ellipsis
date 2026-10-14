@@ -1,4 +1,4 @@
-import { type Elide, type EllipsisStyle, type Gap, elide, separators } from '#src/index.ts';
+import { type Elide, type EllipsisStyle, type Gap, elide, separators, words } from '#src/index.ts';
 import { type Reveal, tooltip } from '#src/tooltip.ts';
 import { type Effect, transitions } from '#src/transitions.ts';
 import { $, resizable, segmented } from './ui.ts';
@@ -76,6 +76,8 @@ pos.addEventListener('input', () => {
 segmented('lines', (v) => hero.update({ lines: Number(v) }));
 segmented('gap', (v) => hero.update({ gap: v as Gap }));
 segmented('justify', (v) => hero.update({ justify: v === 'off' ? false : (v as 'ellipsis' | 'dots' | 'spread') }));
+const byWords = words();
+segmented('words', (v) => hero.update({ snap: v === 'words' ? byWords : null }));
 
 // Ellipsis style and number of dots. The font's own '…' is three dots; any
 // other count draws dots shaped like its own.

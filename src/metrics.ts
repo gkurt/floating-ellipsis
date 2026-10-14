@@ -174,6 +174,11 @@ export function measure(font: Font, text: string): GlyphMetrics {
   return { advance: m.advance * s, left: m.left * s, right: m.right * s, ascent: m.ascent * s, descent: m.descent * s };
 }
 
+/** Advance width of `text` in a CSS `font` shorthand, in px. Not cached: for whole strings. */
+export function advance(font: string, text: string): number {
+  return context({ css: font, scale: 1 }).measureText(text).width;
+}
+
 /** Font ascent of the content area, used to locate the baseline in a box. */
 export function fontAscent(font: Font): number {
   return context(font).measureText('x').fontBoundingBoxAscent * font.scale;

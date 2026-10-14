@@ -4,6 +4,7 @@ import {
   allocationOrder,
   complement,
   estimateKept,
+  fewestSegments,
   hiddenRanges,
   islands,
   keepRanges,
@@ -18,6 +19,7 @@ import {
   subtract,
   toGraphemeRanges,
   union,
+  words,
 } from '#src/cut.ts';
 import { graphemes } from '#src/graphemes.ts';
 
@@ -238,7 +240,7 @@ describe('separators', () => {
   const snap = separators('/');
   const at = (text: string, start: number, end: number, options?: SeparatorOptions) => {
     const g = graphemes(text);
-    const cut = separators('/', options)({ graphemes: g, start, end, position: 0.5 });
+    const cut = separators('/', options)({ graphemes: g, start, end, position: 0.5, min: 0, max: g.length });
     return show(g, [[cut.start, cut.end]]);
   };
 
@@ -256,7 +258,8 @@ describe('separators', () => {
     const text = '/abc/defgh/ijk/lmn';
     expect(at(text, 7, 12)).toBe('/abc/defg…/lmn');
     expect(at(text, 7, 12, { fragment: 'tail' })).toBe('/abc/…/ijk/lmn');
-    expect(at(text, 7, 12, { fragment: false })).toBe('/abc/…/lmn');
+    // Whole segments: "defgh" alone hides as much as the plain cut.
+    expect(at(text, 7, 12, { fragment: false })).toBe('/abc/…/ijk/lmn');
     // Too little to be worth a fragment: /abc/d…k/lmn
     expect(at(text, 6, 13)).toBe('/abc/…/lmn');
   });
@@ -274,14 +277,91 @@ describe('separators', () => {
 
   it('does word boundaries with a space', () => {
     const g = graphemes('The quick brown fox');
-    const ctx = { graphemes: g, start: 7, end: 14, position: 0.5 };
+    const ctx = { graphemes: g, start: 7, end: 14, position: 0.5, min: 0, max: g.length };
     expect(separators(' ')(ctx)).toEqual({ start: 8, end: 15 }); // The quic… fox
     expect(separators(' ', { fragment: false })(ctx)).toEqual({ start: 4, end: 15 }); // The … fox
   });
 
   it('accepts a RegExp', () => {
     const g = graphemes('a.b-c');
-    expect(separators(/[.-]/g)({ graphemes: g, start: 3, end: 4, position: 0.5 })).toEqual({ start: 2, end: 3 });
+    expect(separators(/[.-]/g)({ graphemes: g, start: 3, end: 4, position: 0.5, min: 0, max: g.length })).toEqual({ start: 2, end: 3 });
+  });
+
+  it('drops the shortest run of whole segments that hides enough, leaving little room', () => {
+    const path = graphemes('/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md');
+    const layout = layoutFor(path.length, ['middle']);
+    const whole = separators('/', { fragment: false });
+    // A glyph's width each, and one for the ellipsis.
+    const sums = path.map((_, i) => i).concat(path.length);
+    for (let room = 20; room < path.length - 1; room++) {
+      const k = estimateKept(path, layout, [], whole, true, sums, 1, room);
+      const shown = show(path, hiddenRanges(path, layout, k, [], whole, true));
+      expect(graphemes(shown).length).toBeLessThanOrEqual(room);
+      expect(room - graphemes(shown).length).toBeLessThanOrEqual(4);
+    }
+  });
+});
+
+describe('fewestSegments', () => {
+  const sepOf = (text: string) => {
+    const g = graphemes(text);
+    return [(i: number) => g[i] === '/', g.length] as const;
+  };
+
+  it('takes the shortest run that hides enough', () => {
+    const [isSep, n] = sepOf('/aa/bbbbbbbb/ccc/dd/eeeeee');
+    // Three to hide around "bbbbbbbb": "ccc" does it.
+    expect(fewestSegments(isSep, n, 6, 9)).toEqual({ start: 13, end: 16 });
+  });
+
+  it('prefers a run near the cut when another saves too little', () => {
+    const [isSep, n] = sepOf('/aaaa/bbb/cccccccccccccccccccc/dd/eeee');
+    // "dd" would leave no room over, but is far; "bbb" is next to the cut.
+    expect(fewestSegments(isSep, n, 6, 8)).toEqual({ start: 6, end: 9 });
+  });
+
+  it('stays within its bounds, and off the ends of the text', () => {
+    const [isSep, n] = sepOf('/aa/bbbbbbbb/ccc/dd/eeeeee');
+    expect(fewestSegments(isSep, n, 6, 9, 0, 12)).toEqual({ start: 4, end: 12 });
+    // Inside the last segment, a cut that doesn't reach the end goes elsewhere.
+    expect(fewestSegments(isSep, n, 20, 23)).toEqual({ start: 13, end: 16 });
+    expect(fewestSegments(isSep, n, 20, 23, 17, 26)).toBeNull();
+    expect(fewestSegments(isSep, n, 20, 26)).toEqual({ start: 20, end: 26 });
+  });
+});
+
+describe('words', () => {
+  const at = (text: string, start: number, end: number, snap = words()) => {
+    const g = graphemes(text);
+    const cut = snap({ graphemes: g, start, end, position: 0.5, min: 0, max: g.length });
+    return show(g, [[cut.start, cut.end]]);
+  };
+
+  it('cuts whole words', () => {
+    // Six to hide: "brown" is too few, "brown fox" the fewest that do.
+    expect(at('The quick brown fox jumps', 7, 13)).toBe('The quick … jumps');
+    expect(at('The quick brown fox jumps', 21, 25)).toBe('The quick brown fox …');
+  });
+
+  it('keeps punctuation between words visible', () => {
+    expect(at('Hello, wonderful world.', 9, 15)).toBe('Hello, … world.');
+    // Three to hide: "world" leaves less room over than "wonderful".
+    expect(at('Hello, wonderful world.', 9, 12)).toBe('Hello, wonderful ….');
+  });
+
+  it('finds words in text written without spaces', () => {
+    const text = '日本語の文章を省略します';
+    const cut = at(text, 4, 6);
+    // Whatever the dictionary says the words are, the cut is at word boundaries.
+    const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+    const bounds = new Set([...segmenter.segment(text)].flatMap((s) => [s.index, s.index + s.segment.length]));
+    const [before, after] = cut.split('…');
+    expect(bounds.has(before!.length)).toBe(true);
+    expect(bounds.has(text.length - after!.length)).toBe(true);
+  });
+
+  it('can keep a fragment of a word, as separators do', () => {
+    expect(at('The quick brown fox jumps', 6, 13, words({ fragment: 'head' }))).toBe('The quic… fox jumps');
   });
 });
 

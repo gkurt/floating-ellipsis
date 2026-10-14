@@ -14,6 +14,8 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   continuously instead of stepping a glyph at a time.
 - **Any ellipsis.** The font's `…`, any string, or drawn dots, bullets, rings
   and squares sized from the font itself.
+- **Words and paths.** Cuts can snap to whole words (in any language
+  `Intl.Segmenter` knows) or to path segments, dropping as little as they can.
 - **Copy-friendly.** Selecting across an ellipsis and copying gives the hidden
   text. Screen readers get the full text.
 - **Hooks.** Whether the text is truncated, what each ellipsis hides, the line
@@ -26,6 +28,10 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
 - **Change diffs and transitions.** Glyphs shown and hidden on every resize,
   with their positions, plus an optional add-on that morphs glyphs into the
   nearest dot.
+- **Without the DOM.** `elideText` makes the same cuts as a string, for canvas,
+  SVG, chart labels, workers or the server.
+- **Framework bindings.** A `<elide-text>` element, a React hook and component,
+  a Vue directive and a Svelte action.
 - **Fast in bulk.** Instances truncate together, so the thousands of cells in a
   table resize with a few shared layouts, and rows far off screen wait until
   they come near.
@@ -76,7 +82,7 @@ tooltip on every cut-off cell.
 | `gap`      | `'dots'`     | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
 | `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
 | `trim`     | `true`       | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
-| `snap`     | `null`       | _Experimental._ Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. See [Separators](#separators).                                                                                                                                                                                                                                                                               |
+| `snap`     | `null`       | Move cuts to nicer boundaries: `words()` cuts prose between words, `separators('/\\')` paths at segments. See [Snapping](#snapping).                                                                                                                                                                                                                                                                                                |
 | `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load. An element more than a screen away from the viewport puts this off until it comes near, when what it shows meanwhile can't change its height (one line, or several held at their height once truncated).                                                                                                                                                            |
 | `glyphs`   | `false`      | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text.                                                                                                                                                                                                                                                                                       |
 | `title`    | `false`      | Put the full text in the element's `title` while it is truncated.                                                                                                                                                                                                                                                                                                                                                                   |
@@ -109,23 +115,37 @@ Dots and squares take their size and height from the font's `.`; bullets and
 rings from its `•`. The spacing defaults to the font's own ellipsis rhythm,
 scaled to the mark size.
 
-### Separators
+### Snapping
 
 ```js
-import { separators } from 'floating-ellipsis';
+import { separators, words } from 'floating-ellipsis';
+elide(el, { snap: words() }); // The quick brown…lazy dog, never The quick bro…azy dog
 elide(el, { snap: separators('/\\') }); // /Users/ada/Projects/anal…/notes/x.md
 elide(el, { snap: separators('/\\', { fragment: 'tail' }) }); // /Users/ada/Projects/…engine/notes/x.md
-elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/Projects/…/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/analytical-engine/notes/x.md
 ```
 
-Each side of a cut moves to a separator, and separators next to the cut stay
-visible. Dropping whole segments on both sides would leave a wide gap, so one
-side may keep a fragment of its segment instead (`'head'` prefers the start of
-the segment the cut begins in, `'tail'` the end of the one it stops in, each
-falling back to the other). That fragment takes the room the other side gave
-up, through as many segments as it covers, so the cut shows about as much as
-a plain one. Less than `min` graphemes (default 3) of a segment is never shown.
-A side with no separator in reach keeps the plain cut, and is the fragment.
+`separators(chars)` cuts at separators: a string of characters, or a RegExp a
+separator matches. `words()` cuts between words, as `Intl.Segmenter` finds
+them, so text written without spaces (Japanese, Thai, …) works too.
+
+Each side of a cut moves to a boundary, and separators next to the cut stay
+visible. Moving both sides hides more than the plain cut would, and the room
+that frees ends up in the gaps around the ellipsis. So one side may keep a
+fragment of its segment instead (`'head'` prefers the start of the segment the
+cut begins in, `'tail'` the end of the one it stops in, each falling back to
+the other). That fragment takes the room the other side gave up, through as
+many segments as it covers, so the cut shows about as much as a plain one.
+Less than `min` graphemes (default 3) of a segment is never shown. A side with
+no separator in reach keeps the plain cut, and is the fragment.
+
+Where whole segments go (`fragment: false`, the default for `words()`, or when
+neither side has room for a fragment), it's the shortest run of whole segments
+that hides enough, so as little room as possible is left over. A shorter one a
+little further from the cut wins over a longer one right at it (each six
+graphemes it moves counts as one more left over), but a cut never moves past
+the cuts either side, nor takes the start or end of the text unless it was
+already there.
 
 ## Instance API
 
@@ -158,6 +178,95 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
 - `refresh()`, `update(options)`, `destroy()`
 
 The element also gets a `data-truncated` attribute, for CSS.
+
+## Text without the DOM
+
+```js
+import { elideText } from 'floating-ellipsis/text';
+
+elideText('/Users/ada/Projects/notes/difference-tables.md', {
+  width: 180,
+  font: '13px Inter',
+  position: 'middle',
+  keep: /\.[^.]+$/,
+}).text; // what fits in 180px, cut in the middle, '.md' kept
+```
+
+The same cuts `elide` makes, as a string: for a canvas, an SVG or chart label,
+a worker, or the server. It fits one line, measured with a canvas in `font`
+(an `OffscreenCanvas` in workers), or with your own `measure(text)` where
+there's no canvas or to match another renderer. It sums glyph widths to find
+the cut, then measures the result, so kerning is accounted for.
+
+| Option          | Default |                                                                          |
+| --------------- | ------- | ------------------------------------------------------------------------ |
+| `width`         | —       | The room, in px (or whatever unit `measure` returns).                    |
+| `font`          | —       | A CSS font shorthand to measure with a canvas. Needed without `measure`. |
+| `measure`       | canvas  | `(text) => width`.                                                       |
+| `letterSpacing` | `0`     | Space after every grapheme.                                              |
+| `position`      | `'end'` | As in `elide`.                                                           |
+| `keep`          | `null`  | As in `elide`.                                                           |
+| `ellipsis`      | `'…'`   | A string.                                                                |
+| `trim`          | `true`  | Drop whitespace next to an ellipsis.                                     |
+| `snap`          | `null`  | `words()`, `separators()`; both are exported from this entry too.        |
+
+It returns `{ text, truncated, hidden, kept, width }`: `hidden` and `kept` as
+in an instance's `state`, and the measured `width` of `text`.
+
+## Frameworks
+
+Every binding takes the same options as `elide`, the text included, and keeps
+the instance in step as they change: compared by value, so inline arrays and
+patterns don't re-truncate on every render, with keys left out going back to
+their defaults. The instance owns the element's content, so pass the text as
+the `text` option and leave the element empty. A `snap` made inline
+(`words()`) is new each time and does re-truncate: make it once.
+
+```html
+<script type="module">
+  import { define } from 'floating-ellipsis/element';
+  define(); // <elide-text>
+</script>
+<elide-text position="middle" keep="/\.[^.]+$/" snap="paths">/Users/ada/notes/2026/difference-tables.md</elide-text>
+```
+
+`<elide-text>` truncates its own text. Its attributes are `lines`, `position`
+(`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`),
+`ellipsis`, `gap`, `justify` (`false` turns it off), `trim`, `snap` (`words`,
+`paths`, or separator characters), `glyphs`, `tooltip-title` (the `title`
+option), `copy` and `text`. The `options` property takes anything `elide` does,
+over the attributes, `instance` is the live instance, and it fires
+`elidechange` with an `ElideChange` as `detail`. It's a block unless styled
+otherwise. `define(name)` registers it under another name.
+
+```jsx
+import { Elided, useElide } from 'floating-ellipsis/react';
+
+<Elided text={path} position="middle" className="path" />; // a div; `as` picks another element
+
+function Path({ path }) {
+  const [ref, instance] = useElide({ text: path, position: 'middle' });
+  return <div ref={ref} />;
+}
+```
+
+```vue
+<script setup>
+import { vElide } from 'floating-ellipsis/vue';
+</script>
+<template><div v-elide="{ text: path, position: 'middle' }" /></template>
+```
+
+```svelte
+<script>
+  import { elide } from 'floating-ellipsis/svelte';
+</script>
+<div use:elide={{ text: path, position: 'middle' }}></div>
+```
+
+React is an optional peer dependency (18 or later); the Vue and Svelte
+bindings need nothing from them. `elideOf(el)` from `floating-ellipsis/vue`
+gives the instance behind a `v-elide`.
 
 ## Transitions
 
@@ -373,5 +482,7 @@ line.
 - With several lines, a line holding an ellipsis is filled to the edge even
   when its leftover space comes from a long word wrapping to the next line, so
   the gaps there can get wide.
-- `snap` is a first pass. Snapping can drop a whole segment, which then shows
-  as wide ellipsis gaps when `justify` is on.
+- Snapping to whole segments still leaves some room over when no run of them
+  hides just enough; `justify` spreads it into the gaps around the ellipsis.
+  Allowing a fragment (`fragment: 'head'`) leaves almost none.
+- `elideText` fits one line.

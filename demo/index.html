@@ -92,6 +92,12 @@
             </div>
           </div>
           <div class="control">
+            <span id="words-label">Cut at</span>
+            <div class="seg" data-name="words" role="group" aria-labelledby="words-label">
+              <button aria-pressed="true" value="off">Any glyph</button><button value="words">Whole words</button>
+            </div>
+          </div>
+          <div class="control">
             <span id="effect-label">Transition</span>
             <div class="seg" data-name="effect" role="group" aria-labelledby="effect-label">
               <button value="none">None</button><button value="fade">Fade</button><button value="blur">Blur</button
@@ -193,9 +199,7 @@
             </div>
           </div>
           <div class="control">
-            <span id="snap-label"
-              ><span>Cut at separators <small>experimental</small></span></span
-            >
+            <span id="snap-label">Cut at separators</span>
             <div class="seg" data-name="snap" role="group" aria-labelledby="snap-label">
               <button value="off">Off</button><button value="whole">Whole segments</button
               ><button aria-pressed="true" value="head">Keep a head</button><button value="tail">Keep a tail</button>

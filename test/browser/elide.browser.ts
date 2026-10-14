@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Position } from '#src/cut.ts';
+import { type Position, separators, words } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
 import { FONTS, PATH, PROSE, box, content, errors, frames, inkGaps, make, rendered, shown, spacer, track, visible } from './helpers.ts';
 
@@ -138,6 +138,27 @@ describe.each(FONTS)('elide in %s', (font) => {
     for (const _w of sweep(t, 120, 300, 30)) {
       expectFits(t);
       expectFlush(t);
+    }
+  });
+
+  it.each([
+    // Narrower than "/Users/…/difference-tables.md", no whole segments fit,
+    // and the cut goes inside the last one.
+    ['words', PROSE, words(), /[\s,.]/u, 120],
+    ['path segments', PATH, separators('/', { fragment: false }), /\//u, 300],
+  ] as const)('snaps to %s at every width', (_, text, snap, boundary, from) => {
+    const t = make(box(text, `font:${font}`), { position: 'middle', snap });
+    for (const _w of sweep(t, from, 520, 29)) {
+      expectFits(t);
+      expectConsistent(t);
+      if (!t.truncated) continue;
+      expectFlush(t);
+      // Each cut starts and stops at a boundary (trimmed whitespace aside).
+      const { graphemes } = t;
+      for (const { start, end } of t.state.hidden) {
+        expect(start === 0 || boundary.test(graphemes[start - 1]!) || boundary.test(graphemes[start]!)).toBe(true);
+        expect(end === graphemes.length || boundary.test(graphemes[end]!) || boundary.test(graphemes[end - 1]!)).toBe(true);
+      }
     }
   });
 

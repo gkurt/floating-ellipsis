@@ -1,6 +1,7 @@
 import {
   type Layout,
   type Range,
+  asArray,
   estimateKept,
   hiddenRanges,
   keepRanges,
@@ -109,8 +110,6 @@ const observed = new Map<Element, Elide>();
 function defined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
-
-const asArray = <T>(v: T | T[] | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
 export class Elide {
   readonly element: HTMLElement;
