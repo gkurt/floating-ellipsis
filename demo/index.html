@@ -221,8 +221,9 @@
           <h2 id="grow-title">A tooltip grown from the line</h2>
           <p>
             <code>tooltip({ reveal: 'grow' })</code>, the default. Every glyph starts where it is and the hidden ones come out of their
-            ellipsis. It stays on one line, sliding left to stay on screen, and only text wider than the window wraps. The second row has
-            two ellipses. Hover or focus a row; the tooltip delay above applies here too.
+            ellipsis. It runs right from where the text starts and wraps at the window's edge, or at half its width, moving left only once
+            wrapping would make it less than twice as wide as it is tall. The second row has two ellipses. Hover or focus a row; the tooltip
+            delay above applies here too.
           </p>
         </div>
         <div class="stage">

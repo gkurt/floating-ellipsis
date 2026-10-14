@@ -206,8 +206,11 @@ moving along a list only makes you wait once. Make one per list or table.
 With `reveal: 'grow'`, the tip starts as an exact copy of the line, dots
 included, and grows into the full text: every grapheme starts where it is on
 screen and the hidden ones come out of their ellipsis, however many there are.
-It stays on one line, sliding left to stay in the window; only text wider than
-the window wraps (after `breaks`, where it can). `'expand'` is the same tip
+Its text starts where the line's does and runs right. Past the window's edge,
+or past `maxWidth` (half the window, or the line's width if that's wider), it
+wraps (after `breaks`, where it can), and only when that would leave it
+narrower than `aspect` (2, width to height) does it widen to the left, as
+little as it can. `'expand'` is the same tip
 without the animation, and `'peek'` shows only what one ellipsis hides, next
 to it, when that ellipsis is hovered.
 
@@ -223,7 +226,9 @@ text (a resize) closes it.
 | `reveal`     | `'grow'` | `'grow'`: the full text, grown out of the line. `'expand'`: the full text over the line, at once. `'peek'`: what one ellipsis hides, on that ellipsis.             |
 | `delay`      | `500`    | Milliseconds the pointer rests on a trigger before its tip shows. Focus shows it at once.                                                                          |
 | `grace`      | `300`    | While a tip shows, and this many milliseconds after it closes, the next one shows without the delay.                                                               |
-| `breaks`     | `''`     | Characters a full-text tip too wide for the window may wrap after, as well as at spaces: `'/\\'` for paths. A double press selects the run between them.           |
+| `breaks`     | `''`     | Characters a full-text tip may wrap after, as well as at spaces: `'/\\'` for paths. A double press selects the run between them.                                   |
+| `maxWidth`   | `0.5`    | The widest a full-text tip gets, as a fraction of the window's width, unless the line it covers is wider.                                                          |
+| `aspect`     | `2`      | A full-text tip wraps at the window's edge, where its text starts, while it's at least this many times as wide as it's tall; any narrower, it widens to the left.  |
 | `edge`       | `8`      | How close the tip comes to the edges of the window, in px.                                                                                                         |
 | `offset`     | `8`      | `'peek'`: the distance between the ellipsis' ink and the tip, in px.                                                                                               |
 | `slop`       | `4`      | `'peek'`: how far around an ellipsis' area (see `ellipsisAt`) still counts as on it, in px.                                                                        |

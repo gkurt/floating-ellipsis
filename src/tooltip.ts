@@ -25,11 +25,23 @@ export interface TooltipOptions {
    */
   grace?: number;
   /**
-   * Characters a full-text tip too wide for the window may wrap after, as
-   * well as at spaces: `'/\\'` for paths. Pressing twice selects the run of
-   * text between them. Default ''.
+   * Characters a full-text tip may wrap after, as well as at spaces: `'/\\'`
+   * for paths. Pressing twice selects the run of text between them. Default ''.
    */
   breaks?: string;
+  /**
+   * 'grow' and 'expand': the widest a full-text tip gets, as a fraction of
+   * the window's width, unless the line it covers is wider. Longer text wraps.
+   * Default 0.5.
+   */
+  maxWidth?: number;
+  /**
+   * 'grow' and 'expand': a full-text tip wraps at the window's edge, staying
+   * where its text starts, while it's at least this many times as wide as
+   * it's tall. Any narrower, it widens to the left, only as far as it must.
+   * Default 2.
+   */
+  aspect?: number;
   /** How close the tip comes to the edges of the window, in px. Default 8. */
   edge?: number;
   /** 'peek': the distance between the ellipsis' ink and the tip, in px. Default 8. */
@@ -78,6 +90,8 @@ const DEFAULTS: Settings = {
   delay: 500,
   grace: 300,
   breaks: '',
+  maxWidth: 0.5,
+  aspect: 2,
   edge: 8,
   offset: 8,
   slop: 4,
@@ -366,9 +380,10 @@ export class Tooltip {
 
   /**
    * The full text, laid over the line so its first grapheme sits exactly on
-   * the original's. It stays on one line, sliding left to stay in the window;
-   * only text wider than the window wraps (after `breaks`, where it can). It
-   * moves up if it would run off the bottom.
+   * the original's. Text that runs past the window's edge, or past
+   * `maxWidth`, wraps there (after `breaks`, where it can), and widens to the
+   * left only when wrapping would make it narrower than `aspect`. It moves
+   * up if it would run off the bottom.
    */
   private full(target: TooltipTarget, grow: boolean): boolean {
     const t = target.instance;
@@ -395,24 +410,40 @@ export class Tooltip {
     this.spans = spans;
     const bg = this.fill(this.settings.reveal, ...spans);
 
-    const { edge, breaks } = this.settings;
+    const { edge, breaks, maxWidth, aspect } = this.settings;
     let box = tip.getBoundingClientRect();
     this.frame = { x: box.left, y: box.top };
     const head = spans[0]!.getBoundingClientRect();
     // Where its text starts in it: padding, and half the leading.
     const dx = head.left - box.left;
     const dy = head.top - box.top;
+    const left = Math.min(...lines.map((l) => l.left));
+    const right = Math.max(...lines.map((l) => l.right));
     const view = document.documentElement.clientWidth;
-    const room = view - edge * 2;
-    let x = first.left - dx;
-    if (box.width > room) {
+    const widest = Math.min(view - edge * 2, Math.max(right - left, view * maxWidth));
+    let x = Math.min(Math.max(first.left - dx, edge), view - edge);
+    const anchored = Math.min(view - edge - x, widest);
+    if (box.width > anchored) {
       // (Chrome breaks at <wbr> even with nowrap, so they only go in now.)
       const after = new Set(breaks);
       spans.forEach((span, i) => after.has(t.graphemes[i]!) && span.after(document.createElement('wbr')));
-      Object.assign(tip.style, { whiteSpace: '', overflowWrap: 'break-word', maxWidth: `${room}px` });
-      x = edge;
-    } else {
-      x = Math.min(Math.max(x, edge), view - edge - box.width);
+      Object.assign(tip.style, { whiteSpace: '', overflowWrap: 'break-word' });
+      const wide = (width: number) => {
+        tip.style.maxWidth = `${width}px`;
+        const r = tip.getBoundingClientRect();
+        return r.width >= r.height * aspect;
+      };
+      // The narrowest width from where it starts to `widest` that's wide enough.
+      let [lo, hi] = [anchored, widest];
+      if (wide(lo)) hi = lo;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) / 2;
+        if (wide(mid)) hi = mid;
+        else lo = mid;
+      }
+      tip.style.maxWidth = `${hi}px`;
+      box = tip.getBoundingClientRect();
+      x = Math.max(Math.min(x, view - edge - box.width), edge);
     }
     this.place(x, first.top - dy);
     box = tip.getBoundingClientRect();
@@ -430,8 +461,8 @@ export class Tooltip {
     const padRight = parseFloat(getComputedStyle(tip).paddingRight);
     const last = lines[lines.length - 1]!;
     const start = {
-      left: Math.min(...lines.map((l) => l.left)) - dx,
-      right: Math.max(...lines.map((l) => l.right)) + padRight,
+      left: left - dx,
+      right: right + padRight,
       top: first.top - dy,
       bottom: last.bottom + dy,
     };
