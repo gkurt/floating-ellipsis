@@ -36,7 +36,7 @@ formatter and `tsc` own all mechanical style rules. Fix the code; don't disable 
 - `src/marks.ts` — what an ellipsis is made of: characters of a string, or drawn dots/bullets/rings/squares sized from the font.
 - `src/graphemes.ts` — grapheme splitting; every index in state is a grapheme index.
 - `src/transitions.ts` — optional add-on (`floating-ellipsis/transitions`): animates glyphs entering/leaving (merge, fade, blur) from `ElideChange` diffs.
-- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`) with tooltip helpers (`grow-tip`, `tip-select`, `tip-delay`) built on the public hooks, a crowded table (`table.html`, `table.ts`) for performance, and shared UI helpers (`ui.ts`).
+- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`) with tooltip helpers (`grow-tip`, `tip-select`, `tip-delay`) built on the public hooks, a crowded table (`table.html`, `table.ts`) for performance, with the same grow tooltips, and shared UI helpers (`ui.ts`).
 - `test/` — `bun test` suites for `cut`, `metrics` and `lockstep`.
 
 ## Architecture

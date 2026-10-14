@@ -18,7 +18,7 @@
       <h1>A crowded <em>table.</em></h1>
       <p class="lede">
         Every row truncates four cells its own way: file names keep their extension, paths are cut at a separator, hashes in the middle.
-        Drag a column's edge, or let the table sweep, and watch the timings.
+        Hover a cut-off cell for its full text. Drag a column's edge, or let the table sweep, and watch the timings.
       </p>
     </header>
 
@@ -52,7 +52,7 @@
 
       <div class="stage table-stage">
         <div class="resizable" id="tableBox">
-          <div id="grid"></div>
+          <div id="grid" data-tip-group="table"></div>
           <button class="handle" aria-label="Resize the table (left and right arrow keys)"></button>
         </div>
       </div>
@@ -66,6 +66,8 @@
     </main>
 
     <footer class="foot"><a href="./">← Back to the playground</a></footer>
+
+    <div class="grow-tip" id="tableTip" aria-hidden="true" hidden></div>
 
     <script type="module" src="./table.ts"></script>
   </body>

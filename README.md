@@ -53,7 +53,8 @@ The demo is in `demo/`. In it, `window.hero`, `window.keepExamples` and
 `window.pathInstances` are live instances you can try from the console. The
 hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 `/table.html` is a crowded table: up to 2,500 rows, four truncated cells each,
-as a `<table>` or as grid rows, with draggable columns and timings.
+as a `<table>` or as grid rows, with draggable columns, timings and the grow
+tooltip on every cut-off cell.
 
 ## Options
 

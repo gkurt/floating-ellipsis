@@ -1,4 +1,7 @@
 import { type Elide, elide, separators } from '#src/index.ts';
+import { growTip } from './grow-tip.ts';
+import { tipDelays } from './tip-delay.ts';
+import { selectableTip } from './tip-select.ts';
 import { $, resizable, segmented } from './ui.ts';
 
 // ---------------------------------------------------------------------------
@@ -120,6 +123,7 @@ let headers: HTMLElement[] = [];
 let built = 0;
 let lastResize: { ms: number; passes: number } | null = null;
 let passes = 0;
+let byCell = new WeakMap<Element, Elide>();
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const handle = '<span class="col-handle" aria-hidden="true"></span>';
@@ -157,20 +161,30 @@ function build() {
   for (const instance of instances) instance.destroy();
   render(makeRows(count));
   const start = performance.now();
+  closeTip(true);
   instances = [];
   messages = [];
+  byCell = new WeakMap();
   for (const row of host.querySelectorAll('tbody tr, [role="rowgroup"] > .row')) {
     const [file, folder, message, hash] = [...row.querySelectorAll<HTMLElement>('.cell')];
     const m = elide(message!, { lines });
     messages.push(m);
-    instances.push(
+    const cells = [
       elide(file!, { position: 0.5, keep: /\.[^.]+$/ }),
       elide(folder!, { position: 0.5, snap: bySlash }),
       m,
       elide(hash!, { position: 0.5 }),
-    );
+    ];
+    for (const instance of cells) byCell.set(instance.element, instance);
+    instances.push(...cells);
   }
-  for (const instance of instances) instance.onRender(() => passes++);
+  for (const instance of instances) {
+    instance.onRender(() => {
+      passes++;
+      // Its tip no longer matches what's in the cell.
+      if (instance === tipFor) closeTip();
+    });
+  }
   // Reading an instance runs the passes waiting for it: here, every row
   // near the screen. The rest wait until they come near.
   void instances[0]?.truncated;
@@ -244,10 +258,71 @@ function tick(now: number) {
 }
 const animate = () => (frame ||= requestAnimationFrame(tick));
 const startDrag = () => {
+  closeTip(true);
   dragging = true;
   animate();
   addEventListener('pointerup', () => (dragging = false), { once: true });
 };
+
+// ---------------------------------------------------------------------------
+// Tooltips: the playground's tip grown from the line (see grow-tip.ts), in
+// the cell's own font. After the first one's delay, the next cell's shows at
+// once; press on one to select its text.
+
+const tip = $('#tableTip');
+const delays = tipDelays({ delay: () => 400 });
+/** The cell whose tip is showing, and the one waiting out the delay. */
+let tipFor: Elide | null = null;
+let waitingFor: Elide | null = null;
+const select = selectableTip(tip, {
+  keep: (x, y) => !!tipFor?.element.contains(document.elementFromPoint(x, y)),
+  dismiss: () => closeTip(true),
+});
+
+function closeTip(force = false) {
+  if (select.held() && !force) return;
+  select.release();
+  delays.cancel();
+  waitingFor = null;
+  if (!tipFor) return;
+  delays.closed(host);
+  const s = document.getSelection();
+  if (s && tip.contains(s.anchorNode)) s.removeAllRanges();
+  tip.hidden = true;
+  tipFor = null;
+}
+
+function openTip(instance: Elide) {
+  closeTip();
+  if (!instance.truncated) return;
+  // Its text over the cell's: the font's, then the tip's padding, plus half the leading.
+  const cs = getComputedStyle(instance.element);
+  const line = instance.lineRects()[0];
+  if (!line) return;
+  const lineHeight = parseFloat(cs.lineHeight);
+  tip.style.font = `${cs.fontWeight} ${cs.fontSize}/${cs.lineHeight} ${cs.fontFamily}`;
+  tip.style.margin = `${-4 - (lineHeight - line.height) / 2}px 0 0 -10px`;
+  tipFor = instance;
+  growTip(instance, tip);
+  delays.opened(host);
+}
+
+host.addEventListener('pointermove', (e) => {
+  if (select.held()) return;
+  const cell = e.target instanceof Element ? e.target.closest('.cell') : null;
+  const instance = cell ? byCell.get(cell) : undefined;
+  if (!instance?.truncated) return closeTip();
+  if (instance === tipFor || instance === waitingFor) return;
+  closeTip();
+  waitingFor = instance;
+  delays.request(host, () => {
+    waitingFor = null;
+    openTip(instance);
+  });
+});
+host.addEventListener('pointerleave', () => closeTip());
+// The tip is fixed: a scroll takes the cell out from under it.
+addEventListener('scroll', () => closeTip(true), { passive: true });
 
 // ---------------------------------------------------------------------------
 // Controls
