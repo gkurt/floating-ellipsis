@@ -197,6 +197,14 @@ drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
    reset hover state on every resize. When truncating changes the element's
    height inside the resize observer's callback, the observer looks away for
    a frame, so browsers don't report a "ResizeObserver loop" error.
+   The element's height also stays put while you resize it. Before the
+   observer runs, the browser lays out the old text at the new width, and a
+   line that filled the old width would wrap and grow the element for that
+   (unpainted) moment. That's enough for scroll anchoring to fire a scroll
+   event on every frame, even far off screen. So a single line never wraps,
+   truncated multi-line text holds its height between passes (as an inline
+   `height`, restored on `destroy()`), and the probing while fitting happens
+   with the height held and overflow clipped.
 
 ## Accessibility
 

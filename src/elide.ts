@@ -205,6 +205,9 @@ const DEFAULTS: Settings = {
   copy: 'full',
 };
 
+/** Whether wrapping can be turned off without touching how white space collapses. */
+const WRAP_MODE = typeof CSS !== 'undefined' && CSS.supports('text-wrap-mode', 'nowrap');
+
 const instances = new Set<Elide>();
 const byId = new Map<string, Elide>();
 let nextId = 1;
@@ -291,6 +294,8 @@ export class Elide {
   private destroyed = false;
   private style: EllipsisStyle = '…';
   private painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
+  /** The element's own inline height (value, priority) while we hold it. */
+  private heightLock: [string, string] | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { text, onChange, ...rest } = options;
@@ -508,6 +513,7 @@ export class Elide {
     byId.delete(this.id);
     this.listeners.clear();
     this.renderListeners.clear();
+    this.lockHeight(false);
     this.element.removeAttribute('data-truncated');
     if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
@@ -628,6 +634,36 @@ export class Elide {
 
   // -------------------------------------------------------------------------
   // Measuring
+
+  /**
+   * When the element narrows, the browser lays out what's there at the new
+   * width before the observer lets us re-truncate it. A line justified to
+   * fill the old width wraps then, and the element grows for that one
+   * (unpainted) layout, which is enough for a browser anchoring the scroll
+   * position to react: a scroll event on every frame of a shrink, even far
+   * off screen. So a single line never wraps (it overflows for that moment
+   * instead, and fitting checks the right edge anyway), and while truncated
+   * text fills its lines, the element's height is held between passes.
+   */
+  private steadyLines() {
+    const single = this.settings.lines <= 1;
+    if (WRAP_MODE) this.lineEl.style.setProperty('text-wrap-mode', single ? 'nowrap' : '');
+    else this.lineEl.style.whiteSpace = single && getComputedStyle(this.element).whiteSpace === 'normal' ? 'nowrap' : '';
+  }
+
+  /** Hold the element's height at what it is now (or let it go). */
+  private lockHeight(on: boolean) {
+    const style = this.element.style;
+    if (this.heightLock) {
+      style.setProperty('height', ...this.heightLock);
+      this.heightLock = null;
+    }
+    if (!on) return;
+    const height = getComputedStyle(this.element).height;
+    if (!height.endsWith('px')) return;
+    this.heightLock = [style.getPropertyValue('height'), style.getPropertyPriority('height')];
+    style.setProperty('height', height, 'important');
+  }
 
   private prepare(cs: CSSStyleDeclaration): Run {
     const host = this.element;
@@ -931,6 +967,7 @@ export class Elide {
     if (this.destroyed || !host.isConnected || host.getClientRects().length === 0) return;
 
     const run = this.prepare(getComputedStyle(host));
+    this.steadyLines();
     const previous = this.current;
     const reset = this.pendingReset || !previous;
     this.pendingReset = false;
@@ -956,31 +993,53 @@ export class Elide {
     // all lines (with some leeway for kerning and collapsed spaces).
     let hidden: Range[] = [];
     let fit = { ok: false, lines: 0 };
-    let width = 0;
-    for (const g of this.g) width += this.glyphMetrics(run, g).advance;
-    if (width <= (run.right - run.left) * this.settings.lines * 1.1 + 1) {
-      this.renderFull(run);
-      fit = this.measure(run);
-    }
     let pins = this.pins;
-    if (!fit.ok && n > 0) {
-      const at = (k: number) => hiddenRanges(this.g, this.layout, k, pins, snap, trim);
-      const fits = (k: number) => {
-        this.render(run, at(k));
-        return this.measure(run).ok;
-      };
-      // Kept parts that can't all fit give way, last first.
-      while (pins.length && !fits(0)) pins = pins.slice(0, -1);
-      const kept = searchMax(0, n - 1, fits, this.hint);
-      this.hint = kept;
-      hidden = at(kept);
+    let gaps: GapInfo[] = [];
+    let slack = 0;
+
+    // Trying cuts that don't fit wraps the text, so the element grows (or
+    // overflows) for a moment. Nobody sees it, but measuring lays it out, and
+    // a browser that anchors the scroll position (most do) reacts to it,
+    // firing a scroll event on every pass: on every frame of a resize, even
+    // far off screen. Holding the element's height and clipping its overflow
+    // while fitting keeps all of that inside. (Neither changes where anything
+    // inside is laid out, and nothing paints before they're restored.)
+    const cs = getComputedStyle(host);
+    const hold = cs.display !== 'inline' && cs.height.endsWith('px');
+    const held = (['height', 'overflow'] as const).map((p) => [p, host.style.getPropertyValue(p), host.style.getPropertyPriority(p)] as const);
+    if (hold) {
+      host.style.setProperty('height', cs.height, 'important');
+      host.style.setProperty('overflow', 'clip', 'important');
     }
-    const plans = this.render(run, hidden);
-    fit = this.measure(run);
-    const { gaps, slack } = hidden.length ? this.justify(run, plans, fit.lines) : { gaps: [], slack: 0 };
+    try {
+      let width = 0;
+      for (const g of this.g) width += this.glyphMetrics(run, g).advance;
+      if (width <= (run.right - run.left) * this.settings.lines * 1.1 + 1) {
+        this.renderFull(run);
+        fit = this.measure(run);
+      }
+      if (!fit.ok && n > 0) {
+        const at = (k: number) => hiddenRanges(this.g, this.layout, k, pins, snap, trim);
+        const fits = (k: number) => {
+          this.render(run, at(k));
+          return this.measure(run).ok;
+        };
+        // Kept parts that can't all fit give way, last first.
+        while (pins.length && !fits(0)) pins = pins.slice(0, -1);
+        const kept = searchMax(0, n - 1, fits, this.hint);
+        this.hint = kept;
+        hidden = at(kept);
+      }
+      const plans = this.render(run, hidden);
+      fit = this.measure(run);
+      if (hidden.length) ({ gaps, slack } = this.justify(run, plans, fit.lines));
+    } finally {
+      if (hold) for (const [p, value, priority] of held) host.style.setProperty(p, value, priority);
+    }
 
     const state = this.makeState(hidden, fit.lines, gaps, pins, slack);
     this.current = state;
+    this.lockHeight(hold && state.truncated && this.settings.lines > 1);
     host.toggleAttribute('data-truncated', state.truncated);
     if (this.settings.title && state.truncated !== this.titled) {
       if (state.truncated) host.title = this.text;

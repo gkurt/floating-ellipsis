@@ -457,7 +457,17 @@ list.addEventListener('focusin', (e) => {
   else if (instance.truncated) showPeek(instance, 0);
 });
 list.addEventListener('focusout', hideTips);
-window.addEventListener('scroll', hideTips, { passive: true });
+// Only a real scroll moves the rows from under their tips.
+let scrolled = [scrollX, scrollY];
+window.addEventListener(
+  'scroll',
+  () => {
+    if (scrollX === scrolled[0] && scrollY === scrolled[1]) return;
+    scrolled = [scrollX, scrollY];
+    hideTips();
+  },
+  { passive: true },
+);
 
 // ---------------------------------------------------------------------------
 // Multi-line
