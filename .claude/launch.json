@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["vite", "demo", "--port", "4182", "--strictPort"],
+      "port": 4182
+    }
+  ]
+}
