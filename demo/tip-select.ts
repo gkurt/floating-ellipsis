@@ -111,16 +111,14 @@ export function selectableTip(
 
   return {
     /**
-     * Select text in the tip, by string offsets into its text, and hold it,
-     * as any selection in it does.
+     * Select text in the tip, by string offsets into its text. Unlike a
+     * selection made in it, this one doesn't keep the tip open.
      */
     select(from: number, to: number) {
       if (!showing()) return;
       const a = positionAt(tip, from);
       const b = positionAt(tip, to);
-      if (!a || !b) return;
-      selection()?.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
-      if (selectionInTip()) hold(true);
+      if (a && b) selection()?.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
     },
     /** Whether the tip is pinned (pressed onto and hovered, or holding a selection): keep it open and as it is. */
     held: () => holding,

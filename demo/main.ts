@@ -353,9 +353,13 @@ const tipHoldOptions = {
 };
 const tipHolds = [selectableTip(expandTip, tipHoldOptions), selectableTip(growTipEl, tipHoldOptions)];
 const tipHeld = () => tipHolds.some((h) => h.held());
+// A selection carried over to a tip, and the one it replaced.
+let carried: { tip: HTMLElement; text: string; original: Range } | null = null;
+
 /**
  * If the page's selection lies wholly inside the element, select the same
  * text in its tip: where it touches an ellipsis, all the ellipsis hides.
+ * That doesn't keep the tip open, and when it closes, the original comes back.
  */
 function carrySelection(instance: Elide, tip: HTMLElement) {
   const s = document.getSelection();
@@ -366,13 +370,24 @@ function carrySelection(instance: Elide, tip: HTMLElement) {
   const to = instance.graphemeAt(range.endContainer, range.endOffset, 'end');
   if (from === null || to === null || to <= from) return;
   const offset = (i: number) => instance.graphemes.slice(0, i).join('').length;
+  const original = range.cloneRange();
   tipHolds[tip === expandTip ? 0 : 1]!.select(offset(from), offset(to));
+  if (tip.contains(s.anchorNode)) carried = { tip, text: s.toString(), original };
 }
 
-/** Hide a tip, and any selection made in it. */
+/**
+ * Hide a tip, and any selection made in it. A selection it was only carrying
+ * goes back where it came from.
+ */
 function closeTip(tip: HTMLElement) {
   const s = document.getSelection();
-  if (s && tip.contains(s.anchorNode)) s.removeAllRanges();
+  if (s && tip.contains(s.anchorNode)) {
+    if (carried?.tip === tip && s.toString() === carried.text) {
+      s.removeAllRanges();
+      s.addRange(carried.original);
+    } else s.removeAllRanges();
+  }
+  if (carried?.tip === tip) carried = null;
   tip.hidden = true;
 }
 
@@ -584,7 +599,7 @@ function showGrowRow(row: Element) {
   if (!instance || row === growRow || tipHeld()) return;
   if (growRow) delays.closed(growRow);
   growRow = row;
-  growTipEl.hidden = true;
+  closeTip(growTipEl);
   growTip(instance, growTipEl);
   carrySelection(instance, growTipEl);
   if (!growTipEl.hidden) delays.opened(row);
