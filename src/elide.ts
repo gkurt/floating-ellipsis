@@ -450,6 +450,64 @@ export class Elide {
   }
 
   /**
+   * Grapheme index (in the full text) of a DOM position in the element's
+   * text, such as either end of a selection, or null when it isn't in the
+   * visible text. A position inside an ellipsis stands for the start of what
+   * it hides when `side` is 'start', for its end when 'end': a range that
+   * touches an ellipsis covers all it hides, as copying it does.
+   */
+  graphemeAt(node: Node, offset: number, side: 'start' | 'end' = 'start'): number | null {
+    if (!this.current || !this.lineEl.contains(node)) return null;
+    const j = this.ellipsisIndex(node);
+    if (j >= 0) return side === 'start' ? this.current.hidden[j]!.start : this.current.hidden[j]!.end;
+    const pieces = this.pieces();
+    if (node instanceof Text) {
+      const range = node.parentElement ? pieces.get(node.parentElement) : undefined;
+      if (!range) return null;
+      const at = this.offsets[range[0]]! + offset;
+      let i = range[0];
+      while (i < range[1] && this.offsets[i]! < at) i++;
+      return i;
+    }
+    // An element: the boundary before its child at `offset`, or its end.
+    const child = node.childNodes[offset];
+    if (!child) return pieces.get(node)?.[1] ?? null;
+    return (child instanceof Text ? pieces.get(node) : pieces.get(child))?.[0] ?? null;
+  }
+
+  /** The graphemes each element of the visible text holds, as rendered now. */
+  private pieces(): Map<Node, Range> {
+    const n = this.g.length;
+    const hidden = this.current?.hidden ?? [];
+    const m = hidden.length;
+    const map = new Map<Node, Range>([[this.lineEl, [0, n]]]);
+    // As `render` lays them out: visible run r gives its first grapheme to the
+    // join before it and its last to the join after it.
+    for (let r = 0; r <= m; r++) {
+      let a = r === 0 ? 0 : hidden[r - 1]!.end;
+      let b = r === m ? n : hidden[r]!.start;
+      if (r > 0) {
+        const take = a < b ? 1 : 0;
+        map.set(this.joins[r - 1]!.after, [a, a + take]);
+        a += take;
+      }
+      if (r < m) {
+        const take = a < b ? 1 : 0;
+        map.set(this.joins[r]!.before, [b - take, b]);
+        b -= take;
+      }
+      map.set(this.runEl(r), [a, b]);
+    }
+    hidden.forEach((part, j) => {
+      const join = this.joins[j]!;
+      map.set(join.ellipsis, [part.start, part.end]);
+      map.set(join.el, [map.get(join.before)![0], map.get(join.after)![1]]);
+    });
+    if (this.settings.glyphs) this.glyphEls.forEach((el, i) => map.set(el, [i, i + 1]));
+    return map;
+  }
+
+  /**
    * Box of grapheme `index` as laid out, in viewport coordinates, or null
    * when it is hidden. Works in text mode too (measured with a Range), so a
    * tooltip can line its own copy of the text up with the original glyph by

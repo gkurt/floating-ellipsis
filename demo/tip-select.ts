@@ -110,6 +110,18 @@ export function selectableTip(
   document.addEventListener('keydown', onKey);
 
   return {
+    /**
+     * Select text in the tip, by string offsets into its text, and hold it,
+     * as any selection in it does.
+     */
+    select(from: number, to: number) {
+      if (!showing()) return;
+      const a = positionAt(tip, from);
+      const b = positionAt(tip, to);
+      if (!a || !b) return;
+      selection()?.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
+      if (selectionInTip()) hold(true);
+    },
     /** Whether the tip is pinned (pressed onto and hovered, or holding a selection): keep it open and as it is. */
     held: () => holding,
     /** Let go without closing (e.g. the caller is about to hide it anyway). */
@@ -168,8 +180,8 @@ function caretAt(tip: HTMLElement, x: number, y: number): Caret | null {
   return last ? { node: last, offset: last.length } : null;
 }
 
-/** Select the word or path segment around a caret. */
-function selectAround(tip: HTMLElement, at: Caret) {
+/** The tip's text, with where each of its text nodes starts in it. */
+function tipText(tip: HTMLElement) {
   const texts = textNodes(tip);
   const starts: number[] = [];
   let full = '';
@@ -177,6 +189,21 @@ function selectAround(tip: HTMLElement, at: Caret) {
     starts.push(full.length);
     full += t.data;
   }
+  return { texts, starts, full };
+}
+
+/** The DOM position `i` characters into the tip's text. */
+function positionAt(tip: HTMLElement, i: number): Caret | null {
+  const { texts, starts } = tipText(tip);
+  if (!texts.length) return null;
+  let k = texts.length - 1;
+  while (k > 0 && starts[k]! > i) k--;
+  return { node: texts[k]!, offset: Math.min(i - starts[k]!, texts[k]!.length) };
+}
+
+/** Select the word or path segment around a caret. */
+function selectAround(tip: HTMLElement, at: Caret) {
+  const { texts, starts, full } = tipText(tip);
   const index = starts[texts.indexOf(at.node)]! + at.offset;
   const breaks = /[\s/\\]/;
   let a = index;
@@ -184,13 +211,8 @@ function selectAround(tip: HTMLElement, at: Caret) {
   while (a > 0 && !breaks.test(full[a - 1]!)) a--;
   while (b < full.length && !breaks.test(full[b]!)) b++;
   if (a === b) b = Math.min(full.length, b + 1);
-  const point = (i: number): Caret => {
-    let k = texts.length - 1;
-    while (k > 0 && starts[k]! > i) k--;
-    return { node: texts[k]!, offset: i - starts[k]! };
-  };
-  const from = point(a);
-  const to = point(b);
+  const from = positionAt(tip, a)!;
+  const to = positionAt(tip, b)!;
   document.getSelection()?.setBaseAndExtent(from.node, from.offset, to.node, to.offset);
 }
 

@@ -353,6 +353,22 @@ const tipHoldOptions = {
 };
 const tipHolds = [selectableTip(expandTip, tipHoldOptions), selectableTip(growTipEl, tipHoldOptions)];
 const tipHeld = () => tipHolds.some((h) => h.held());
+/**
+ * If the page's selection lies wholly inside the element, select the same
+ * text in its tip: where it touches an ellipsis, all the ellipsis hides.
+ */
+function carrySelection(instance: Elide, tip: HTMLElement) {
+  const s = document.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount || tip.hidden) return;
+  const range = s.getRangeAt(0);
+  if (!instance.element.contains(range.startContainer) || !instance.element.contains(range.endContainer)) return;
+  const from = instance.graphemeAt(range.startContainer, range.startOffset, 'start');
+  const to = instance.graphemeAt(range.endContainer, range.endOffset, 'end');
+  if (from === null || to === null || to <= from) return;
+  const offset = (i: number) => instance.graphemes.slice(0, i).join('').length;
+  tipHolds[tip === expandTip ? 0 : 1]!.select(offset(from), offset(to));
+}
+
 /** Hide a tip, and any selection made in it. */
 function closeTip(tip: HTMLElement) {
   const s = document.getSelection();
@@ -474,6 +490,7 @@ function showRow(row: Element) {
   // The same tooltip as the README's example (see grow-tip.ts).
   if (reveal === 'grow') growTip(instance, growTipEl);
   else showExpand(instance);
+  carrySelection(instance, reveal === 'grow' ? growTipEl : expandTip);
   if (!expandTip.hidden || !growTipEl.hidden) delays.opened(row);
 }
 /** Show a row's tip once the delay allows. */
@@ -569,6 +586,7 @@ function showGrowRow(row: Element) {
   growRow = row;
   growTipEl.hidden = true;
   growTip(instance, growTipEl);
+  carrySelection(instance, growTipEl);
   if (!growTipEl.hidden) delays.opened(row);
 }
 function hideGrowTip() {
