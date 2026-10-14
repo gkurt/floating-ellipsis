@@ -1,6 +1,6 @@
 # floating-ellipsis
 
-Fluid, balanced ellipsis. Smart text truncation for the DOM.
+Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](https://gkurt.com/floating-ellipsis/)**
 
 - **One line or many.** Clamp to any number of lines.
 - **Ellipsis anywhere.** `'start'`, `'middle'`, `'end'`, any position from 0 to

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Fluid, balanced ellipsis: smart text truncation for one or many lines, with the ellipsis anywhere and optically even spacing.",
-  "homepage": "https://github.com/gkurt/floating-ellipsis",
+  "homepage": "https://gkurt.com/floating-ellipsis/",
   "bugs": {
     "url": "https://github.com/gkurt/floating-ellipsis/issues"
   },
@@ -44,6 +44,7 @@
   "scripts": {
     "dev": "vite demo --port 4181 --strictPort",
     "build": "tsdown",
+    "build:site": "vite build demo --base ./ --outDir ../out/site --emptyOutDir",
     "typecheck": "tsc",
     "lint": "oxlint",
     "format": "oxfmt",

@@ -9,6 +9,7 @@ bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun typecheck      # Type check (TypeScript 7, native tsc)
 bun run build      # dist/ via tsdown (index + transitions entries, with .d.ts)
+bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
 bun run lint       # Lint
 bun run format     # Format
 bun run fix        # Lint + format + autofix
