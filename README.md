@@ -125,9 +125,9 @@ const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
 |---|---|---|
 | `effect` | `'merge'` | `'merge'`, `'fade'`, `'blur'`, or `'none'` (glyphs come and go at once; the dots still glide). |
 | `duration` | `460` | Milliseconds for glyph effects, and roughly how long the dots take to settle. |
-| `glide` | `true` | When the cut changes, the dots glide to their new place on a critically damped spring instead of jumping: velocity carries over when the target moves again, and they never overshoot. Works without glyph mode too. |
+| `glide` | `true` | When the cut changes, the ellipsis' spacing glides instead of jumping. The dots always sit evenly in the space between their neighbouring glyphs; that space's edges glide on a critically damped spring (velocity carries over, no overshoot). An edge only reaches past a glyph that is still on its way in, so the dots never run into the text. Works without glyph mode too. |
 | `pace` | `'leeway'` | How long leaving glyphs take. `'leeway'`: in proportion to the room their removal frees; squeezed text (a fast drag) leaves instantly instead of animating into space that isn't there. `'fixed'`: always `duration`. |
-| `marks` | `'together'` | When the dots move as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty. |
+| `marks` | `'together'` | When the spacing widens as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty. |
 
 With `'merge'`, a glyph that leaves shrinks into the nearest mark of the
 ellipsis: glyphs on the left go into the left dot, glyphs on the right into
@@ -137,10 +137,11 @@ glyphs grow back out the same way.
 
 Nothing moves the text itself: glyphs keep their layout positions, so the line
 always ends exactly at the edge. Ghost glyphs are drawn in an overlay next to
-the text, never inside it, and are re-placed after every layout pass. Dots
-glide with a transform, which is visual only, and are kept inside the content
-box while they do. Only jumps glide; the gentle drift of a resize follows
-layout directly. Respects `prefers-reduced-motion`.
+the text, never inside it, and are re-placed after every layout pass. Dots are
+shifted with a transform, which is visual only, and only ever within the space
+between the visible glyphs on either side, never narrower than they need, so
+they can't collide with the text or each other. Only jumps glide; the gentle
+drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
 
 ## How it works
 

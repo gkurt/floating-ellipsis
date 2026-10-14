@@ -12,17 +12,19 @@ export interface TransitionOptions {
    * - 'none': glyphs come and go at once; the marks still glide
    */
   effect?: Effect;
-  /** Milliseconds for glyph effects, and roughly how long marks take to settle. Default 460. */
+  /** Milliseconds for glyph effects, and roughly how long the spacing takes to settle. Default 460. */
   duration?: number;
   /** For glyphs leaving; arriving glyphs play the same curve backwards. */
   easing?: string;
   /** Blur radius in px. Default 4. */
   blur?: number;
   /**
-   * Let the ellipsis' marks glide to their new place when the cut changes
-   * instead of jumping. They move on a critically damped spring: velocity
-   * carries over when the target moves again, and they never overshoot.
-   * Default true.
+   * When the cut changes, let the ellipsis' spacing glide instead of jump.
+   * The marks always sit evenly in the space between their neighbouring
+   * glyphs; it is that space's edges that glide, on a critically damped
+   * spring (velocity carries over when the target moves again, and it never
+   * overshoots). Since the marks never leave that space, they can't run into
+   * the text. Default true.
    */
   glide?: boolean;
   /**
@@ -55,14 +57,31 @@ interface Ghost {
   cleanup?: () => void;
 }
 
-/** A mark's visual offset from where layout puts it, settling to zero. */
-interface Spring {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+/**
+ * How far an ellipsis' region (the space between its neighbouring glyphs)
+ * is drawn from where layout puts it, edge by edge, settling to zero.
+ */
+interface Region {
+  left: number;
+  right: number;
+  vLeft: number;
+  vRight: number;
   /** Don't start settling before this time (for `marks: 'after'`). */
   hold: number;
+}
+
+/** An ellipsis' region and its marks, relative to the host. */
+interface Geometry {
+  ellipsis: HTMLElement;
+  /** The region as laid out: from the ink of the glyph before to the ink of the glyph after. */
+  left: number;
+  right: number;
+  top: number;
+  /** Each mark element with the horizontal extent of its ink, as laid out. */
+  marks: { el: HTMLElement; left: number; right: number }[];
+  /** Grapheme indices of the neighbouring glyphs (may be out of range). */
+  before: number;
+  after: number;
 }
 
 type Before = { box: DOMRect; ink: DOMRect };
@@ -98,14 +117,15 @@ const INSTANT = 60;
 
 /**
  * Animate truncation changes: glyphs that appear and disappear (with an
- * instance created with `glyphs: true`) and the ellipsis' marks, which glide
- * to their new place (any instance). Returns a function that stops it all.
+ * instance created with `glyphs: true`) and the ellipsis' spacing, which
+ * glides (any instance). Returns a function that stops it all.
  *
  * Nothing here moves the text itself: glyphs keep their layout positions, so
  * the line always ends exactly at the edge. Ghost glyphs live in an overlay
  * next to the text, never inside it, since anything positioned inside the
- * line would disturb its measurement. Marks glide with a transform, which is
- * visual only, and are kept inside the content box while they do.
+ * line would disturb its measurement. Marks are shifted with a transform,
+ * which is visual only, and only ever within the space between their
+ * neighbouring glyphs.
  */
 export function transitions(instance: Elide, options: TransitionOptions = {}): () => void {
   const {
@@ -121,9 +141,9 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   const host = instance.element;
   const ghosts = new Set<Ghost>();
   const entering = new Map<HTMLElement, Ghost>();
-  const springs = new Map<HTMLElement, Spring>();
-  // Where layout put each mark after the previous pass, relative to the host.
-  let laidOut = new Map<HTMLElement, [number, number]>();
+  const regions = new Map<HTMLElement, Region>();
+  // Each ellipsis' region as drawn last, relative to the host.
+  let drawn = new Map<HTMLElement, { left: number; right: number; top: number }>();
   // Settles to within 1% in about `duration`.
   const omega = 6.6 / (duration / 1000);
   let springFrame = 0;
@@ -142,95 +162,147 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   // ---------------------------------------------------------------------------
   // Marks
 
-  // The transform each mark has on screen right now.
-  const applied = new WeakMap<HTMLElement, { x: number; y: number }>();
-  const offsetOf = (el: HTMLElement) => applied.get(el) ?? { x: 0, y: 0 };
+  // The horizontal shift each mark has on screen right now.
+  const applied = new WeakMap<HTMLElement, number>();
+  const shiftOf = (el: HTMLElement) => applied.get(el) ?? 0;
 
-  /** Mark positions as laid out, without any glide offset, relative to the host. */
-  function layoutPositions(): Map<HTMLElement, [number, number]> {
+  /** Every showing ellipsis' region and marks as laid out, without glide shifts. */
+  function geometry(): Geometry[] {
     const origin = host.getBoundingClientRect();
-    const out = new Map<HTMLElement, [number, number]>();
-    instance.state.hidden.forEach((_, j) => {
-      for (const el of instance.markElements(j)) {
-        const r = el.getBoundingClientRect();
-        const o = offsetOf(el);
-        out.set(el, [r.left - o.x - origin.left, r.top - o.y - origin.top]);
-      }
+    const { hidden, gaps } = instance.state;
+    return hidden.flatMap((_, j) => {
+      const ellipsis = instance.ellipses[j];
+      const els = instance.markElements(j);
+      const boxes = instance.marks(j);
+      const gap = gaps[j];
+      if (!ellipsis || !els.length || !boxes.length || !gap) return [];
+      // One element may draw several dots (a single '…'): they share its shift.
+      const owner = (k: number) => els[els.length === boxes.length ? k : 0]!;
+      const ink = boxes.map((r, k) => {
+        const x = shiftOf(owner(k));
+        return { left: r.left - x - origin.left, right: r.right - x - origin.left, el: owner(k) };
+      });
+      const first = ink[0]!;
+      const last = ink[ink.length - 1]!;
+      const marks = els.map((el) => {
+        const own = ink.filter((b) => b.el === el);
+        return { el, left: Math.min(...own.map((b) => b.left)), right: Math.max(...own.map((b) => b.right)) };
+      });
+      return [{
+        ellipsis,
+        left: first.left - (gap.left ?? 0),
+        right: last.right + (gap.right ?? 0),
+        top: boxes[0]!.top - origin.top,
+        marks,
+        before: hidden[j]!.start - 1,
+        after: hidden[j]!.end,
+      }];
     });
-    return out;
   }
 
-  /** The bounds marks must stay within: the host's content box. */
+  /** The host's content box, relative to the host. */
   function contentBox() {
     const r = host.getBoundingClientRect();
     const cs = getComputedStyle(host);
-    const left = r.left + host.clientLeft + parseFloat(cs.paddingLeft);
-    return { left, right: r.left + host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight) };
+    const left = host.clientLeft + parseFloat(cs.paddingLeft);
+    return { left, right: host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight), width: r.width };
   }
 
-  function applySprings() {
+  /**
+   * Draw every ellipsis. Its region's edges sit where their springs are, but
+   * never past a glyph that is showing (nor the content box), and never
+   * closer together than the marks need. The marks are laid out inside it
+   * with every gap scaled alike, so what animates is the spacing, and the
+   * marks can't run into the text or into each other.
+   */
+  function draw() {
     const bounds = contentBox();
-    for (const [el, s] of springs) {
-      if (!el.isConnected) {
-        springs.delete(el);
-        applied.delete(el);
-        el.style.transform = '';
-        continue;
+    const next = new Map<HTMLElement, { left: number; right: number; top: number }>();
+    // An edge may only reach past where layout puts it while the glyph there
+    // is still on its way in (hidden, its ghost growing).
+    const arriving = (i: number) => {
+      const el = instance.glyph(i);
+      return !!el && entering.has(el);
+    };
+    const n = instance.state.length;
+    for (const g of geometry()) {
+      const r = regions.get(g.ellipsis);
+      const showingBefore = g.before >= 0 && !arriving(g.before);
+      const showingAfter = g.after < n && !arriving(g.after);
+      if (r && r.left < 0 && showingBefore) [r.left, r.vLeft] = [0, 0];
+      if (r && r.right > 0 && showingAfter) [r.right, r.vRight] = [0, 0];
+      const hardLeft = showingBefore ? g.left : bounds.left;
+      const hardRight = showingAfter ? g.right : bounds.right;
+
+      const widths = g.marks.map((m) => m.right - m.left);
+      const need = widths.reduce((sum, w) => sum + w, 0);
+      let left = Math.max(hardLeft, g.left + (r?.left ?? 0));
+      let right = Math.min(hardRight, g.right + (r?.right ?? 0));
+      if (right - left < need) {
+        // Too tight for the marks: widen around the middle, within bounds.
+        const middle = (left + right) / 2;
+        left = Math.max(hardLeft, middle - need / 2);
+        right = Math.min(hardRight, left + need);
+        left = Math.max(hardLeft, right - need);
       }
-      // Keep the line's ends where they belong: never drawn past the edges.
-      // Only the drawing is clamped; the spring itself carries on.
-      const r = el.getBoundingClientRect();
-      const layoutLeft = r.left - offsetOf(el).x;
-      const x = Math.max(bounds.left - layoutLeft, Math.min(s.x, bounds.right - (layoutLeft + r.width)));
-      const still = Math.abs(x) < 0.05 && Math.abs(s.y) < 0.05;
-      applied.set(el, still ? { x: 0, y: 0 } : { x, y: s.y });
-      el.style.transform = still ? '' : `translate(${x}px, ${s.y}px)`;
+      next.set(g.ellipsis, { left, right, top: g.top });
+
+      // Layout's gaps (outer and between marks), scaled to the drawn region.
+      const free = g.right - g.left - need;
+      const scale = free > 0.01 ? Math.max(0, right - left - need) / free : 1;
+      let x = left + (g.marks[0]!.left - g.left) * scale;
+      g.marks.forEach((m, k) => {
+        const shift = r ? x - m.left : 0;
+        x += widths[k]! + ((g.marks[k + 1]?.left ?? m.right) - m.right) * scale;
+        const still = Math.abs(shift) < 0.05;
+        applied.set(m.el, still ? 0 : shift);
+        m.el.style.transform = still ? '' : `translateX(${shift}px)`;
+      });
     }
+    drawn = next;
   }
 
   function tick(now: number) {
     springFrame = 0;
     const dt = Math.min(0.05, lastTick ? (now - lastTick) / 1000 : 1 / 60);
     lastTick = now;
-    for (const [el, s] of springs) {
-      if (now < s.hold) continue;
-      [s.x, s.vx] = settle(s.x, s.vx, omega, dt);
-      [s.y, s.vy] = settle(s.y, s.vy, omega, dt);
-      if (Math.abs(s.x) < 0.05 && Math.abs(s.y) < 0.05 && Math.abs(s.vx) < 1 && Math.abs(s.vy) < 1) {
-        springs.delete(el);
-        applied.delete(el);
-        el.style.transform = '';
+    for (const [el, r] of regions) {
+      if (!el.isConnected) {
+        regions.delete(el);
+        continue;
       }
+      if (now < r.hold) continue;
+      [r.left, r.vLeft] = settle(r.left, r.vLeft, omega, dt);
+      [r.right, r.vRight] = settle(r.right, r.vRight, omega, dt);
+      const done = (x: number, v: number) => Math.abs(x) < 0.05 && Math.abs(v) < 1;
+      if (done(r.left, r.vLeft) && done(r.right, r.vRight)) regions.delete(el);
     }
-    applySprings();
-    if (springs.size) springFrame = requestAnimationFrame(tick);
+    draw();
+    if (regions.size) springFrame = requestAnimationFrame(tick);
     else lastTick = 0;
   }
 
   /**
-   * Layout just moved the marks (a glyph came or went). Keep them where they
-   * were on screen and let them glide over, carrying their current velocity.
+   * Layout just moved an ellipsis' neighbours (a glyph came or went). Keep
+   * its region where it was on screen and let the edges glide over,
+   * carrying their current velocity.
    */
   function glideMarks(hold: number) {
-    const now = layoutPositions();
-    for (const [el, [x, y]] of now) {
-      const before = laidOut.get(el);
-      if (!before) continue;
-      const dx = before[0] - x;
-      const dy = before[1] - y;
-      if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) continue;
-      // A mark that changed lines just goes there; gliding across lines reads as noise.
-      if (Math.abs(dy) > el.getBoundingClientRect().height * 2) continue;
-      const s = springs.get(el) ?? { x: 0, y: 0, vx: 0, vy: 0, hold: 0 };
-      s.x += dx;
-      s.y += dy;
-      s.hold = Math.max(s.hold, hold);
-      springs.set(el, s);
+    for (const g of geometry()) {
+      const before = drawn.get(g.ellipsis);
+      // An ellipsis that changed lines just goes there; gliding across lines reads as noise.
+      if (!before || Math.abs(before.top - g.top) > 2) continue;
+      const left = before.left - g.left;
+      const right = before.right - g.right;
+      if (Math.abs(left) < 0.25 && Math.abs(right) < 0.25) continue;
+      const r = regions.get(g.ellipsis) ?? { left: 0, right: 0, vLeft: 0, vRight: 0, hold: 0 };
+      r.left = left;
+      r.right = right;
+      r.hold = Math.max(r.hold, hold);
+      regions.set(g.ellipsis, r);
     }
-    if (springs.size) {
-      applySprings();
-      springFrame ||= requestAnimationFrame(tick);
-    }
+    draw();
+    if (regions.size) springFrame ||= requestAnimationFrame(tick);
   }
 
   // ---------------------------------------------------------------------------
@@ -339,31 +411,27 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return marks[Math.min(marks.length - 1, Math.floor(at * marks.length))];
   }
 
-  /** The mark a newly shown glyph grows out of, as it is on screen. */
+  /** The mark a newly shown glyph grows out of, as it was last painted. */
   function sourceMark(i: number, change: ElideChange): DOMRect | undefined {
     const was = change.previous?.hidden.findIndex((p) => i >= p.start && i < p.end) ?? -1;
     const prev = change.previous?.hidden[was];
-    if (!prev) return undefined;
-    // The part it came from usually still exists, a little smaller.
-    const match = change.state.hidden
-      .map((p, j) => ({ p, j }))
-      .filter(({ p }) => p.start < prev.end && p.end > prev.start)
-      .sort((a, b) => Math.abs((a.p.start + a.p.end) / 2 - i) - Math.abs((b.p.start + b.p.end) / 2 - i))[0];
-    if (match) {
-      const marks = instance.marks(match.j);
-      return i < match.p.start ? marks[0] : marks[marks.length - 1];
-    }
-    return markOf(i, prev, change.marksBefore[was] ?? []);
+    const marks = change.marksBefore[was] ?? [];
+    if (!prev || !marks.length) return undefined;
+    // The part it came from usually still exists, a little smaller: the
+    // glyph comes out of the end of the ellipsis on its side.
+    const match = change.state.hidden.find((p) => p.start < prev.end && p.end > prev.start);
+    if (match) return i < match.start ? marks[0] : marks[marks.length - 1];
+    return markOf(i, prev, marks);
   }
 
   /** Marks of ellipsis `j` where they will come to rest. */
   function restingMarks(j: number): DOMRect[] {
     const els = instance.markElements(j);
     const boxes = instance.marks(j);
-    // One element may draw several dots (a single '…'): they share its offset.
+    // One element may draw several dots (a single '…'): they share its shift.
     return boxes.map((r, k) => {
-      const o = offsetOf(els[els.length === boxes.length ? k : 0] ?? els[0]!);
-      return new DOMRect(r.left - o.x, r.top - o.y, r.width, r.height);
+      const x = shiftOf(els[els.length === boxes.length ? k : 0] ?? els[0]!);
+      return new DOMRect(r.left - x, r.top, r.width, r.height);
     });
   }
 
@@ -480,10 +548,11 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const ms = leaveTime(change);
     const instant = ms < INSTANT;
     const leaving = change.hidden.length > 0 && effect !== 'none' && !instant;
+    // Arriving glyphs first: the spacing may only glide over glyphs still on their way in.
+    if (effect !== 'none') for (const i of change.shown) enter(i, change);
     if (glide) glideMarks(markTiming === 'after' && leaving && effect === 'merge' ? performance.now() + ms * 0.8 : 0);
     if (effect === 'none') return;
 
-    for (const i of change.shown) enter(i, change);
     if (leaving) {
       for (const i of change.hidden) {
         const before = change.hiddenGlyphs.get(i);
@@ -495,26 +564,28 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   });
 
   // After every pass, with layout final for this frame: put ghosts back on
-  // the elements they follow, and remember where layout put the marks, so a
-  // jump can be told apart from the gentle drift of resizing (no glide).
+  // the elements they follow, and redraw the ellipses. A region's glide
+  // offsets are relative to layout, so the gentle drift of resizing is
+  // followed directly; only jumps glide.
   // (Doing this in a frame callback would see the old text reflowed at the
   // new width, before truncation catches up, often a line lower.)
   const offRender = instance.onRender(() => {
     if (ghosts.size) place();
-    laidOut = layoutPositions();
-    if (springs.size) applySprings();
+    draw();
   });
-  laidOut = layoutPositions();
+  draw();
 
   return () => {
     offChange();
     offRender();
     for (const g of [...ghosts]) g.anims.forEach((a) => a.cancel());
-    for (const el of springs.keys()) {
-      el.style.transform = '';
-      applied.delete(el);
-    }
-    springs.clear();
+    regions.clear();
+    instance.state.hidden.forEach((_, j) => {
+      for (const el of instance.markElements(j)) {
+        el.style.transform = '';
+        applied.delete(el);
+      }
+    });
     cancelAnimationFrame(springFrame);
     layer.remove();
   };
