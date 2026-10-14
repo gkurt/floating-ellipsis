@@ -330,7 +330,10 @@ drift of a resize follows layout directly. Respects `prefers-reduced-motion`.
    anchored at the start, the last at the end, and the ones in between centred
    where they sit in the text. Kept graphemes are handed out one at a time in
    proportion to the positions, so every island only grows as space grows. Kept
-   parts are added on top, and each gap left over becomes an ellipsis.
+   parts are added on top, and each gap left over becomes an ellipsis. A gap
+   beside a kept part that would hide three letters or fewer is shown instead,
+   and the room it takes comes out of the nearest other gap. A gap no wider
+   than the ellipsis that would replace it is shown too.
 3. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
    because browsers round glyph boxes to whole pixels. The gaps between ink
    edges are computed with kerning ignored, and margins on the ellipsis make

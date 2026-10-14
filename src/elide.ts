@@ -792,6 +792,27 @@ export class Elide {
     return run.marks;
   }
 
+  /**
+   * The cuts that save room. Hiding text no wider than the ellipsis that
+   * stands in for it (its marks and the gaps either side, as `render` will
+   * plan them) only adds an ellipsis. (The first probe of a pass, before an
+   * ellipsis has been laid out, can't tell; the search corrects for that.)
+   */
+  private worthCutting(run: Run, hidden: Range[]): Range[] {
+    if (hidden.length === 0 || (!run.marks && !this.joins[0]?.ellipsis.isConnected)) return hidden;
+    const layout = this.markLayout(run);
+    const target = resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm);
+    const group = groupMetrics(layout, layout.inner);
+    const n = this.g.length;
+    const ink = (i: number) => (i >= 0 && i < n && !isWhitespace(this.g[i]) ? this.glyphMetrics(run, this.g[i]!) : null);
+    return hidden.filter(([s, e]) => {
+      let width = 0;
+      for (let i = s; i < e; i++) width += this.glyphMetrics(run, this.g[i]!).advance;
+      const plan = planGap(ink(s - 1), group, ink(e), target);
+      return width > plan.marginLeft + group.advance + plan.marginRight;
+    });
+  }
+
   private glyphMetrics(run: Run, g: string): GlyphMetrics {
     const m = measure(run.font, applyTextTransform(g, run.transform));
     return run.letterSpacing !== 0 ? { ...m, advance: m.advance + run.letterSpacing } : m;
@@ -1139,7 +1160,7 @@ export class Elide {
         fit = this.measure(run);
       }
       if (!fit.ok && n > 0) {
-        const at = (k: number) => hiddenRanges(this.g, this.layout, k, pins, snap, trim);
+        const at = (k: number) => this.worthCutting(run, hiddenRanges(this.g, this.layout, k, pins, snap, trim));
         const fits = (k: number) => {
           this.render(run, at(k));
           return this.measure(run).ok;

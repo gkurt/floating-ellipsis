@@ -10,6 +10,7 @@ import {
   positionValue,
   searchMax,
   separators,
+  showSlivers,
   type SeparatorOptions,
   subtract,
   toGraphemeRanges,
@@ -170,6 +171,63 @@ describe('hiddenRanges', () => {
     const text = graphemes('0123456789abcdefghij');
     const layout = layoutFor(text.length, [0.25, 0.75]);
     expect(show(text, hiddenRanges(text, layout, 8, [], null, true))).toBe('01…89ab…ij');
+  });
+});
+
+describe('showSlivers', () => {
+  // 0         1         2         3
+  // 0123456789012345678901234567890
+  // The quick brown fox jumps over
+  const g = graphemes('The quick brown fox jumps over');
+  const fox: Range = [16, 19];
+
+  it('shows a sliver beside a pin, and hides as much more elsewhere', () => {
+    // "The quick br…fox…over": "own " is a sliver; the cut after fox pays for it.
+    const cuts = showSlivers(
+      g,
+      [
+        [12, 16],
+        [19, 26],
+      ],
+      [fox],
+    );
+    expect(show(g, cuts)).toBe('The quick brown fox…');
+    expect(cuts).toEqual([[19, 30]]);
+  });
+
+  it('prefers a cut away from pins to pay', () => {
+    const cuts = showSlivers(
+      g,
+      [
+        [1, 3],
+        [14, 16],
+        [21, 23],
+      ],
+      [fox],
+    );
+    expect(show(g, cuts)).toBe('T… quick brown fox …s over');
+  });
+
+  it('leaves real cuts alone', () => {
+    // "quick brown " is no sliver.
+    const cuts: Range[] = [
+      [4, 16],
+      [19, 26],
+    ];
+    expect(showSlivers(g, cuts, [fox])).toEqual(cuts);
+    // Nor is a short cut that no pin made.
+    expect(showSlivers(g, [[13, 15]], [])).toEqual([[13, 15]]);
+  });
+
+  it('applies through hiddenRanges', () => {
+    const layout = layoutFor(g.length, ['middle']);
+    for (let kept = 0; kept < g.length; kept++) {
+      for (const [s, e] of hiddenRanges(g, layout, kept, [fox], null, true)) {
+        const beside = e === fox[0] || s === fox[1];
+        const letters = g.slice(s, e).filter((c) => c.trim()).length;
+        expect(beside && letters <= 3).toBe(false);
+      }
+    }
   });
 });
 

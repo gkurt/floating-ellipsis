@@ -140,7 +140,8 @@ export function subtract(ranges: readonly Range[], cutouts: readonly Range[]): R
 /**
  * The ranges to hide when `kept` graphemes go to the islands and `pins`
  * always stay visible. Snapping and whitespace trimming grow the hidden
- * ranges; pins are carved back out last, so they always win.
+ * ranges; pins are carved back out last, so they always win. Slivers left
+ * between a pin and the text around it are shown (see `showSlivers`).
  */
 export function hiddenRanges(
   graphemes: readonly string[],
@@ -166,7 +167,51 @@ export function hiddenRanges(
     }
     return [s, e];
   });
-  return subtract(grown, pins);
+  return showSlivers(graphemes, subtract(grown, pins), pins);
+}
+
+/** Most graphemes (whitespace aside) a cut beside a pin can hide and still be a sliver. */
+export const SLIVER = 3;
+
+/**
+ * A cut next to a pin that hides only a sliver (`SLIVER` graphemes or fewer,
+ * whitespace aside), like `brow…fox` for `brown fox`, just puts a second
+ * ellipsis around it. Show those instead, and to keep the line about as long,
+ * hide as many more graphemes at the edges of the nearest other cut
+ * (preferring one that doesn't touch a pin), one side then the other, never
+ * into a pin.
+ */
+export function showSlivers(graphemes: readonly string[], cuts: readonly Range[], pins: readonly Range[]): Range[] {
+  const n = graphemes.length;
+  const byPin = ([s, e]: Range) => pins.some(([a, b]) => b === s || a === e);
+  const pinned = (i: number) => pins.some(([a, b]) => i >= a && i < b);
+  const sliver = (cut: Range) => {
+    let count = 0;
+    for (let i = cut[0]; i < cut[1]; i++) if (!isWhitespace(graphemes[i])) count++;
+    return byPin(cut) && count <= SLIVER;
+  };
+  const kept = cuts.filter((c) => !sliver(c)).map(([s, e]): [number, number] => [s, e]);
+  for (const cut of cuts) {
+    if (!sliver(cut)) continue;
+    // Pay for it at the nearest other cut, one not beside a pin if there is one.
+    const distance = (c: Range) => (c[0] >= cut[1] ? c[0] - cut[1] : cut[0] - c[1]);
+    const rank = (c: Range) => (byPin(c) ? n : 0) + distance(c);
+    let best: [number, number] | null = null;
+    for (const c of kept) if (!best || rank(c) < rank(best)) best = c;
+    if (!best) continue;
+    let owed = cut[1] - cut[0];
+    let end = true;
+    while (owed > 0) {
+      const canEnd = best[1] < n && !pinned(best[1]);
+      const canStart = best[0] > 0 && !pinned(best[0] - 1);
+      if (!canEnd && !canStart) break;
+      if (end ? canEnd : !canStart) best[1]++;
+      else best[0]--;
+      end = !end;
+      owed--;
+    }
+  }
+  return union(kept);
 }
 
 /**
