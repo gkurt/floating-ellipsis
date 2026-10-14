@@ -91,11 +91,12 @@ const motion: { effect: Effect | 'none'; pace: 'leeway' | 'fixed'; marks: 'toget
   pace: 'leeway',
   marks: 'together',
 };
-let stopTransitions: (() => void) | null = null;
+let stopTransitions: () => void = () => {};
 function restartTransitions() {
-  stopTransitions?.();
+  stopTransitions();
   const { effect, pace, marks } = motion;
-  stopTransitions = effect === 'none' ? null : transitions(hero, { effect, pace, marks });
+  // With no glyph effect the dots still glide.
+  stopTransitions = transitions(hero, { effect, pace, marks });
 }
 restartTransitions();
 segmented('effect', (v) => {

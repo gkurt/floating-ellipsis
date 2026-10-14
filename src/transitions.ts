@@ -1,26 +1,30 @@
 import type { Elide, ElideChange, Part } from './elide.js';
 
-export type Effect = 'fade' | 'blur' | 'merge';
+export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 
 export interface TransitionOptions {
   /**
-   * - 'fade': glyphs fade in and out in place
-   * - 'blur': glyphs fade through a blur in place
+   * What glyphs do as they appear and disappear:
    * - 'merge' (default): a glyph that leaves shrinks into the nearest mark of
    *   the ellipsis and turns into it; one that arrives grows out of it
+   * - 'fade': glyphs fade in and out in place
+   * - 'blur': glyphs fade through a blur in place
+   * - 'none': glyphs come and go at once; the marks still glide
    */
   effect?: Effect;
-  /** Milliseconds. Default 460. */
+  /** Milliseconds for glyph effects, and roughly how long marks take to settle. Default 460. */
   duration?: number;
   /** For glyphs leaving; arriving glyphs play the same curve backwards. */
   easing?: string;
   /** Blur radius in px. Default 4. */
   blur?: number;
   /**
-   * Slide the ellipsis' marks, and glyphs that stay but move, from where they
-   * were to their new place instead of letting them jump. Default true.
+   * Let the ellipsis' marks glide to their new place when the cut changes
+   * instead of jumping. They move on a critically damped spring: velocity
+   * carries over when the target moves again, and they never overshoot.
+   * Default true.
    */
-  slide?: boolean;
+  glide?: boolean;
   /**
    * How long glyphs take to leave:
    * - 'leeway' (default): in proportion to the room their removal frees. When
@@ -51,6 +55,16 @@ interface Ghost {
   cleanup?: () => void;
 }
 
+/** A mark's visual offset from where layout puts it, settling to zero. */
+interface Spring {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Don't start settling before this time (for `marks: 'after'`). */
+  hold: number;
+}
+
 type Before = { box: DOMRect; ink: DOMRect };
 
 const center = (r: DOMRect) => [r.left + r.width / 2, r.top + r.height / 2] as const;
@@ -64,20 +78,34 @@ function reversed(easing: string): string {
   return `cubic-bezier(${1 - c},${1 - d},${1 - a},${1 - b})`;
 }
 
+/**
+ * Advance a critically damped spring by `dt` seconds, exactly:
+ * x(t) = (x0 + (v0 + ωx0)t)e^(-ωt). Critical damping is the fastest motion
+ * that doesn't oscillate; it can still cross zero once when it starts out
+ * moving fast towards it, so a crossing stops it dead.
+ */
+function settle(x: number, v: number, omega: number, dt: number): [number, number] {
+  const decay = Math.exp(-omega * dt);
+  const k = v + omega * x;
+  const nx = (x + k * dt) * decay;
+  const nv = (v - omega * k * dt) * decay;
+  if (x !== 0 && Math.sign(nx) !== Math.sign(x)) return [0, 0];
+  return [nx, nv];
+}
+
 /** Below this, an animation isn't worth showing. */
 const INSTANT = 60;
 
 /**
- * Animate glyphs as truncation reveals or hides them. Glyph effects need an
- * instance created with `glyphs: true`; sliding marks works either way.
- * Returns a function that stops the transitions.
+ * Animate truncation changes: glyphs that appear and disappear (with an
+ * instance created with `glyphs: true`) and the ellipsis' marks, which glide
+ * to their new place (any instance). Returns a function that stops it all.
  *
- * Ghosts live in an overlay next to the text, never inside it: anything
- * positioned inside the line would disturb its measurement, and the line's
- * elements move around while fitting. A frame loop keeps each ghost on its
- * glyph (or on its ellipsis) while the text reflows. Slides are visual only
- * (a transform, or a relative offset for inline glyphs), so the layout the
- * library measures is never disturbed.
+ * Nothing here moves the text itself: glyphs keep their layout positions, so
+ * the line always ends exactly at the edge. Ghost glyphs live in an overlay
+ * next to the text, never inside it, since anything positioned inside the
+ * line would disturb its measurement. Marks glide with a transform, which is
+ * visual only, and are kept inside the content box while they do.
  */
 export function transitions(instance: Elide, options: TransitionOptions = {}): () => void {
   const {
@@ -85,15 +113,23 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     duration = 460,
     easing = 'cubic-bezier(.45,0,.2,1)',
     blur = 4,
-    slide = true,
+    glide = true,
     pace = 'leeway',
     marks: markTiming = 'together',
     respectReducedMotion = true,
   } = options;
+  const host = instance.element;
   const ghosts = new Set<Ghost>();
   const entering = new Map<HTMLElement, Ghost>();
-  const slides = new Map<HTMLElement, Animation>();
-  let frame = 0;
+  const springs = new Map<HTMLElement, Spring>();
+  // Where layout put each mark after the previous pass, relative to the host.
+  let laidOut = new Map<HTMLElement, [number, number]>();
+  // Settles to within 1% in about `duration`.
+  const omega = 6.6 / (duration / 1000);
+  let springFrame = 0;
+  let lastTick = 0;
+
+  const reduced = () => respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Absolutely positioned without offsets, the layer sits at the start of the
   // host's content, whatever the host's own positioning.
@@ -101,7 +137,104 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   layer.setAttribute('aria-hidden', 'true');
   layer.setAttribute('data-fp-ghosts', '');
   layer.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
-  instance.element.prepend(layer);
+  host.prepend(layer);
+
+  // ---------------------------------------------------------------------------
+  // Marks
+
+  // The transform each mark has on screen right now.
+  const applied = new WeakMap<HTMLElement, { x: number; y: number }>();
+  const offsetOf = (el: HTMLElement) => applied.get(el) ?? { x: 0, y: 0 };
+
+  /** Mark positions as laid out, without any glide offset, relative to the host. */
+  function layoutPositions(): Map<HTMLElement, [number, number]> {
+    const origin = host.getBoundingClientRect();
+    const out = new Map<HTMLElement, [number, number]>();
+    instance.state.hidden.forEach((_, j) => {
+      for (const el of instance.markElements(j)) {
+        const r = el.getBoundingClientRect();
+        const o = offsetOf(el);
+        out.set(el, [r.left - o.x - origin.left, r.top - o.y - origin.top]);
+      }
+    });
+    return out;
+  }
+
+  /** The bounds marks must stay within: the host's content box. */
+  function contentBox() {
+    const r = host.getBoundingClientRect();
+    const cs = getComputedStyle(host);
+    const left = r.left + host.clientLeft + parseFloat(cs.paddingLeft);
+    return { left, right: r.left + host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight) };
+  }
+
+  function applySprings() {
+    const bounds = contentBox();
+    for (const [el, s] of springs) {
+      if (!el.isConnected) {
+        springs.delete(el);
+        applied.delete(el);
+        el.style.transform = '';
+        continue;
+      }
+      // Keep the line's ends where they belong: never drawn past the edges.
+      // Only the drawing is clamped; the spring itself carries on.
+      const r = el.getBoundingClientRect();
+      const layoutLeft = r.left - offsetOf(el).x;
+      const x = Math.max(bounds.left - layoutLeft, Math.min(s.x, bounds.right - (layoutLeft + r.width)));
+      const still = Math.abs(x) < 0.05 && Math.abs(s.y) < 0.05;
+      applied.set(el, still ? { x: 0, y: 0 } : { x, y: s.y });
+      el.style.transform = still ? '' : `translate(${x}px, ${s.y}px)`;
+    }
+  }
+
+  function tick(now: number) {
+    springFrame = 0;
+    const dt = Math.min(0.05, lastTick ? (now - lastTick) / 1000 : 1 / 60);
+    lastTick = now;
+    for (const [el, s] of springs) {
+      if (now < s.hold) continue;
+      [s.x, s.vx] = settle(s.x, s.vx, omega, dt);
+      [s.y, s.vy] = settle(s.y, s.vy, omega, dt);
+      if (Math.abs(s.x) < 0.05 && Math.abs(s.y) < 0.05 && Math.abs(s.vx) < 1 && Math.abs(s.vy) < 1) {
+        springs.delete(el);
+        applied.delete(el);
+        el.style.transform = '';
+      }
+    }
+    applySprings();
+    if (springs.size) springFrame = requestAnimationFrame(tick);
+    else lastTick = 0;
+  }
+
+  /**
+   * Layout just moved the marks (a glyph came or went). Keep them where they
+   * were on screen and let them glide over, carrying their current velocity.
+   */
+  function glideMarks(hold: number) {
+    const now = layoutPositions();
+    for (const [el, [x, y]] of now) {
+      const before = laidOut.get(el);
+      if (!before) continue;
+      const dx = before[0] - x;
+      const dy = before[1] - y;
+      if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) continue;
+      // A mark that changed lines just goes there; gliding across lines reads as noise.
+      if (Math.abs(dy) > el.getBoundingClientRect().height * 2) continue;
+      const s = springs.get(el) ?? { x: 0, y: 0, vx: 0, vy: 0, hold: 0 };
+      s.x += dx;
+      s.y += dy;
+      s.hold = Math.max(s.hold, hold);
+      springs.set(el, s);
+    }
+    if (springs.size) {
+      applySprings();
+      springFrame ||= requestAnimationFrame(tick);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ghosts
 
   function place() {
     const origin = layer.getBoundingClientRect();
@@ -114,13 +247,6 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       g.el.style.left = `${box.left + g.dx - origin.left}px`;
       g.el.style.top = `${box.top + g.dy - origin.top}px`;
     }
-  }
-
-  function loop() {
-    frame = 0;
-    if (!ghosts.size) return;
-    place();
-    frame = requestAnimationFrame(loop);
   }
 
   function track(ghost: Ghost) {
@@ -139,67 +265,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       a.addEventListener('finish', () => --open <= 0 && end());
       a.addEventListener('cancel', end);
     }
-    if (!frame) frame = requestAnimationFrame(loop);
   }
-
-  // ---------------------------------------------------------------------------
-  // Slides
-
-  function stopSlide(el: HTMLElement) {
-    slides.get(el)?.cancel();
-  }
-
-  /** Move `el` visually from `dx, dy` away back to where layout put it. */
-  function startSlide(el: HTMLElement, dx: number, dy: number, ms: number, delay: number, inline = false) {
-    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
-    // Inline glyphs can't be transformed; a relative offset moves them just
-    // as well without touching layout. Marks are inline-blocks.
-    if (inline) el.style.position = 'relative';
-    const frames: Keyframe[] = inline
-      ? [{ left: `${dx}px`, top: `${dy}px` }, { left: '0px', top: '0px' }]
-      : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }];
-    const anim = el.animate(frames, { duration: ms, delay, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'backwards' });
-    slides.set(el, anim);
-    const done = () => {
-      if (slides.get(el) !== anim) return;
-      slides.delete(el);
-      if (inline) el.style.position = '';
-    };
-    anim.addEventListener('finish', done);
-    anim.addEventListener('cancel', done);
-  }
-
-  /** Slide marks from where they were painted. `now` are their layout positions. */
-  function slideMarks(change: ElideChange, now: DOMRect[][], ms: number, delay: number) {
-    now.forEach((marks, j) => {
-      const before = change.marksBefore[j];
-      const els = instance.markElements(j);
-      if (!before?.length || !marks.length) return;
-      if (els.length === marks.length && before.length === marks.length) {
-        els.forEach((el, k) => startSlide(el, before[k]!.left - marks[k]!.left, before[k]!.top - marks[k]!.top, ms, delay));
-      } else if (els.length === 1) {
-        // One glyph drawing several dots: move it by its first dot.
-        startSlide(els[0]!, before[0]!.left - marks[0]!.left, before[0]!.top - marks[0]!.top, ms, delay);
-      }
-    });
-  }
-
-  /** Slide glyphs that stayed visible but moved along their line. */
-  function slideGlyphs(change: ElideChange, ms: number) {
-    const moves: [HTMLElement, number][] = [];
-    for (const [i, before] of change.glyphsBefore) {
-      const el = instance.glyph(i);
-      if (!el?.isConnected || entering.has(el)) continue;
-      const box = el.getBoundingClientRect();
-      // A glyph that changed lines just goes there; sliding across lines reads as noise.
-      if (Math.abs(before.box.top - box.top) > box.height / 2) continue;
-      moves.push([el, before.box.left - box.left]);
-    }
-    for (const [el, dx] of moves) startSlide(el, dx, 0, ms, 0, true);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Ghosts
 
   /** A copy of a glyph over `box`: a wrapper (moves, changes colour) around its text. */
   function ghostOf(text: string, box: DOMRect, style: CSSStyleDeclaration, color: string) {
@@ -273,8 +339,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return marks[Math.min(marks.length - 1, Math.floor(at * marks.length))];
   }
 
-  /** The mark a newly shown glyph grows out of. */
-  function sourceMark(i: number, change: ElideChange, now: DOMRect[][]): DOMRect | undefined {
+  /** The mark a newly shown glyph grows out of, as it is on screen. */
+  function sourceMark(i: number, change: ElideChange): DOMRect | undefined {
     const was = change.previous?.hidden.findIndex((p) => i >= p.start && i < p.end) ?? -1;
     const prev = change.previous?.hidden[was];
     if (!prev) return undefined;
@@ -284,10 +350,21 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       .filter(({ p }) => p.start < prev.end && p.end > prev.start)
       .sort((a, b) => Math.abs((a.p.start + a.p.end) / 2 - i) - Math.abs((b.p.start + b.p.end) / 2 - i))[0];
     if (match) {
-      const marks = now[match.j] ?? [];
+      const marks = instance.marks(match.j);
       return i < match.p.start ? marks[0] : marks[marks.length - 1];
     }
     return markOf(i, prev, change.marksBefore[was] ?? []);
+  }
+
+  /** Marks of ellipsis `j` where they will come to rest. */
+  function restingMarks(j: number): DOMRect[] {
+    const els = instance.markElements(j);
+    const boxes = instance.marks(j);
+    // One element may draw several dots (a single '…'): they share its offset.
+    return boxes.map((r, k) => {
+      const o = offsetOf(els[els.length === boxes.length ? k : 0] ?? els[0]!);
+      return new DOMRect(r.left - o.x, r.top - o.y, r.width, r.height);
+    });
   }
 
   const fadeFrames = (): Keyframe[] => [
@@ -295,7 +372,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     { opacity: 1, filter: 'blur(0px)' },
   ];
 
-  function enter(i: number, change: ElideChange, now: DOMRect[][]) {
+  function enter(i: number, change: ElideChange) {
     const el = instance.glyph(i);
     const ink = instance.glyphInk(i);
     if (!el || !ink) return;
@@ -305,7 +382,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     let anims: Animation[];
     const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
     if (effect === 'merge') {
-      const mark = sourceMark(i, change, now);
+      const mark = sourceMark(i, change);
       if (!mark) {
         ghost.el.remove();
         return;
@@ -331,7 +408,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     track(g);
   }
 
-  function leave(i: number, before: Before, change: ElideChange, now: DOMRect[][], ms: number) {
+  function leave(i: number, before: Before, change: ElideChange, ms: number) {
     const j = change.state.hidden.findIndex((p) => i >= p.start && i < p.end);
     const part = change.state.hidden[j];
     const follow = instance.ellipses[j];
@@ -339,11 +416,11 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     if (!part || !follow || !anchor) return;
     const { box, ink } = before;
     // The glyph is gone from the DOM; its join carries the same text style.
-    const style = getComputedStyle(follow.parentElement ?? instance.element);
+    const style = getComputedStyle(follow.parentElement ?? host);
     const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
     let anims: Animation[];
     if (effect === 'merge') {
-      const mark = markOf(i, part, now[j] ?? []);
+      const mark = markOf(i, part, restingMarks(j));
       if (!mark) {
         ghost.el.remove();
         return;
@@ -392,49 +469,53 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return duration * 0.85 * leeway;
   }
 
-  const off = instance.onChange((change: ElideChange) => {
+  const offChange = instance.onChange((change: ElideChange) => {
     // Glyphs hidden mid-entrance stop entering.
     for (const i of change.hidden) {
       const el = instance.glyph(i);
       if (el) entering.get(el)?.anims.forEach((a) => a.cancel());
     }
-    if (change.reset || !change.previous) return;
-    if (respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (change.reset || !change.previous || reduced()) return;
 
-    // Where the marks are laid out now, with any running slides undone.
-    const now = change.state.hidden.map((_, j) => {
-      for (const el of instance.markElements(j)) stopSlide(el);
-      return instance.marks(j);
-    });
     const ms = leaveTime(change);
     const instant = ms < INSTANT;
-    const leaving = change.hidden.length > 0;
+    const leaving = change.hidden.length > 0 && effect !== 'none' && !instant;
+    if (glide) glideMarks(markTiming === 'after' && leaving && effect === 'merge' ? performance.now() + ms * 0.8 : 0);
+    if (effect === 'none') return;
 
-    if (slide && !instant) {
-      for (const el of slides.keys()) if (!el.isConnected) stopSlide(el);
-      const stays = [...slides.keys()].filter((el) => el.hasAttribute('data-fp-glyph'));
-      for (const el of stays) stopSlide(el);
-      slideGlyphs(change, leaving ? ms : duration);
-      const after = markTiming === 'after' && leaving && effect === 'merge';
-      slideMarks(change, now, after ? ms * 0.6 : leaving ? ms : duration, after ? ms * 0.8 : 0);
-    }
-
-    for (const i of change.shown) enter(i, change, now);
-    if (!instant) {
+    for (const i of change.shown) enter(i, change);
+    if (leaving) {
       for (const i of change.hidden) {
         const before = change.hiddenGlyphs.get(i);
-        if (before) leave(i, before, change, now, ms);
+        if (before) leave(i, before, change, ms);
       }
     }
     for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
     if (ghosts.size) place();
   });
 
+  // After every pass, with layout final for this frame: put ghosts back on
+  // the elements they follow, and remember where layout put the marks, so a
+  // jump can be told apart from the gentle drift of resizing (no glide).
+  // (Doing this in a frame callback would see the old text reflowed at the
+  // new width, before truncation catches up, often a line lower.)
+  const offRender = instance.onRender(() => {
+    if (ghosts.size) place();
+    laidOut = layoutPositions();
+    if (springs.size) applySprings();
+  });
+  laidOut = layoutPositions();
+
   return () => {
-    off();
+    offChange();
+    offRender();
     for (const g of [...ghosts]) g.anims.forEach((a) => a.cancel());
-    for (const a of [...slides.values()]) a.cancel();
-    cancelAnimationFrame(frame);
+    for (const el of springs.keys()) {
+      el.style.transform = '';
+      applied.delete(el);
+    }
+    springs.clear();
+    cancelAnimationFrame(springFrame);
     layer.remove();
   };
 }

@@ -276,6 +276,7 @@ export class Elide {
   private readonly runs: HTMLSpanElement[] = [];
   private readonly joins: Join[] = [];
   private readonly listeners = new Set<(change: ElideChange) => void>();
+  private readonly renderListeners = new Set<(state: ElideState) => void>();
   private observer: ResizeObserver | null = null;
   private lastWidth = -1;
   private hint: number | null = null;
@@ -419,6 +420,15 @@ export class Elide {
     return () => this.listeners.delete(fn);
   }
 
+  /**
+   * Called after every layout pass, including resizes that leave the visible
+   * text as it was (the gaps still change). Returns an unsubscribe function.
+   */
+  onRender(fn: (state: ElideState) => void): () => void {
+    this.renderListeners.add(fn);
+    return () => this.renderListeners.delete(fn);
+  }
+
   /** Change text and/or options and re-truncate. */
   update(options: ElideOptions): void {
     const { text, onChange, ...rest } = options;
@@ -460,6 +470,7 @@ export class Elide {
     instances.delete(this);
     byId.delete(this.id);
     this.listeners.clear();
+    this.renderListeners.clear();
     this.element.removeAttribute('data-truncated');
     if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
@@ -940,10 +951,24 @@ export class Elide {
       this.titled = state.truncated;
     }
 
-    if (!tracking) return;
-    this.recordPainted(run);
+    if (tracking) {
+      this.recordPainted(run);
+      this.emit(reason, previous, state, reset, glyphsBefore, marksBefore);
+    }
+    for (const fn of this.renderListeners) fn(state);
+  }
+
+  private emit(
+    reason: ChangeReason,
+    previous: ElideState | null,
+    state: ElideState,
+    reset: boolean,
+    glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>,
+    marksBefore: DOMRect[][],
+  ) {
     const same = previous && !reset && sameParts(previous.hidden, state.hidden);
     if (same && (reason === 'resize' || reason === 'refresh')) return;
+    const n = state.length;
 
     const shown: number[] = [];
     const gone: number[] = [];

@@ -101,6 +101,8 @@ scaled to the mark size.
   `markElements(i)`: the elements drawing them.
 - `lineRects()`: one box per rendered line.
 - `glyph(i)`, `glyphInk(i)`: the element and ink box of grapheme `i` (glyph mode).
+- `onRender(fn)`: called after every layout pass, including resizes that
+  leave the visible text as it was. Returns an unsubscribe function.
 - `onChange(fn)`: called when the visible text changes. Returns an unsubscribe function.
   The event has `shown` / `hidden` grapheme indices, and where things were as
   last painted: `glyphsBefore` and `hiddenGlyphs` (box and ink of each glyph,
@@ -121,9 +123,9 @@ const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
 
 | Option | Default | |
 |---|---|---|
-| `effect` | `'merge'` | `'fade'`, `'blur'` or `'merge'`. |
-| `duration` | `460` | Milliseconds. |
-| `slide` | `true` | Dots, and glyphs that stay but move, glide from where they were instead of jumping. Works without glyph mode too. |
+| `effect` | `'merge'` | `'merge'`, `'fade'`, `'blur'`, or `'none'` (glyphs come and go at once; the dots still glide). |
+| `duration` | `460` | Milliseconds for glyph effects, and roughly how long the dots take to settle. |
+| `glide` | `true` | When the cut changes, the dots glide to their new place on a critically damped spring instead of jumping: velocity carries over when the target moves again, and they never overshoot. Works without glyph mode too. |
 | `pace` | `'leeway'` | How long leaving glyphs take. `'leeway'`: in proportion to the room their removal frees; squeezed text (a fast drag) leaves instantly instead of animating into space that isn't there. `'fixed'`: always `duration`. |
 | `marks` | `'together'` | When the dots move as glyphs leave: `'together'` with them, or `'after'` they have merged, so the dots only spread into the freed space once it is empty. |
 
@@ -133,11 +135,12 @@ the right one, and big jumps spread across the middle dots. On the way it
 takes the ellipsis' colour and cross-fades into the mark's shape. Arriving
 glyphs grow back out the same way.
 
-Ghost glyphs are drawn in an overlay next to the text, never inside it, so they
-don't disturb measurement, and they follow the layout while it reflows. Slides
-are visual only (a transform on marks, a relative offset on inline glyphs), so
-the layout the library measures stays exact while they run. Respects
-`prefers-reduced-motion`.
+Nothing moves the text itself: glyphs keep their layout positions, so the line
+always ends exactly at the edge. Ghost glyphs are drawn in an overlay next to
+the text, never inside it, and are re-placed after every layout pass. Dots
+glide with a transform, which is visual only, and are kept inside the content
+box while they do. Only jumps glide; the gentle drift of a resize follows
+layout directly. Respects `prefers-reduced-motion`.
 
 ## How it works
 
