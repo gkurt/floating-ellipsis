@@ -104,7 +104,8 @@ const DEFAULTS: Settings = {
 /** Where every grapheme of the tip's text is before it grows: its box on screen. */
 interface Origin {
   from: DOMRect[];
-  arriving: boolean[];
+  /** The ellipsis hiding each grapheme, or -1. */
+  part: number[];
   dots: { el: HTMLElement; rect: DOMRect }[];
 }
 
@@ -137,6 +138,8 @@ export class Tooltip {
   private unrender: (() => void) | null = null;
   /** The tip's text, one span per grapheme. */
   private spans: HTMLSpanElement[] = [];
+  /** Puts the text back in the flow once it has grown. */
+  private landing: (() => void) | null = null;
   private scrolled = [0, 0];
   /** A selection carried over to the tip, and the one it replaced. */
   private carried: { text: string; original: Range } | null = null;
@@ -300,6 +303,7 @@ export class Tooltip {
     if (!target) return;
     this.restoreSelection();
     this.element.hidden = true;
+    this.landing = null;
     for (const a of this.element.getAnimations({ subtree: true })) a.cancel();
     target.trigger.removeAttribute(OPEN);
     if (target.ellipsis !== null) target.instance.ellipses[target.ellipsis]?.removeAttribute(OPEN);
@@ -391,11 +395,13 @@ export class Tooltip {
     const first = lines[0];
     if (!first || t.graphemes.length === 0) return false;
     const origin = grow ? this.origin(t) : null;
-    const text = getComputedStyle(t.element);
+    const font = getComputedStyle(t.element);
 
     const tip = this.element;
-    for (const p of FONT) tip.style.setProperty(p, text.getPropertyValue(p));
+    for (const p of FONT) tip.style.setProperty(p, font.getPropertyValue(p));
     Object.assign(tip.style, {
+      width: '',
+      height: '',
       maxWidth: 'none',
       whiteSpace: 'nowrap',
       overflowWrap: '',
@@ -404,11 +410,12 @@ export class Tooltip {
     const spans = t.graphemes.map((g) => {
       const span = document.createElement('span');
       span.textContent = g;
-      span.style.position = 'relative';
       return span;
     });
     this.spans = spans;
-    const bg = this.fill(this.settings.reveal, ...spans);
+    const text = document.createElement('span');
+    text.append(...spans);
+    const bg = this.fill(this.settings.reveal, text);
 
     const { edge, breaks, maxWidth, aspect } = this.settings;
     let box = tip.getBoundingClientRect();
@@ -477,24 +484,35 @@ export class Tooltip {
    */
   private origin(t: Elide): Origin {
     const from = t.graphemes.map((_, i) => t.graphemeRect(i));
-    const arriving = from.map((r) => !r);
+    const part = t.graphemes.map(() => -1);
     const line = t.lineRects()[0]!;
-    t.state.hidden.forEach((part, j) => {
+    t.state.hidden.forEach(({ start, end }, j) => {
       const area = t.ellipsisArea(j) ?? line;
-      const count = part.end - part.start;
-      for (let k = 0; k < count; k++)
-        from[part.start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
+      const count = end - start;
+      for (let k = 0; k < count; k++) {
+        from[start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
+        part[start + k] = j;
+      }
     });
     const dots = t.state.hidden.flatMap((_, j) => t.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
-    return { from: from.map((r) => r ?? line), arriving, dots };
+    return { from: from.map((r) => r ?? line), part, dots };
   }
 
   /**
-   * Every grapheme travels from where it was. (Inline text can't be
-   * transformed, so they move by relative offsets, which don't reflow
-   * anything.) Hidden ones come out of their ellipsis, blurred, and only show
-   * once the others have made some room. The marks stay where they are and
-   * fade, and the background grows from the lines' box to the tip's.
+   * Every grapheme travels from where it was. Hidden ones come out of their
+   * ellipsis, blurred, and only show once the others have made some room.
+   * The marks stay where they are and fade, and the background grows from
+   * the lines' box to the tip's.
+   *
+   * Inline text can't be transformed, so while it moves the text is taken
+   * out of the flow, in runs set where they land, and the tip keeps its size.
+   * A run is the graphemes on one line of the tip that move as one: shown
+   * side by side, or out of the same ellipsis, which a run spreads from by
+   * scaling, so each grapheme still travels from its own place in it. A few
+   * runs moved by transforms leave the browser next to nothing to do on each
+   * frame (a grapheme each would be thousands of layers). They're set in a
+   * layer of their own, so the background growing doesn't lay them out, and
+   * go back into the text when it lands.
    */
   private grow(
     origin: Origin,
@@ -505,27 +523,85 @@ export class Tooltip {
   ) {
     const { duration, easing } = this.settings;
     const timing = { duration, easing, fill: 'backwards' } as const;
-    this.spans.forEach((span, i) => {
-      const from = origin.from[i]!;
-      const to = targets[i]!;
-      const top = `${from.top - to.top}px`;
-      if (!origin.arriving[i]) {
-        span.animate(
-          [
-            { left: `${from.left - to.left}px`, top },
-            { left: '0px', top: '0px' },
-          ],
-          timing,
-        );
+    const tip = this.element;
+    const spans = this.spans;
+    const { from, part } = origin;
+    const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
+    const runs: { start: number; end: number }[] = [];
+    spans.forEach((_, i) => {
+      const run = runs.at(-1);
+      const a = run?.start ?? 0;
+      const together =
+        run &&
+        part[i] === part[a] &&
+        near(targets[i]!.top, targets[a]!.top) &&
+        (part[i]! >= 0 ||
+          (near(from[i]!.left - targets[i]!.left, from[a]!.left - targets[a]!.left) &&
+            near(from[i]!.top - targets[i]!.top, from[a]!.top - targets[a]!.top)));
+      if (together) run.end = i + 1;
+      else runs.push({ start: i, end: i + 1 });
+    });
+
+    const text = spans[0]!.parentElement!;
+    Object.assign(tip.style, { width: `${box.width}px`, height: `${box.height}px` });
+    Object.assign(text.style, { position: 'absolute', inset: '0', contain: 'layout' });
+    const groups = runs.map(({ start, end }) => {
+      const group = document.createElement('span');
+      spans[start]!.before(group);
+      for (let node: ChildNode | null = spans[start]!; node;) {
+        const next: ChildNode | null = node.nextSibling;
+        group.append(node);
+        node = node === spans[end - 1] ? null : next;
+      }
+      Object.assign(group.style, {
+        position: 'absolute',
+        left: '0px',
+        top: '0px',
+        width: 'max-content',
+        whiteSpace: 'nowrap',
+        textIndent: '0',
+      });
+      return group;
+    });
+    // A run drops a space it starts with, which the text keeps, so each is
+    // lined up by its first grapheme with any width.
+    const lead = runs.map(({ start, end }) => {
+      let i = start;
+      while (i < end - 1 && targets[i]!.width === 0) i++;
+      return i;
+    });
+    const range = document.createRange();
+    const placed = groups.map((group, k) => {
+      range.selectNodeContents(spans[lead[k]!]!);
+      return { at: range.getBoundingClientRect(), own: group.getBoundingClientRect() };
+    });
+
+    groups.forEach((group, k) => {
+      const { start, end } = runs[k]!;
+      const i = lead[k]!;
+      const { at, own } = placed[k]!;
+      const dx = targets[i]!.left - at.left;
+      group.style.left = `${dx}px`;
+      group.style.top = `${targets[i]!.top - at.top}px`;
+      const y = from[i]!.top - targets[i]!.top;
+      if (part[i]! < 0) {
+        group.animate([{ transform: `translate(${from[i]!.left - targets[i]!.left}px, ${y}px)` }, { transform: 'none' }], timing);
         return;
       }
-      const left = `${from.left - (to.left + to.width / 2)}px`;
-      span.animate(
+      // Map the run's graphemes from where they land onto their places in the ellipsis.
+      const left = own.left + dx;
+      const center = (j: number) => targets[j]!.left + targets[j]!.width / 2 - left;
+      const [a, b] = [start, end - 1];
+      const width = center(b) - center(a);
+      const scale = width > 0 ? (from[b]!.left - from[a]!.left) / width : 1;
+      const x = from[a]!.left - left - scale * center(a);
+      group.style.transformOrigin = '0 0';
+      group.animate(
         [
-          { left, top, opacity: 0, filter: 'blur(3px)' },
+          { transform: `translate(${x}px, ${y}px) scaleX(${scale})`, opacity: 0, filter: 'blur(3px)' },
           { offset: 0.15, opacity: 0 },
           { offset: 0.6, opacity: 1, filter: 'blur(0px)' },
-          { left: '0px', top: '0px', opacity: 1, filter: 'blur(0px)' },
+          { transform: 'none', opacity: 1, filter: 'blur(0px)' },
         ],
         timing,
       );
@@ -542,12 +618,26 @@ export class Tooltip {
         left: `${rect.left - box.left}px`,
         top: `${rect.top - box.top}px`,
       });
-      this.element.append(dot);
+      tip.append(dot);
       dot.animate({ opacity: [1, 0] }, { duration: duration * 0.35, fill: 'forwards' });
     }
 
     const inset = `${start.top - box.top}px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
-    bg.animate([{ inset }, { inset: '0px' }], timing);
+    const growing = bg.animate([{ inset }, { inset: '0px' }], timing);
+    this.landing = () => {
+      for (const group of groups) group.removeAttribute('style');
+      text.removeAttribute('style');
+      Object.assign(tip.style, { width: '', height: '' });
+    };
+    growing.onfinish = () => this.land();
+  }
+
+  /** Finish the 'grow' animation now, with the text back in the flow. */
+  private land() {
+    const landing = this.landing;
+    this.landing = null;
+    for (const a of this.element.getAnimations({ subtree: true })) a.finish();
+    landing?.();
   }
 
   /**
@@ -639,7 +729,7 @@ export class Tooltip {
     e.preventDefault();
     e.stopPropagation();
     const tip = this.element;
-    for (const a of tip.getAnimations({ subtree: true })) a.finish();
+    this.land();
     this.hold(true);
     tip.setPointerCapture(e.pointerId);
     const p = this.presses;
