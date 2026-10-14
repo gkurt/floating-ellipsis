@@ -182,9 +182,15 @@
               ><button value="peek">Hidden part, on the ellipsis</button>
             </div>
           </div>
-          <label class="switch"
-            ><input type="checkbox" id="snap" checked /> <span>Cut at separators <small>experimental</small></span></label
-          >
+          <div class="control">
+            <span id="snap-label"><span>Cut at separators <small>experimental</small></span></span>
+            <div class="seg" data-name="snap" role="group" aria-labelledby="snap-label">
+              <button value="off">Off</button
+              ><button value="whole">Whole segments</button
+              ><button aria-pressed="true" value="head">Keep a head</button
+              ><button value="tail">Keep a tail</button>
+            </div>
+          </div>
         </div>
         <div class="stage">
           <div class="resizable files" id="filesBox" style="width: 62%">

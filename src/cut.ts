@@ -19,8 +19,9 @@ export interface SnapContext {
 }
 
 /**
- * Moves a cut to a nicer place. It may only hide more text, never less:
- * the result must satisfy `start <= ctx.start` and `end >= ctx.end`.
+ * Moves a cut to a nicer place. It may hide more or less than `ctx`'s range,
+ * but should show about as much in all: the search for the largest cut that
+ * fits relies on what's shown growing as `ctx`'s range shrinks.
  */
 export type Snap = (ctx: SnapContext) => Cut;
 
@@ -155,8 +156,9 @@ export function hiddenRanges(
   const grown = raw.map(([s, e], j): Range => {
     if (snap) {
       const r = snap({ graphemes, start: s, end: e, position: layout.positions[Math.min(j, m - 1)]! });
-      s = Math.min(s, Math.max(0, r.start));
-      e = Math.max(e, Math.min(n, r.end));
+      const rs = Math.max(0, r.start);
+      const re = Math.min(n, r.end);
+      if (rs < re) [s, e] = [rs, re];
     }
     if (trim) {
       while (s > 0 && isWhitespace(graphemes[s - 1])) s--;
@@ -203,23 +205,105 @@ export function searchMax(lo: number, hi: number, fits: (k: number) => boolean, 
   return lo;
 }
 
+export interface SeparatorOptions {
+  /**
+   * A cut usually starts inside one segment and stops inside another. Rather
+   * than drop both partial segments (and leave a wide gap), one of them may
+   * keep a fragment of at least `min` graphemes. `'head'` prefers the
+   * beginning of the segment the cut starts in, with the ellipsis at its end:
+   * `/abc/de…/klm`. `'tail'` prefers the end of the segment the cut stops in:
+   * `/abc/…hj/klm`. Either falls back to the other side when its own has no
+   * room. `false` always drops whole segments: `/abc/…/klm`. Default `'head'`.
+   */
+  fragment?: 'head' | 'tail' | false;
+  /** Fewest graphemes of a segment worth showing as a fragment. Default 3. */
+  min?: number;
+}
+
 /**
- * Experimental smart boundaries: cut right after a separator on the head side
- * and right before one on the tail side, so `/abc/def/ghi/jkl` becomes
- * `/abc/…/jkl` rather than `/abc/de…/jkl`. A side with no separator in reach
- * falls back to the plain cut. `separators(' ')` gives word boundaries.
+ * Experimental smart boundaries: cut at separators, so `/abc/def/ghi/jkl`
+ * becomes `/abc/de…/jkl` or `/abc/…/jkl` rather than `/abc/de…hi/jkl`.
+ *
+ * Each side of the cut moves to a separator, which hides a little more than
+ * the plain cut would. At most one side keeps a fragment of its segment
+ * instead, and that fragment takes the glyphs the other side gave up, so the
+ * cut shows about as much as the plain one and leaves no wide gap. A side with
+ * no separator in reach keeps the plain cut and is the fragment. Separators
+ * next to the cut stay visible. `separators(' ')` gives word boundaries.
  */
-export function separators(chars: string | RegExp = '/\\'): Snap {
+export function separators(chars: string | RegExp = '/\\', options: SeparatorOptions = {}): Snap {
+  const { fragment = 'head', min = 3 } = options;
   const re = typeof chars === 'string' ? null : new RegExp(chars.source, chars.flags.replace(/[gy]/g, ''));
   const isSep = (g: string | undefined) => g !== undefined && (re ? re.test(g) : (chars as string).includes(g));
   return ({ graphemes: g, start, end }) => {
-    let s = start;
-    while (s > 0 && !isSep(g[s - 1])) s--;
-    if (s === 0) s = start;
-    let e = end;
-    while (e < g.length && !isSep(g[e])) e++;
-    if (e === g.length) e = end;
-    return { start: s, end: e };
+    const n = g.length;
+    // The head's segment runs from `h0` to the separator at `h1`; the tail's
+    // from just after the separator at `t0 - 1` to `t1`.
+    let h0 = start;
+    while (h0 > 0 && !isSep(g[h0 - 1])) h0--;
+    let h1 = start;
+    while (h1 < n && !isSep(g[h1])) h1++;
+    let t0 = end;
+    while (t0 > 0 && !isSep(g[t0 - 1])) t0--;
+    let t1 = end;
+    while (t1 < n && !isSep(g[t1])) t1++;
+
+    // Already at a separator; or not cut at all.
+    const headClean = start === h0;
+    const tailClean = end === t1;
+
+    const place = (giveBack: boolean): Cut => {
+      // A separator right at the cut can stay visible, which makes that side clean.
+      const headBack = giveBack && !headClean && isSep(g[start]);
+      const tailBack = giveBack && !tailClean && isSep(g[end - 1]);
+      // No separator in reach: the plain cut stays, as this side's fragment.
+      const headForced = !headClean && !headBack && h0 === 0;
+      const tailForced = !tailClean && !tailBack && t1 === n;
+      if (headForced && tailForced) return { start, end };
+
+      // Each side at its separator.
+      let s = headClean || headForced ? start : headBack ? start + 1 : h0;
+      let e = tailClean || tailForced ? end : tailBack ? end - 1 : t1;
+      // What each side gives up by moving.
+      const headLoss = Math.max(0, start - s);
+      const tailLoss = Math.max(0, e - end);
+
+      // Which side keeps a fragment, if any.
+      let side: 'head' | 'tail' | null = null;
+      if (headForced || tailForced) side = headForced && !tailForced ? 'head' : !headForced && tailForced ? 'tail' : null;
+      else {
+        const headRoom = s === h0 && start - h0 + tailLoss >= min;
+        const tailRoom = e === t1 && t1 - end + headLoss >= min;
+        const order = fragment === 'head' ? (['head', 'tail'] as const) : fragment === 'tail' ? (['tail', 'head'] as const) : [];
+        side = order.find((x) => (x === 'head' ? headRoom : tailRoom)) ?? null;
+      }
+
+      // The fragment grows by what the other side gave up, through as many
+      // segments as that takes. Wherever it ends, the same rules apply: a
+      // separator there stays visible, and less than `min` of a segment
+      // isn't worth showing.
+      if (side === 'head') {
+        s = Math.min(start + tailLoss, e - 1);
+        if (s >= h1 && isSep(g[s]) && s + 1 < e) s++;
+        else if (s > h1) {
+          let s0 = s;
+          while (!isSep(g[s0 - 1])) s0--;
+          if (s - s0 < min) s = s0;
+        }
+      } else if (side === 'tail') {
+        e = Math.max(end - headLoss, s + 1);
+        if (e <= t0 && isSep(g[e - 1]) && e - 1 > s) e--;
+        else if (e < t0) {
+          let e1 = e;
+          while (!isSep(g[e1])) e1++;
+          if (e1 - e < min) e = e1;
+        }
+      }
+      return { start: s, end: e };
+    };
+    // Unless showing that separator leaves nothing to hide.
+    for (const cut of [place(true), place(false)]) if (cut.start < cut.end) return cut;
+    return { start, end };
   };
 }
 

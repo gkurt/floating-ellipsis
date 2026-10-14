@@ -10,6 +10,7 @@ import {
   positionValue,
   searchMax,
   separators,
+  type SeparatorOptions,
   subtract,
   toGraphemeRanges,
   union,
@@ -104,10 +105,10 @@ describe('hiddenRanges', () => {
     expect(show(g, hiddenRanges(g, layout, 12, [], null, false))).toBe('Hello … world');
   });
 
-  it('never lets a snap reveal more text', () => {
-    const greedy = () => ({ start: 100, end: 0 });
+  it('ignores a snap that leaves nothing to hide', () => {
+    const empty = () => ({ start: 100, end: 0 });
     const layout = layoutFor(g.length, ['middle']);
-    expect(hiddenRanges(g, layout, 6, [], greedy, false)).toEqual(hiddenRanges(g, layout, 6, [], null, false));
+    expect(hiddenRanges(g, layout, 6, [], empty, false)).toEqual(hiddenRanges(g, layout, 6, [], null, false));
   });
 
   it('keeps pinned parts, splitting the cut around them', () => {
@@ -133,30 +134,53 @@ describe('hiddenRanges', () => {
 });
 
 describe('separators', () => {
-  const path = graphemes('/abc/def/ghj/klm/nop');
-  const layout = layoutFor(path.length, ['middle']);
   const snap = separators('/');
+  const at = (text: string, start: number, end: number, options?: SeparatorOptions) => {
+    const g = graphemes(text);
+    const cut = separators('/', options)({ graphemes: g, start, end, position: 0.5 });
+    return show(g, [[cut.start, cut.end]]);
+  };
 
-  it('cuts at path segments', () => {
+  it('cuts at path segments, keeping as much text as the plain cut', () => {
+    const path = graphemes('/abc/def/ghj/klm/nop');
+    const layout = layoutFor(path.length, ['middle']);
     expect(show(path, hiddenRanges(path, layout, 12, [], null, true))).toBe('/abc/d…lm/nop');
-    expect(show(path, hiddenRanges(path, layout, 12, [], snap, true))).toBe('/abc/…/nop');
-    expect(show(path, hiddenRanges(path, layout, 16, [], snap, true))).toBe('/abc/…/klm/nop');
+    // The tail's "lm" goes to the head, which completes "def".
+    expect(show(path, hiddenRanges(path, layout, 12, [], snap, true))).toBe('/abc/def/…/nop');
+    expect(show(path, hiddenRanges(path, layout, 16, [], snap, true))).toBe('/abc/def/…/klm/nop');
+  });
+
+  it('keeps one fragment, grown by what the other side gives up', () => {
+    // Plain cut: /abc/de…jk/lmn
+    const text = '/abc/defgh/ijk/lmn';
+    expect(at(text, 7, 12)).toBe('/abc/defg…/lmn');
+    expect(at(text, 7, 12, { fragment: 'tail' })).toBe('/abc/…/ijk/lmn');
+    expect(at(text, 7, 12, { fragment: false })).toBe('/abc/…/lmn');
+    // Too little to be worth a fragment: /abc/d…k/lmn
+    expect(at(text, 6, 13)).toBe('/abc/…/lmn');
+  });
+
+  it('keeps the plain cut where no separator is in reach, as the fragment', () => {
+    // The tail has nowhere to snap to. The head gives up "def", which
+    // completes the last segment instead of making a second fragment.
+    expect(at('/abc/defgh/ijk', 8, 12)).toBe('/abc/…/ijk');
+    expect(at('abcdef/xyz', 3, 8)).toBe('abc…yz');
+  });
+
+  it('leaves separators at the cut visible', () => {
+    expect(at('/abc/def/ghi', 4, 9)).toBe('/abc/…/ghi');
   });
 
   it('does word boundaries with a space', () => {
     const g = graphemes('The quick brown fox');
-    const s = separators(' ')({ graphemes: g, start: 7, end: 14, position: 0.5 });
-    expect(s).toEqual({ start: 4, end: 15 });
-  });
-
-  it('falls back to the plain cut where no separator is in reach', () => {
-    const g = graphemes('abcdef/xyz');
-    expect(separators('/')({ graphemes: g, start: 3, end: 8, position: 0.5 })).toEqual({ start: 3, end: 8 });
+    const ctx = { graphemes: g, start: 7, end: 14, position: 0.5 };
+    expect(separators(' ')(ctx)).toEqual({ start: 8, end: 15 }); // The quic… fox
+    expect(separators(' ', { fragment: false })(ctx)).toEqual({ start: 4, end: 15 }); // The … fox
   });
 
   it('accepts a RegExp', () => {
     const g = graphemes('a.b-c');
-    expect(separators(/[.-]/g)({ graphemes: g, start: 3, end: 4, position: 0.5 })).toEqual({ start: 2, end: 4 });
+    expect(separators(/[.-]/g)({ graphemes: g, start: 3, end: 4, position: 0.5 })).toEqual({ start: 2, end: 3 });
   });
 });
 

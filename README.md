@@ -62,7 +62,7 @@ hero's "Keep visible" field takes comma-separated words or `/regex/flags`.
 | `gap` | `'dots'` | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`. |
 | `justify` | `'dots'` | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
 | `trim` | `true` | Drop whitespace next to an ellipsis. |
-| `snap` | `null` | *Experimental.* Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. |
+| `snap` | `null` | *Experimental.* Move cuts to nicer boundaries. `separators('/\\')` cuts paths at segments, `separators(' ')` at words. See [Separators](#separators). |
 | `observe` | `true` | Re-truncate on resize (ResizeObserver) and when web fonts load. |
 | `glyphs` | `false` | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text. |
 | `title` | `false` | Put the full text in the element's `title` while it is truncated. |
@@ -89,6 +89,24 @@ like any other.
 Dots and squares take their size and height from the font's `.`; bullets and
 rings from its `•`. The spacing defaults to the font's own ellipsis rhythm,
 scaled to the mark size.
+
+### Separators
+
+```js
+import { separators } from 'floating-ellipsis';
+elide(el, { snap: separators('/\\') });                        // /Users/ada/Projects/anal…/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: 'tail' }) });  // /Users/ada/Projects/…engine/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: false }) });   // /Users/ada/Projects/…/notes/x.md
+```
+
+Each side of a cut moves to a separator, and separators next to the cut stay
+visible. Dropping whole segments on both sides would leave a wide gap, so one
+side may keep a fragment of its segment instead (`'head'` prefers the start of
+the segment the cut begins in, `'tail'` the end of the one it stops in, each
+falling back to the other). That fragment takes the room the other side gave
+up, through as many segments as it covers, so the cut shows about as much as
+a plain one. Less than `min` graphemes (default 3) of a segment is never shown.
+A side with no separator in reach keeps the plain cut, and is the fragment.
 
 ## Instance API
 

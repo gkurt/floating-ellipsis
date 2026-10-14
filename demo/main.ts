@@ -287,8 +287,12 @@ const fileIcon =
 
 const list = $('#files');
 const pathInstances: Elide[] = [];
-const snapPaths = separators('/\\');
-const snap = $<HTMLInputElement>('#snap');
+const snaps = {
+  off: null,
+  whole: separators('/\\', { fragment: false }),
+  head: separators('/\\'),
+  tail: separators('/\\', { fragment: 'tail' }),
+};
 for (const path of paths) {
   const li = document.createElement('li');
   li.tabIndex = 0;
@@ -298,14 +302,14 @@ for (const path of paths) {
   span.textContent = path;
   li.append(span);
   list.append(li);
-  const instance = elide(span, { position: 0.5, snap: snapPaths });
+  const instance = elide(span, { position: 0.5, snap: snaps.head });
   // No glyph effects in text mode, but the dots still glide to their new spacing.
   transitions(instance);
   pathInstances.push(instance);
 }
 Object.assign(window, { pathInstances });
-snap.addEventListener('change', () => {
-  for (const p of pathInstances) p.update({ snap: snap.checked ? snapPaths : null });
+segmented('snap', (v) => {
+  for (const p of pathInstances) p.update({ snap: snaps[v as keyof typeof snaps] });
 });
 
 let reveal: 'expand' | 'peek' = 'expand';

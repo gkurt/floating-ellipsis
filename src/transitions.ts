@@ -1,4 +1,5 @@
 import type { Elide, ElideChange, Part } from './elide.js';
+import { isWhitespace } from './graphemes.js';
 
 export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 
@@ -360,9 +361,11 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   /**
    * Play a glyph turning into a mark of the ellipsis (or back, when
    * `backwards`): it shrinks onto the mark, takes the ellipsis' colour and
-   * cross-fades into the mark's shape.
+   * cross-fades into the mark's shape. Whitespace has no ink to turn into
+   * anything: it only keeps the timing.
    */
   function morph(
+    text: string,
     ghost: { el: HTMLSpanElement; inner: HTMLSpanElement },
     box: DOMRect,
     ink: DOMRect,
@@ -375,8 +378,26 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const [mx, my] = center(mark);
     const ox = ix - box.left;
     const oy = iy - box.top;
-    const scale = Math.min(1, Math.max(0.04, Math.max(mark.width, mark.height) / Math.max(1, ink.width, ink.height)));
+    const markSize = Math.max(mark.width, mark.height);
+    const inkSize = Math.max(1, ink.width, ink.height);
+    const scale = Math.min(1, Math.max(0.04, markSize / inkSize));
     ghost.el.style.transformOrigin = `${ox}px ${oy}px`;
+
+    const timing: KeyframeAnimationOptions = {
+      duration: ms,
+      easing: backwards ? reversed(easing) : easing,
+      direction: backwards ? 'reverse' : 'normal',
+      fill: 'both',
+    };
+    const travel = ghost.el.animate(
+      [
+        { transform: 'none', color: colors[0], filter: 'blur(0px)' },
+        { offset: 0.5, color: colors[1] },
+        { transform: `translate(${mx - ix}px, ${my - iy}px) scale(${scale})`, color: colors[1], filter: `blur(${blur / 8}px)` },
+      ],
+      timing,
+    );
+    if (isWhitespace(text)) return [travel];
 
     const style = instance.markStyle;
     const shapeName = typeof style === 'string' ? 'dot' : style.shape;
@@ -388,24 +409,21 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       `border-radius:${shapeName === 'square' ? 0 : '50%'};` +
       (shapeName === 'ring' ? `box-sizing:border-box;border:${Math.max(1, w * 0.16)}px solid currentColor` : 'background:currentColor');
     ghost.el.append(shape);
+    // The shape shrinks with the glyph, but starts no bigger than the
+    // glyph's narrow side: a comma or an `l` is tall, not wide.
+    const start = Math.min(1, Math.max(Math.min(ink.width, ink.height), markSize) / inkSize);
 
-    const timing: KeyframeAnimationOptions = {
-      duration: ms,
-      easing: backwards ? reversed(easing) : easing,
-      direction: backwards ? 'reverse' : 'normal',
-      fill: 'both',
-    };
     return [
-      ghost.el.animate(
+      travel,
+      ghost.inner.animate([{ opacity: 1 }, { offset: 0.55, opacity: 1 }, { opacity: 0 }], timing),
+      shape.animate(
         [
-          { transform: 'none', color: colors[0], filter: 'blur(0px)' },
-          { offset: 0.5, color: colors[1] },
-          { transform: `translate(${mx - ix}px, ${my - iy}px) scale(${scale})`, color: colors[1], filter: `blur(${blur / 8}px)` },
+          { opacity: 0, transform: `scale(${start})` },
+          { offset: 0.55, opacity: 0 },
+          { opacity: 1, transform: 'none' },
         ],
         timing,
       ),
-      ghost.inner.animate([{ opacity: 1 }, { offset: 0.55, opacity: 1 }, { opacity: 0 }], timing),
-      shape.animate([{ opacity: 0 }, { offset: 0.55, opacity: 0 }, { opacity: 1 }], timing),
     ];
   }
 
@@ -468,7 +486,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         return;
       }
       const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(ghost, box, ink, mark, [style.color, markColor], ms, true);
+      anims = morph(instance.graphemes[i] ?? '', ghost, box, ink, mark, [style.color, markColor], ms, true);
     } else {
       anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing })];
     }
@@ -506,7 +524,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         return;
       }
       const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(ghost, box, ink, mark, [style.color, markColor], ms, false);
+      anims = morph(instance.graphemes[i] ?? '', ghost, box, ink, mark, [style.color, markColor], ms, false);
     } else {
       anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing, direction: 'reverse', fill: 'both' })];
     }

@@ -268,7 +268,8 @@ input[type='range'] {
   accent-color: var(--accent);
   margin: 0;
 }
-.switch small {
+.switch small,
+.control small {
   color: var(--muted);
   font-size: 11px;
 }
