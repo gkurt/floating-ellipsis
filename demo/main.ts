@@ -1,4 +1,4 @@
-import { type Elide, type Gap, elide, separators } from '../src/index.js';
+import { type Elide, type EllipsisStyle, type Gap, elide, separators } from '../src/index.js';
 import { type Effect, transitions } from '../src/transitions.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
@@ -17,19 +17,20 @@ function segmented(name: string, onPick: (value: string) => void) {
   });
 }
 
-/** Drag the box's handle to change its width. */
-function resizable(box: HTMLElement, onDrag?: () => void) {
+/** Drag the box's handle (or use arrow keys on it) to change its width. */
+function resizable(box: HTMLElement, onResize?: () => void) {
   const handle = $('.handle', box);
+  const setWidth = (w: number) => {
+    const max = box.parentElement!.clientWidth - 64;
+    box.style.width = `${Math.max(80, Math.min(max, w))}px`;
+  };
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const startW = box.getBoundingClientRect().width;
-    const max = box.parentElement!.clientWidth - 64;
-    onDrag?.();
-    const move = (ev: PointerEvent) => {
-      box.style.width = `${Math.max(80, Math.min(max, startW + ev.clientX - startX))}px`;
-    };
+    onResize?.();
+    const move = (ev: PointerEvent) => setWidth(startW + ev.clientX - startX);
     const up = () => {
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', up);
@@ -38,41 +39,41 @@ function resizable(box: HTMLElement, onDrag?: () => void) {
     handle.addEventListener('pointerup', up);
   });
   handle.addEventListener('keydown', (e) => {
-    const step = e.shiftKey ? 40 : 8;
     const dir = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
     if (!dir) return;
     e.preventDefault();
-    onDrag?.();
-    const max = box.parentElement!.clientWidth - 64;
-    box.style.width = `${Math.max(80, Math.min(max, box.getBoundingClientRect().width + dir * step))}px`;
+    onResize?.();
+    setWidth(box.getBoundingClientRect().width + dir * (e.shiftKey ? 40 : 8));
   });
 }
 
 /**
- * Draw the ink gaps on both sides of the ellipsis, plus the ellipsis' ink box.
- * Uses `ellipsisInk()` and `state.gap` from the instance.
+ * Draw the ink gaps around and inside every ellipsis, plus the ink of each
+ * mark. Uses `marks()` and `state.gaps` from the instance.
  */
 function drawGuides(instance: Elide, layer: HTMLElement) {
-  const ink = instance.ellipsisInk();
-  const gap = instance.state.gap;
-  if (!ink || !gap) {
-    if (layer.childElementCount) layer.replaceChildren();
-    return;
-  }
+  const { gaps } = instance.state;
+  const parts: HTMLElement[] = [];
   const base = layer.getBoundingClientRect();
-  const pad = Math.max(4, ink.height * 0.6);
-  const top = ink.top - base.top - pad;
-  const height = ink.height + pad * 2;
-  const box = (cls: string, x: number, w: number, label?: string) => {
-    const el = document.createElement('div');
-    el.className = `guide ${cls}`;
-    el.style.cssText = `left:${x - base.left}px;top:${top}px;width:${Math.max(0, w)}px;height:${height}px`;
-    if (label) el.innerHTML = `<b>${label}</b>`;
-    return el;
-  };
-  const parts = [box('ink', ink.left, ink.width)];
-  if (gap.left !== null) parts.push(box('gap left', ink.left - gap.left, gap.left, gap.left.toFixed(1)));
-  if (gap.right !== null) parts.push(box('gap right', ink.right, gap.right, gap.right.toFixed(1)));
+  gaps.forEach((gap, j) => {
+    const marks = instance.marks(j);
+    const ink = instance.ellipsisInk(j);
+    if (!ink || !marks.length) return;
+    const pad = Math.max(4, ink.height * 0.8);
+    const top = ink.top - base.top - pad;
+    const height = ink.height + pad * 2;
+    const box = (cls: string, x: number, w: number, label?: string) => {
+      const el = document.createElement('div');
+      el.className = `guide ${cls}`;
+      el.style.cssText = `left:${x - base.left}px;top:${top}px;width:${Math.max(0, w)}px;height:${height}px`;
+      if (label) el.innerHTML = `<b>${label}</b>`;
+      parts.push(el);
+    };
+    for (const m of marks) box('ink', m.left, m.width);
+    if (gap.left !== null) box('gap left', ink.left - gap.left, gap.left, gap.left.toFixed(1));
+    marks.slice(1).forEach((m, i) => box('gap inner', marks[i]!.right, m.left - marks[i]!.right));
+    if (gap.right !== null) box('gap right', ink.right, gap.right, gap.right.toFixed(1));
+  });
   layer.replaceChildren(...parts);
 }
 
@@ -81,14 +82,16 @@ function drawGuides(instance: Elide, layer: HTMLElement) {
 
 const heroBox = $('#heroBox');
 const heroGuides = $('.guides', heroBox);
-const hero = elide($('#hero'), { position: 0.5, lines: 1, glyphs: true, gap: 'dots' });
+const hero = elide($('#hero'), { position: 0.5, lines: 1, glyphs: true });
 // Handy for poking at the API from the console.
 Object.assign(window, { hero });
 
+let effect: Effect | 'none' = 'merge';
 let stopTransitions: (() => void) | null = transitions(hero, { effect: 'merge' });
 segmented('effect', (value) => {
+  effect = value as typeof effect;
   stopTransitions?.();
-  stopTransitions = value === 'none' ? null : transitions(hero, { effect: value as Effect });
+  stopTransitions = effect === 'none' ? null : transitions(hero, { effect });
 });
 
 const pos = $<HTMLInputElement>('#pos');
@@ -98,7 +101,17 @@ pos.addEventListener('input', () => {
 });
 segmented('lines', (v) => hero.update({ lines: Number(v) }));
 segmented('gap', (v) => hero.update({ gap: v as Gap }));
-segmented('justify', (v) => hero.update({ justify: v === 'off' ? false : (v as 'ellipsis' | 'spread') }));
+segmented('justify', (v) => hero.update({ justify: v === 'off' ? false : (v as 'ellipsis' | 'dots' | 'spread') }));
+
+const ellipsisStyles: Record<string, EllipsisStyle> = {
+  glyph: '\u2026',
+  periods: '...',
+  dot: { shape: 'dot' },
+  bullet: { shape: 'bullet' },
+  ring: { shape: 'ring' },
+  square: { shape: 'square' },
+};
+segmented('ellipsis', (v) => hero.update({ ellipsis: ellipsisStyles[v] }));
 
 const showGuides = $<HTMLInputElement>('#showGuides');
 showGuides.addEventListener('change', () => {
@@ -110,18 +123,17 @@ const readout = $('#readout');
 let lastReadout = '';
 function renderReadout() {
   const s = hero.state;
-  const fmt = (v: number | null | undefined) => (v == null ? '–' : `${v.toFixed(2)}px`);
+  const px = (v: number | null | undefined) => (v == null ? '–' : `${v.toFixed(2)}`);
+  const g = s.gaps[0];
   const rows: [string, string][] = [
     ['truncated', String(s.truncated)],
-    ['visible', s.truncated ? `[0, ${s.start}) + [${s.end}, ${s.length})` : `all ${s.length}`],
-    ['head', JSON.stringify(s.head.slice(-18))],
-    ['omitted', JSON.stringify(s.omitted)],
-    ['tail', JSON.stringify(s.tail.slice(0, 18))],
+    ['hidden', s.hidden.length ? s.hidden.map((h) => `[${h.start}, ${h.end})`).join(' ') : '–'],
+    ['omitted', s.hidden.length ? JSON.stringify(s.hidden.map((h) => h.text).join(' | ')) : '–'],
     ['lines', String(s.lines)],
-    ['gap target', fmt(s.gap?.target)],
-    ['natural gaps', s.gap ? `${fmt(s.gap.naturalLeft)} · ${fmt(s.gap.naturalRight)}` : '–'],
-    ['final gaps', s.gap ? `${fmt(s.gap.left)} · ${fmt(s.gap.right)}` : '–'],
-    ['slack', fmt(s.gap?.slack)],
+    ['gap target', g ? px(g.target) : '–'],
+    ['natural gaps', g ? `${px(g.naturalLeft)} · ${px(g.naturalRight)}` : '–'],
+    ['final gaps', g ? [g.left, ...g.inner, g.right].map(px).join(' · ') : '–'],
+    ['slack', g ? px(g.slack) : '–'],
   ];
   const key = rows.join('|');
   if (key === lastReadout) return;
@@ -154,8 +166,8 @@ function tick(now: number) {
     heroBox.style.width = `${min + (max - min) * t}px`;
   }
   if (showGuides.checked) drawGuides(hero, heroGuides);
-  renderReadout();
   for (const [instance, layer] of compareGuides) drawGuides(instance, layer);
+  renderReadout();
   requestAnimationFrame(tick);
 }
 resizable(heroBox, () => {
@@ -182,11 +194,25 @@ for (const sample of samples) {
     p.textContent = sample.text;
     const layer = document.createElement('div');
     layer.className = 'guides';
+    layer.setAttribute('aria-hidden', 'true');
     cell.append(p, layer);
     compare.append(cell);
     compareGuides.push([elide(p, { position: sample.position, gap, justify: false }), layer]);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Keep parts, many ellipses
+
+const keepExamples: Elide[] = [
+  elide($('#exFile'), { keep: /\.[^.]+$/, glyphs: true }),
+  elide($('#exFox'), { keep: 'fox', position: 'middle', glyphs: true }),
+  elide($('#exHash'), { position: [0.25, 0.75], glyphs: true }),
+  elide($('#exLog'), { keep: [/^\S+ \S+/, /ERR_\w+/], position: 'middle', glyphs: true }),
+];
+for (const instance of keepExamples) transitions(instance, { effect: 'merge' });
+resizable($('#keepBox'));
+Object.assign(window, { keepExamples });
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -209,6 +235,7 @@ const snapPaths = separators('/\\');
 const snap = $<HTMLInputElement>('#snap');
 for (const path of paths) {
   const li = document.createElement('li');
+  li.tabIndex = 0;
   li.innerHTML = fileIcon;
   const span = document.createElement('span');
   span.className = 'path';
@@ -247,34 +274,43 @@ function showExpand(instance: Elide) {
   expandTip.hidden = false;
   const cs = getComputedStyle(expandTip);
   const lineHeight = parseFloat(cs.lineHeight);
-  // The line rect is the font's content area; center it in the tip's line box.
+  // The line rect is the font's content area; centre it in the tip's line box.
   const x = first.left - parseFloat(cs.paddingLeft);
   const y = first.top - (lineHeight - first.height) / 2 - parseFloat(cs.paddingTop);
   expandTip.style.left = `${Math.round(x)}px`;
   expandTip.style.top = `${Math.round(y)}px`;
 }
 
-/** Only the omitted part, anchored to the ellipsis ink. */
-function showPeek(instance: Elide) {
-  const ink = instance.ellipsisInk();
-  if (!ink) return hideTips();
-  peekTip.textContent = instance.state.omitted;
+/** Only what one ellipsis hides, anchored to that ellipsis' ink. */
+function showPeek(instance: Elide, index: number) {
+  const ink = instance.ellipsisInk(index);
+  const part = instance.state.hidden[index];
+  if (!ink || !part) return hideTips();
+  peekTip.textContent = part.text;
   peekTip.hidden = false;
   peekTip.style.left = `${ink.left + ink.width / 2}px`;
   peekTip.style.top = `${ink.top - 12}px`;
 }
 
+const rowInstance = (row: Element | null) => pathInstances[row ? Array.prototype.indexOf.call(list.children, row) : -1];
 list.addEventListener('pointerover', (e) => {
   const target = e.target as HTMLElement;
-  const row = target.closest('li');
-  const index = row ? Array.prototype.indexOf.call(list.children, row) : -1;
-  const instance = pathInstances[index];
+  const instance = rowInstance(target.closest('li'));
   if (!instance) return hideTips();
-  if (reveal === 'expand') showExpand(instance);
-  else if (target.closest('[data-fp-ellipsis]')) showPeek(instance);
+  if (reveal === 'expand') return showExpand(instance);
+  const index = instance.ellipsisIndex(target);
+  if (index >= 0) showPeek(instance, index);
   else hideTips();
 });
 list.addEventListener('pointerleave', hideTips);
+// Keyboard: focusing a row shows its full text, or the first hidden part.
+list.addEventListener('focusin', (e) => {
+  const instance = rowInstance((e.target as HTMLElement).closest('li'));
+  if (!instance) return;
+  if (reveal === 'expand') showExpand(instance);
+  else if (instance.truncated) showPeek(instance, 0);
+});
+list.addEventListener('focusout', hideTips);
 window.addEventListener('scroll', hideTips, { passive: true });
 
 // ---------------------------------------------------------------------------

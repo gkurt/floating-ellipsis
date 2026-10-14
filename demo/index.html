@@ -17,145 +17,193 @@
       <p class="eyebrow">floating-points <span>0.1</span></p>
       <h1>Truncation, <em>in balance.</em></h1>
       <p class="lede">
-        One line or many. The ellipsis goes wherever you ask, sits with the same visible gap on both sides, and tells
-        you exactly where it is.
+        One line or many. The ellipsis goes wherever you ask, sits with the same visible gap on both sides, takes up
+        the slack so the line always ends at the edge, and tells you exactly where it is.
       </p>
     </header>
 
-    <section class="block" aria-labelledby="play-title">
-      <div class="block-head">
-        <h2 id="play-title">Playground</h2>
-        <p>Drag the handle, or let it breathe. Every glyph knows when it leaves and where it goes.</p>
-      </div>
-
-      <div class="stage">
-        <div class="resizable" id="heroBox" style="width: 72%">
-          <p class="hero-text" id="hero">The quiet art of leaving things out, gracefully and symmetrically, right where you asked.</p>
-          <div class="guides" aria-hidden="true"></div>
-          <button class="handle" aria-label="Resize" title="Drag to resize"></button>
+    <main>
+      <section class="block" aria-labelledby="play-title">
+        <div class="block-head">
+          <h2 id="play-title">Playground</h2>
+          <p>Drag the handle, or let it breathe. Every glyph knows when it leaves and which dot it goes into.</p>
         </div>
-      </div>
 
-      <div class="controls">
-        <label class="control">
-          <span>Position <output id="posOut">50%</output></span>
-          <input type="range" id="pos" min="0" max="100" value="50" />
-        </label>
-        <div class="control">
-          <span>Lines</span>
-          <div class="seg" data-name="lines">
-            <button aria-pressed="true" value="1">1</button><button value="2">2</button><button value="3">3</button>
+        <div class="stage">
+          <div class="resizable" id="heroBox" style="width: 72%">
+            <p class="hero-text" id="hero">The quiet art of leaving things out, gracefully and symmetrically, right where you asked.</p>
+            <div class="guides" aria-hidden="true"></div>
+            <button class="handle" aria-label="Resize the text box (left and right arrow keys)"></button>
           </div>
         </div>
-        <div class="control">
-          <span>Transition</span>
-          <div class="seg" data-name="effect">
-            <button value="none">None</button><button value="fade">Fade</button><button value="blur">Blur</button
-            ><button aria-pressed="true" value="merge">Merge</button>
-          </div>
-        </div>
-        <div class="control">
-          <span>Gap</span>
-          <div class="seg" data-name="gap">
-            <button aria-pressed="true" value="dots">Dots</button><button value="natural">Natural</button
-            ><button value="none">Off</button>
-          </div>
-        </div>
-        <div class="control">
-          <span>Justify</span>
-          <div class="seg" data-name="justify">
-            <button aria-pressed="true" value="ellipsis">Ellipsis</button><button value="spread">Spread</button
-            ><button value="off">Off</button>
-          </div>
-        </div>
-        <div class="control toggles">
-          <label class="switch"><input type="checkbox" id="breathe" checked /> <span>Breathe</span></label>
-          <label class="switch"><input type="checkbox" id="showGuides" /> <span>Ink guides</span></label>
-        </div>
-      </div>
 
-      <dl class="readout" id="readout"></dl>
-    </section>
-
-    <section class="block" aria-labelledby="gap-title">
-      <div class="block-head">
-        <h2 id="gap-title">Balanced gaps</h2>
-        <p>
-          Dropping an ellipsis between two arbitrary letters leaves lopsided space, because every glyph carries its
-          own side bearings. floating-points measures the ink and evens it out. By default it matches the gap between the dots
-          themselves, so the ellipsis reads as part of the rhythm.
-        </p>
-      </div>
-      <div class="compare" id="compare">
-        <div class="compare-head"><span>Naive</span><span>Balanced</span></div>
-      </div>
-    </section>
-
-    <section class="block" aria-labelledby="paths-title">
-      <div class="block-head">
-        <h2 id="paths-title">Paths, hooks and tooltips</h2>
-        <p>
-          The instance exposes whether text is truncated, what was left out, the line boxes and the exact ink box of
-          the ellipsis. Enough to build a tooltip that lines up letter for letter, or one that only answers the
-          ellipsis.
-        </p>
-      </div>
-      <div class="controls compact">
-        <div class="control">
-          <span>Hover reveals</span>
-          <div class="seg" data-name="reveal">
-            <button aria-pressed="true" value="expand">Full path, in place</button
-            ><button value="peek">Omitted part, on the ellipsis</button>
+        <div class="controls">
+          <label class="control">
+            <span>Position <output id="posOut">50%</output></span>
+            <input type="range" id="pos" min="0" max="100" value="50" />
+          </label>
+          <div class="control">
+            <span id="lines-label">Lines</span>
+            <div class="seg" data-name="lines" role="group" aria-labelledby="lines-label">
+              <button aria-pressed="true" value="1">1</button><button value="2">2</button><button value="3">3</button>
+            </div>
+          </div>
+          <div class="control">
+            <span id="ellipsis-label">Ellipsis</span>
+            <div class="seg" data-name="ellipsis" role="group" aria-labelledby="ellipsis-label">
+              <button aria-pressed="true" value="glyph" title="The font's own ellipsis glyph">…</button
+              ><button value="periods" title="Three periods">...</button
+              ><button value="dot">Dots</button><button value="bullet">Bullets</button
+              ><button value="ring">Rings</button><button value="square">Squares</button>
+            </div>
+          </div>
+          <div class="control">
+            <span id="gap-label">Gap</span>
+            <div class="seg" data-name="gap" role="group" aria-labelledby="gap-label">
+              <button aria-pressed="true" value="dots">Dots</button><button value="natural">Natural</button
+              ><button value="none">Off</button>
+            </div>
+          </div>
+          <div class="control">
+            <span id="justify-label">Justify</span>
+            <div class="seg" data-name="justify" role="group" aria-labelledby="justify-label">
+              <button aria-pressed="true" value="ellipsis">Ellipsis</button><button value="dots">Dots</button
+              ><button value="spread">Spread</button><button value="off">Off</button>
+            </div>
+          </div>
+          <div class="control">
+            <span id="effect-label">Transition</span>
+            <div class="seg" data-name="effect" role="group" aria-labelledby="effect-label">
+              <button value="none">None</button><button value="fade">Fade</button><button value="blur">Blur</button
+              ><button aria-pressed="true" value="merge">Merge</button>
+            </div>
+          </div>
+          <div class="control toggles">
+            <label class="switch"><input type="checkbox" id="breathe" checked /> <span>Breathe</span></label>
+            <label class="switch"><input type="checkbox" id="showGuides" /> <span>Ink guides</span></label>
           </div>
         </div>
-        <label class="switch"><input type="checkbox" id="snap" checked /> <span>Cut at separators <small>experimental</small></span></label>
-      </div>
-      <div class="stage">
-        <div class="resizable files" id="filesBox" style="width: 62%">
-          <ul class="file-list" id="files"></ul>
-          <button class="handle" aria-label="Resize" title="Drag to resize"></button>
-        </div>
-      </div>
-    </section>
 
-    <section class="block" aria-labelledby="multi-title">
-      <div class="block-head">
-        <h2 id="multi-title">Multi-line, anywhere</h2>
-        <p>
-          Line clamping usually means the end. Here the cut can sit in the middle of the third line, or at the very
-          start of the first.
-        </p>
-      </div>
-      <div class="controls compact">
-        <label class="control">
-          <span>Position <output id="mposOut">70%</output></span>
-          <input type="range" id="mpos" min="0" max="100" value="70" />
-        </label>
-        <div class="control">
-          <span>Lines</span>
-          <div class="seg" data-name="mlines">
-            <button value="2">2</button><button aria-pressed="true" value="3">3</button><button value="4">4</button>
-          </div>
-        </div>
-      </div>
-      <div class="stage">
-        <article class="resizable card" id="cardBox" style="width: 58%">
-          <h3>Field notes</h3>
-          <p id="article">
-            The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill. We
-            waited on the bridge until the light went, counting herons, arguing about whether the water would reach
-            the second step by morning. It did not. By noon the next day it had fallen a full meter, leaving a line of
-            silt on every stone like a tide mark, and the herons had gone somewhere quieter.
+        <dl class="readout" id="readout"></dl>
+      </section>
+
+      <section class="block" aria-labelledby="gap-title">
+        <div class="block-head">
+          <h2 id="gap-title">Balanced gaps</h2>
+          <p>
+            Dropping an ellipsis between two arbitrary letters leaves lopsided space, because every glyph carries its
+            own side bearings. floating-points measures the ink and evens it out. By default it matches the gap
+            between the dots themselves, so the ellipsis reads as part of the rhythm.
           </p>
-          <button class="handle" aria-label="Resize" title="Drag to resize"></button>
-        </article>
-      </div>
-    </section>
+        </div>
+        <div class="compare" id="compare">
+          <div class="compare-head"><span>Naive</span><span>Balanced</span></div>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="keep-title">
+        <div class="block-head">
+          <h2 id="keep-title">Keep parts, many ellipses</h2>
+          <p>
+            Pin what matters and let the rest give way. A kept part in the middle of a cut splits it into two
+            ellipses, and you can ask for several ellipses outright. Kept parts are highlighted here.
+          </p>
+        </div>
+        <div class="stage">
+          <div class="resizable examples" id="keepBox" style="width: 74%">
+            <div class="example">
+              <code>keep: /\.[^.]+$/</code>
+              <p id="exFile">Quarterly revenue forecast, final final (2), reviewed by legal and finance.pdf</p>
+            </div>
+            <div class="example">
+              <code>keep: 'fox', position: 'middle'</code>
+              <p id="exFox">The quick brown fox jumps over the lazy dog while the farmer watches from the porch</p>
+            </div>
+            <div class="example">
+              <code>position: [0.25, 0.75]</code>
+              <p id="exHash" class="mono">sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08</p>
+            </div>
+            <div class="example">
+              <code>keep: [/^\S+ \S+/, /ERR_\w+/]</code>
+              <p id="exLog" class="mono">2026-10-14 09:41:07 worker-3 upstream api.internal request failed with ERR_CONN_RESET after 3 retries</p>
+            </div>
+            <button class="handle" aria-label="Resize the examples (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="paths-title">
+        <div class="block-head">
+          <h2 id="paths-title">Paths, hooks and tooltips</h2>
+          <p>
+            The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact
+            ink of every dot. Enough for a tooltip that lines up letter for letter, or one that only answers the
+            ellipsis. Rows are focusable too.
+          </p>
+        </div>
+        <div class="controls compact">
+          <div class="control">
+            <span id="reveal-label">Hover reveals</span>
+            <div class="seg" data-name="reveal" role="group" aria-labelledby="reveal-label">
+              <button aria-pressed="true" value="expand">Full path, in place</button
+              ><button value="peek">Hidden part, on the ellipsis</button>
+            </div>
+          </div>
+          <label class="switch"
+            ><input type="checkbox" id="snap" checked /> <span>Cut at separators <small>experimental</small></span></label
+          >
+        </div>
+        <div class="stage">
+          <div class="resizable files" id="filesBox" style="width: 62%">
+            <ul class="file-list" id="files" aria-label="Files"></ul>
+            <button class="handle" aria-label="Resize the file list (left and right arrow keys)"></button>
+          </div>
+        </div>
+        <div class="paste">
+          <label for="pasteBox">Select some truncated text across an ellipsis, copy it, and paste here. The ellipsis copies as the text it hides.</label>
+          <textarea id="pasteBox" rows="2" placeholder="Paste here"></textarea>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="multi-title">
+        <div class="block-head">
+          <h2 id="multi-title">Multi-line, anywhere</h2>
+          <p>
+            Line clamping usually means the end. Here the cut can sit in the middle of the third line, or at the very
+            start of the first.
+          </p>
+        </div>
+        <div class="controls compact">
+          <label class="control">
+            <span>Position <output id="mposOut">70%</output></span>
+            <input type="range" id="mpos" min="0" max="100" value="70" />
+          </label>
+          <div class="control">
+            <span id="mlines-label">Lines</span>
+            <div class="seg" data-name="mlines" role="group" aria-labelledby="mlines-label">
+              <button value="2">2</button><button aria-pressed="true" value="3">3</button><button value="4">4</button>
+            </div>
+          </div>
+        </div>
+        <div class="stage">
+          <article class="resizable card" id="cardBox" style="width: 58%">
+            <h3>Field notes</h3>
+            <p id="article">
+              The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill.
+              We waited on the bridge until the light went, counting herons, arguing about whether the water would
+              reach the second step by morning. It did not. By noon the next day it had fallen a full meter, leaving a
+              line of silt on every stone like a tide mark, and the herons had gone somewhere quieter.
+            </p>
+            <button class="handle" aria-label="Resize the card (left and right arrow keys)"></button>
+          </article>
+        </div>
+      </section>
+    </main>
 
     <footer class="foot">floating-points · built in the lab</footer>
 
-    <div class="tip expand" id="expandTip" role="tooltip" hidden></div>
-    <div class="tip peek" id="peekTip" role="tooltip" hidden></div>
+    <div class="tip expand" id="expandTip" aria-hidden="true" hidden></div>
+    <div class="tip peek" id="peekTip" aria-hidden="true" hidden></div>
 
     <script type="module" src="./main.ts"></script>
   </body>
