@@ -146,6 +146,20 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     );
   }
 
+  /**
+   * Fade the ellipsis in through a ghost: animating the element itself is
+   * fragile, since fitting may briefly take it out of the DOM, which
+   * restarts its animations.
+   */
+  function appear(rect: DOMRect) {
+    const real = instance.ellipsisElement;
+    const g = spawn('', rect, getComputedStyle(real), { follow: real, dx: 0, dy: 0 }, [{ opacity: 0 }, { opacity: 1 }], duration);
+    g.el.replaceChildren(...Array.from(real.childNodes, (n) => n.cloneNode(true)));
+    real.style.visibility = 'hidden';
+    g.anim.addEventListener('finish', () => (real.style.visibility = ''));
+    g.anim.addEventListener('cancel', () => (real.style.visibility = ''));
+  }
+
   const off = instance.onChange((change: ElideChange) => {
     // Glyphs hidden mid-entrance stop entering.
     for (const i of change.hidden) {
@@ -166,9 +180,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         if (from) leave(i, from, to, style);
       }
     }
-    if (to && !change.previous.truncated) {
-      instance.ellipsisElement.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing });
-    }
+    if (to && !change.previous.truncated) appear(to);
     if (ghosts.size) place();
   });
 

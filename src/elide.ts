@@ -171,6 +171,8 @@ export class Elide {
   private readonly headEl: HTMLSpanElement;
   private readonly joinEl: HTMLSpanElement;
   private readonly tailEl: HTMLSpanElement;
+  private readonly leftSlot: HTMLSpanElement;
+  private readonly rightSlot: HTMLSpanElement;
   private readonly listeners = new Set<(change: ElideChange) => void>();
   private observer: ResizeObserver | null = null;
   private lastWidth = -1;
@@ -198,6 +200,8 @@ export class Elide {
     this.headEl = span('data-fp-head');
     this.joinEl = span('data-fp-join', 'white-space:nowrap');
     this.tailEl = span('data-fp-tail');
+    this.leftSlot = span('data-fp-before');
+    this.rightSlot = span('data-fp-after');
     this.ellipsisElement = span('data-fp-ellipsis');
     this.ellipsisElement.textContent = this.settings.ellipsis;
     this.lineEl.append(this.headEl, this.joinEl, this.tailEl);
@@ -334,7 +338,7 @@ export class Elide {
 
     // The ellipsis may be styled on its own (weight, size, family), so read
     // its style in place. Rendering resets the join afterwards.
-    if (!this.ellipsisElement.isConnected) this.joinEl.append(this.ellipsisElement);
+    if (!this.ellipsisElement.isConnected) this.joinEl.replaceChildren(this.leftSlot, this.ellipsisElement, this.rightSlot);
     const ecs = getComputedStyle(this.ellipsisElement);
     const ellipsisFont = fontOf(ecs);
     const shownEllipsis = applyTextTransform(ellipsisText, ecs.textTransform);
@@ -360,13 +364,19 @@ export class Elide {
     return run.letterSpacing ? { ...m, advance: m.advance + run.letterSpacing } : m;
   }
 
+  /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
   private fill(el: HTMLElement, from: number, to: number) {
-    if (this.settings.glyphs) el.replaceChildren(...this.glyphEls.slice(from, to));
-    else el.textContent = this.text.slice(this.offsets[from], this.offsets[to]);
-  }
-
-  private piece(i: number): Node {
-    return this.settings.glyphs ? this.glyphEls[i]! : document.createTextNode(this.g[i]!);
+    if (this.settings.glyphs) {
+      el.replaceChildren(...this.glyphEls.slice(from, to));
+      return;
+    }
+    const text = this.text.slice(this.offsets[from], this.offsets[to]);
+    const node = el.firstChild;
+    if (node instanceof Text && el.childNodes.length === 1) {
+      if (node.data !== text) node.data = text;
+    } else {
+      el.textContent = text;
+    }
   }
 
   /** Put a cut (or the full text, when null) into the DOM. */
@@ -375,7 +385,7 @@ export class Elide {
     if (!cut) {
       this.lineEl.style.letterSpacing = '';
       this.fill(this.headEl, 0, n);
-      this.joinEl.replaceChildren();
+      if (this.joinEl.firstChild) this.joinEl.replaceChildren();
       this.fill(this.tailEl, n, n);
       return null;
     }
@@ -383,11 +393,15 @@ export class Elide {
     const hasHead = start > 0;
     const hasTail = end < n;
     this.fill(this.headEl, 0, hasHead ? start - 1 : 0);
-    const join: Node[] = [];
-    if (hasHead) join.push(this.piece(start - 1));
-    join.push(this.ellipsisElement);
-    if (hasTail) join.push(this.piece(end));
-    this.joinEl.replaceChildren(...join);
+    // The ellipsis keeps its place in the DOM while only the neighbouring
+    // glyphs change: re-inserting it would restart its animations and reset
+    // its hover state on every resize.
+    const join = this.joinEl;
+    if (join.childNodes.length !== 3 || join.childNodes[1] !== this.ellipsisElement) {
+      join.replaceChildren(this.leftSlot, this.ellipsisElement, this.rightSlot);
+    }
+    this.fill(this.leftSlot, hasHead ? start - 1 : 0, hasHead ? start : 0);
+    this.fill(this.rightSlot, hasTail ? end : n, hasTail ? end + 1 : n);
     this.fill(this.tailEl, hasTail ? end + 1 : n, n);
     this.lineEl.style.letterSpacing = '';
 
@@ -396,6 +410,28 @@ export class Elide {
     const plan = planGap(before, run.ellipsis, after, run.target);
     this.applyMargins(plan);
     return plan;
+  }
+
+  /**
+   * Full text, for testing whether it fits. If the ellipsis is showing it
+   * stays where it is, cancelled out by a negative margin, rather than being
+   * taken out and put back on every resize.
+   */
+  private renderFull(run: Run) {
+    const e = this.ellipsisElement;
+    if (!e.isConnected) {
+      this.render(run, null);
+      return;
+    }
+    const width = e.getBoundingClientRect().width;
+    const n = this.g.length;
+    this.lineEl.style.letterSpacing = '';
+    this.fill(this.headEl, 0, n);
+    this.fill(this.leftSlot, 0, 0);
+    this.fill(this.rightSlot, n, n);
+    this.fill(this.tailEl, n, n);
+    e.style.marginLeft = '';
+    e.style.marginRight = `${-width}px`;
   }
 
   /** Does the rendered text fit? Reads layout. */
@@ -438,9 +474,17 @@ export class Elide {
     const position = positionValue(this.settings.position);
     const cutAt = (k: number) => refineCut(this.g, rawCut(n, k, position), position, this.settings.snap, this.settings.trim);
 
+    // Trying the full text means taking the ellipsis out of the DOM, so only
+    // do it when the text might fit: its glyph widths summed can't exceed the
+    // room on all lines (with some leeway for kerning and collapsed spaces).
     let cut: Cut | null = null;
-    this.render(run, null);
-    let fit = this.measure(run);
+    let fit = { ok: false, lines: 0 };
+    let width = 0;
+    for (const g of this.g) width += this.glyphMetrics(run, g).advance;
+    if (width <= (run.right - run.left) * this.settings.lines * 1.1 + 1) {
+      this.renderFull(run);
+      fit = this.measure(run);
+    }
     if (!fit.ok && n > 0) {
       const kept = searchMax(0, n - 1, (k) => {
         this.render(run, cutAt(k));
