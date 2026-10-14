@@ -381,16 +381,17 @@ input[type='range'] {
   color: var(--accent);
   border-radius: 4px;
 }
-.reveal-peek .path [data-fp-ellipsis] {
-  cursor: help;
-}
-.reveal-peek .path [data-fp-ellipsis]::before {
+/* The highlight covers the ellipsis' whole area: its marks and the gaps. */
+.reveal-peek .path [data-fp-ellipsis][data-peek]::before {
   content: '';
   position: absolute;
-  inset: -4px -3px;
-}
-.reveal-peek .path [data-fp-ellipsis]:hover {
+  z-index: -1;
+  inset: -2px calc(-1 * var(--peek-right, 0px)) -2px calc(-1 * var(--peek-left, 0px));
+  border-radius: 4px;
   background: var(--accent-soft);
+}
+.reveal-peek .file-list li.peeking {
+  cursor: help;
 }
 
 .tip {
@@ -406,6 +407,29 @@ input[type='range'] {
   padding: 4px 10px;
   font: 14px/22px var(--mono);
   white-space: nowrap;
+}
+/* Grow: each hidden part is a window that widens from the ellipsis' area to
+   the text it hides, revealing it from the middle out. */
+.tip .grow {
+  display: inline-block;
+  position: relative;
+  vertical-align: top;
+  height: 22px;
+  overflow: hidden;
+}
+.tip .grow > span {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  white-space: pre;
+}
+.tip .grow-dots {
+  color: color-mix(in oklab, var(--accent) 55%, var(--bg));
+}
+.tip .grow-dots * {
+  margin: 0;
+  transform: none !important;
 }
 .tip.peek {
   padding: 6px 10px;

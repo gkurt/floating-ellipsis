@@ -312,7 +312,7 @@ segmented('snap', (v) => {
   for (const p of pathInstances) p.update({ snap: snaps[v as keyof typeof snaps] });
 });
 
-let reveal: 'expand' | 'peek' = 'expand';
+let reveal: 'expand' | 'grow' | 'peek' = 'expand';
 const filesBox = $('#filesBox');
 segmented('reveal', (v) => {
   reveal = v as typeof reveal;
@@ -323,17 +323,27 @@ resizable(filesBox, hideTips);
 
 const expandTip = $('#expandTip');
 const peekTip = $('#peekTip');
+// What the tips show now, so moving within a row (or an ellipsis) doesn't restart them.
+let tipRow: Element | null = null;
+let peeking: { instance: Elide; index: number; row: Element } | null = null;
 function hideTips() {
   expandTip.hidden = true;
   peekTip.hidden = true;
+  tipRow = null;
+  setPeeking(null);
 }
 
 /** Full text, laid exactly over the truncated text so the letters line up. */
 function showExpand(instance: Elide) {
   if (!instance.truncated) return hideTips();
-  const first = instance.lineRects()[0];
-  if (!first) return;
   expandTip.textContent = instance.state.text;
+  placeOverLine(instance);
+}
+
+/** Put the expand tip's first line exactly over the instance's first line. */
+function placeOverLine(instance: Elide) {
+  const first = instance.lineRects()[0];
+  if (!first) return hideTips();
   expandTip.hidden = false;
   const cs = getComputedStyle(expandTip);
   const lineHeight = parseFloat(cs.lineHeight);
@@ -342,6 +352,48 @@ function showExpand(instance: Elide) {
   const y = first.top - (lineHeight - first.height) / 2 - parseFloat(cs.paddingTop);
   expandTip.style.left = `${Math.round(x)}px`;
   expandTip.style.top = `${Math.round(y)}px`;
+}
+
+/**
+ * Full text grown out of the truncated text: the tip starts as an exact copy
+ * of the line, ellipses and all, then each ellipsis' area widens into the
+ * text it hides while its dots fade out.
+ */
+function showGrow(instance: Elide) {
+  if (!instance.truncated) return hideTips();
+  const g = instance.graphemes;
+  const pieces: (Node | string)[] = [];
+  const windows: { el: HTMLElement; text: HTMLElement; dots: HTMLElement; from: number }[] = [];
+  let at = 0;
+  instance.state.hidden.forEach((part, j) => {
+    pieces.push(g.slice(at, part.start).join(''));
+    at = part.end;
+    const el = document.createElement('span');
+    el.className = 'grow';
+    const text = document.createElement('span');
+    text.textContent = part.text;
+    // The marks as drawn (they're inline-styled), without the gaps around them.
+    const dots = document.createElement('span');
+    dots.className = 'grow-dots';
+    dots.append(...instance.markElements(j).map((m) => m.cloneNode(true)));
+    el.append(text, dots);
+    pieces.push(el);
+    windows.push({ el, text, dots, from: instance.ellipsisArea(j)?.width ?? 0 });
+  });
+  pieces.push(g.slice(at).join(''));
+  expandTip.replaceChildren(...pieces);
+  for (const w of windows) w.el.style.width = `${w.from}px`;
+  placeOverLine(instance);
+
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const timing = { duration: still ? 0 : 420, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'both' } as const;
+  for (const w of windows) {
+    const to = w.text.getBoundingClientRect().width;
+    w.el.animate([{ width: `${w.from}px` }, { width: `${to}px` }], timing);
+    // The dots give way as the text comes in, overlapping so the window is never empty.
+    w.dots.animate([{ opacity: 1 }, { offset: 0.3, opacity: 0 }, { opacity: 0 }], timing);
+    w.text.animate([{ opacity: 0 }, { offset: 0.05, opacity: 0 }, { offset: 0.45, opacity: 1 }, { opacity: 1 }], timing);
+  }
 }
 
 /** Only what one ellipsis hides, anchored to that ellipsis' ink. */
@@ -355,22 +407,53 @@ function showPeek(instance: Elide, index: number) {
   peekTip.style.top = `${ink.top - 12}px`;
 }
 
+/** Mark the ellipsis being peeked at, so its whole area can be highlighted. */
+function setPeeking(next: typeof peeking) {
+  if (peeking) {
+    peeking.instance.ellipses[peeking.index]?.removeAttribute('data-peek');
+    peeking.row.classList.remove('peeking');
+  }
+  peeking = next;
+  if (!next) return;
+  const el = next.instance.ellipses[next.index];
+  if (el) {
+    const cs = getComputedStyle(el);
+    el.style.setProperty('--peek-left', cs.marginLeft);
+    el.style.setProperty('--peek-right', cs.marginRight);
+    el.setAttribute('data-peek', '');
+  }
+  next.row.classList.add('peeking');
+}
+
 const rowInstance = (row: Element | null) => pathInstances[row ? Array.prototype.indexOf.call(list.children, row) : -1];
-list.addEventListener('pointerover', (e) => {
-  const target = e.target as HTMLElement;
-  const instance = rowInstance(target.closest('li'));
-  if (!instance) return hideTips();
-  if (reveal === 'expand') return showExpand(instance);
-  const index = instance.ellipsisIndex(target);
-  if (index >= 0) showPeek(instance, index);
-  else hideTips();
+function showRow(row: Element) {
+  const instance = rowInstance(row);
+  if (!instance || row === tipRow) return;
+  hideTips();
+  tipRow = row;
+  if (reveal === 'grow') showGrow(instance);
+  else showExpand(instance);
+}
+list.addEventListener('pointermove', (e) => {
+  const row = (e.target as HTMLElement).closest('li');
+  const instance = rowInstance(row);
+  if (!row || !instance) return hideTips();
+  if (reveal !== 'peek') return showRow(row);
+  // The ellipsis element only spans its marks; its area covers the gaps too.
+  const index = instance.ellipsisAt(e.clientX, e.clientY, 4);
+  if (index === peeking?.index && instance === peeking.instance) return;
+  hideTips();
+  if (index < 0) return;
+  setPeeking({ instance, index, row });
+  showPeek(instance, index);
 });
 list.addEventListener('pointerleave', hideTips);
 // Keyboard: focusing a row shows its full text, or the first hidden part.
 list.addEventListener('focusin', (e) => {
-  const instance = rowInstance((e.target as HTMLElement).closest('li'));
-  if (!instance) return;
-  if (reveal === 'expand') showExpand(instance);
+  const row = (e.target as HTMLElement).closest('li');
+  const instance = rowInstance(row);
+  if (!row || !instance) return;
+  if (reveal !== 'peek') showRow(row);
   else if (instance.truncated) showPeek(instance, 0);
 });
 list.addEventListener('focusout', hideTips);

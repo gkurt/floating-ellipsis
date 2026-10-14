@@ -369,6 +369,39 @@ export class Elide {
   }
 
   /**
+   * The space ellipsis `index` takes up between the text before and after
+   * it (its box plus the gaps either side, over the height of its line), in
+   * viewport coordinates, or null. Where the hidden text would go, and a
+   * generous hover target: see `ellipsisAt`.
+   */
+  ellipsisArea(index = 0): DOMRect | null {
+    const e = this.ellipses[index];
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    const cs = getComputedStyle(e);
+    const left = r.left - parseFloat(cs.marginLeft);
+    const right = r.right + parseFloat(cs.marginRight);
+    const middle = r.top + r.height / 2;
+    const line = this.lineRects().find((l) => middle >= l.top && middle <= l.bottom);
+    const top = Math.min(r.top, line?.top ?? r.top);
+    const bottom = Math.max(r.bottom, line?.bottom ?? r.bottom);
+    return new DOMRect(left, top, Math.max(0, right - left), bottom - top);
+  }
+
+  /**
+   * Index of the ellipsis whose area (see `ellipsisArea`) contains the point,
+   * in client coordinates (e.g. a pointer event's), or -1. Unlike the
+   * ellipsis element, which only spans its marks, this covers the gaps too.
+   * `slop` widens every area by that many pixels on each side.
+   */
+  ellipsisAt(x: number, y: number, slop = 0): number {
+    return this.ellipses.findIndex((_, i) => {
+      const a = this.ellipsisArea(i);
+      return !!a && x >= a.left - slop && x < a.right + slop && y >= a.top - slop && y < a.bottom + slop;
+    });
+  }
+
+  /**
    * Ink box of each mark of ellipsis `index`: each dot, bullet or character.
    * For a single glyph like '…' the dots are found in the glyph itself.
    */

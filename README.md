@@ -121,6 +121,8 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
   so listeners can stay attached. `ellipses`: all showing ellipses.
 - `ellipsisIndex(node)`: which ellipsis an event target is in, or -1.
 - `ellipsisRect(i)`, `ellipsisInk(i)`: the box, or the tight ink box, of ellipsis `i`.
+- `ellipsisArea(i)`: the space ellipsis `i` takes between the text before and after it, gaps included. Where the hidden text would go.
+- `ellipsisAt(x, y, slop?)`: which ellipsis' area holds a point (e.g. a pointer event's `clientX`/`clientY`), or -1. A better hover target than the ellipsis element, which only spans its marks.
 - `marks(i)`: the ink box of every dot, bullet or character of ellipsis `i`.
   For a single `…` glyph, the dots are found inside the glyph.
   `markElements(i)`: the elements drawing them.
