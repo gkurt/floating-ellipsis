@@ -461,6 +461,17 @@ input[type='range'] {
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
 }
+/* Only a tip's text can be pointed at or selected (see tip-select.ts). */
+.tip.expand,
+.grow-tip {
+  user-select: text;
+}
+.grow-tip [data-fp-mark],
+.grow-tip-bg,
+.tip-bg {
+  pointer-events: none;
+  user-select: none;
+}
 .grow-tip [data-fp-mark] {
   color: color-mix(in oklab, var(--accent) 55%, var(--bg));
 }
