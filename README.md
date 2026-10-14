@@ -160,21 +160,24 @@ function growTip(t, tip) {
     }
   });
 
-  // The tip as it ends up: the full text, one span per grapheme, over the line.
+  // The tip as it ends up: the full text, one span per grapheme, over the
+  // line, wrapping at the window's edge (after a separator, where it can).
   const spans = t.graphemes.map((g) => {
     const span = document.createElement('span');
     span.textContent = g;
     span.style.position = 'relative';
     return span;
   });
-  tip.replaceChildren(...spans);
+  tip.replaceChildren(...spans.flatMap((span, i) => ('/\\'.includes(t.graphemes[i]) ? [span, document.createElement('wbr')] : [span])));
   const line = t.lineRects()[0];
   tip.style.left = `${line.left}px`;
   tip.style.top = `${line.top}px`;
+  tip.style.maxWidth = `${document.documentElement.clientWidth - line.left - 24}px`;
   tip.hidden = false;
 
   // Every grapheme travels from where it was. (Inline text can't be
   // transformed, so they move by relative offsets, which don't reflow anything.)
+  const timing = { duration: 450, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' };
   spans.forEach((span, i) => {
     const to = span.getBoundingClientRect();
     span.animate(
@@ -182,9 +185,14 @@ function growTip(t, tip) {
         { left: `${from[i].left - to.left}px`, top: `${from[i].top - to.top}px`, opacity: arriving[i] ? 0 : 1 },
         { left: '0px', top: '0px', opacity: 1 },
       ],
-      { duration: 400, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' },
+      timing,
     );
   });
+
+  // And the tip opens out from the line's box to its own.
+  const box = tip.getBoundingClientRect();
+  const inset = `${line.top - box.top}px ${box.right - line.right}px ${box.bottom - line.bottom}px ${line.left - box.left}px`;
+  tip.animate([{ clipPath: `inset(${inset} round 4px)` }, { clipPath: 'inset(0 round 8px)' }], timing);
 }
 
 el.addEventListener('pointerenter', () => growTip(t, tip));
@@ -192,9 +200,10 @@ el.addEventListener('pointerleave', () => (tip.hidden = true));
 ```
 
 The graphemes start exactly where they are on screen, whatever the tip's
-padding or line height, since each one is measured. If the tip wraps or moves
-to stay on screen, they travel there too. The demo's paths section adds that
-(and dots that fade out, and a background that grows) on top of this.
+padding or line height, since each one is measured, and long text wraps onto
+as many lines as it needs: they travel there too. The demo runs this very
+function in "A tooltip grown from the line"; its paths section goes further
+(sliding to stay on screen, dots that fade out).
 
 ## Transitions
 

@@ -445,6 +445,22 @@ input[type='range'] {
   transform: translateX(-50%);
 }
 
+/* The README's grow-from-the-line tooltip. The negative margin puts its
+   text (not its padding) over the line: half the 22px - 18px leading, plus
+   the 4px padding, up; the 10px padding left. */
+.grow-tip {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  margin: -6px 0 0 -10px;
+  padding: 4px 10px;
+  font: 14px/22px var(--mono);
+  overflow-wrap: break-word;
+  color: var(--bg);
+  background: var(--ink);
+  border-radius: 8px;
+}
+
 /* ------------------------------------------------------------------------ */
 
 .card {

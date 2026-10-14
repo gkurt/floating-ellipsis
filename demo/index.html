@@ -205,6 +205,23 @@
         </div>
       </section>
 
+      <section class="block" aria-labelledby="grow-title">
+        <div class="block-head">
+          <h2 id="grow-title">A tooltip grown from the line</h2>
+          <p>
+            The README's example, live: a few dozen lines on top of <code>graphemeRect</code> and
+            <code>ellipsisArea</code>. Every glyph starts where it is and the hidden ones come out of their ellipsis.
+            Long paths wrap onto as many lines as they need. Hover or focus a row.
+          </p>
+        </div>
+        <div class="stage">
+          <div class="resizable files" id="growBox" style="width: 56%">
+            <ul class="file-list" id="growFiles" aria-label="Long paths"></ul>
+            <button class="handle" aria-label="Resize the list (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
       <section class="block" aria-labelledby="multi-title">
         <div class="block-head">
           <h2 id="multi-title">Multi-line, anywhere</h2>
@@ -244,6 +261,7 @@
 
     <div class="tip expand" id="expandTip" aria-hidden="true" hidden></div>
     <div class="tip peek" id="peekTip" aria-hidden="true" hidden></div>
+    <div class="grow-tip" id="growTip" aria-hidden="true" hidden></div>
 
     <script type="module" src="./main.ts"></script>
   </body>
