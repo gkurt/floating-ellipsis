@@ -7,12 +7,14 @@
  * it, clamped to the tip's text so the selection never leaves it. A double
  * press selects a word or path segment, a triple press all of it.
  *
- * A press also pins the tip, but only while it's hovered: `held()` is true
- * then, and callers shouldn't close or replace it, even where it sticks out
- * past what it belongs to. When the pointer leaves it (or a drag ends outside
- * it), `keep(x, y)` decides: true leaves it open as a plain hover tip again
- * (say the pointer is back on its row); false closes it, through `dismiss`.
- * Escape dismisses it too, pinned or not.
+ * A press also pins the tip while it's hovered, and for as long as it holds a
+ * selection: `held()` is true then, and callers shouldn't close or replace
+ * it, even where it sticks out past what it belongs to. When the pointer
+ * leaves a tip with nothing selected (or a drag ends outside it),
+ * `keep(x, y)` decides: true leaves it open as a plain hover tip again (say
+ * the pointer is back on its row); false closes it, through `dismiss`. A
+ * press elsewhere lets go of a held tip and dismisses it; Escape dismisses
+ * it too, held or not.
  */
 export function selectableTip(
   tip: HTMLElement,
@@ -52,13 +54,19 @@ export function selectableTip(
 
   /** The pointer is off the tip: back to hovering, or closed. */
   function leave(x: number, y: number) {
-    if (!holding || dragging) return;
+    // Text selected in it keeps it open, hovered or not.
+    if (!holding || dragging || selectionInTip()) return;
     hold(false);
     if (!keep(x, y)) close();
   }
 
   const onPress = (e: PointerEvent) => {
-    if (e.button !== 0 || e.pointerType === 'touch' || !showing() || !inside(e.clientX, e.clientY)) return;
+    if (e.button !== 0 || e.pointerType === 'touch') return;
+    if (!showing() || !inside(e.clientX, e.clientY)) {
+      // Anywhere else lets go of a held tip.
+      if (holding) close();
+      return;
+    }
     // The tip's press: not the text under it.
     e.preventDefault();
     e.stopPropagation();
@@ -102,7 +110,7 @@ export function selectableTip(
   document.addEventListener('keydown', onKey);
 
   return {
-    /** Whether the tip is pinned (pressed onto, and hovered): keep it open and as it is. */
+    /** Whether the tip is pinned (pressed onto and hovered, or holding a selection): keep it open and as it is. */
     held: () => holding,
     /** Let go without closing (e.g. the caller is about to hide it anyway). */
     release() {
