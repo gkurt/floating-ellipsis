@@ -86,12 +86,29 @@ const hero = elide($('#hero'), { position: 0.5, lines: 1, glyphs: true });
 // Handy for poking at the API from the console.
 Object.assign(window, { hero });
 
-let effect: Effect | 'none' = 'merge';
-let stopTransitions: (() => void) | null = transitions(hero, { effect: 'merge' });
-segmented('effect', (value) => {
-  effect = value as typeof effect;
+const motion: { effect: Effect | 'none'; pace: 'leeway' | 'fixed'; marks: 'together' | 'after' } = {
+  effect: 'merge',
+  pace: 'leeway',
+  marks: 'together',
+};
+let stopTransitions: (() => void) | null = null;
+function restartTransitions() {
   stopTransitions?.();
-  stopTransitions = effect === 'none' ? null : transitions(hero, { effect });
+  const { effect, pace, marks } = motion;
+  stopTransitions = effect === 'none' ? null : transitions(hero, { effect, pace, marks });
+}
+restartTransitions();
+segmented('effect', (v) => {
+  motion.effect = v as typeof motion.effect;
+  restartTransitions();
+});
+segmented('pace', (v) => {
+  motion.pace = v as typeof motion.pace;
+  restartTransitions();
+});
+segmented('marks', (v) => {
+  motion.marks = v as typeof motion.marks;
+  restartTransitions();
 });
 
 const pos = $<HTMLInputElement>('#pos');
@@ -133,7 +150,7 @@ function renderReadout() {
     ['gap target', g ? px(g.target) : '–'],
     ['natural gaps', g ? `${px(g.naturalLeft)} · ${px(g.naturalRight)}` : '–'],
     ['final gaps', g ? [g.left, ...g.inner, g.right].map(px).join(' · ') : '–'],
-    ['slack', g ? px(g.slack) : '–'],
+    ['slack', `${px(s.slack)} (room before justify)`],
   ];
   const key = rows.join('|');
   if (key === lastReadout) return;
@@ -243,7 +260,10 @@ for (const path of paths) {
   span.textContent = path;
   li.append(span);
   list.append(li);
-  pathInstances.push(elide(span, { position: 0.5, snap: snapPaths }));
+  const instance = elide(span, { position: 0.5, snap: snapPaths });
+  // No glyph effects in text mode, but the dots still glide to their new spacing.
+  transitions(instance);
+  pathInstances.push(instance);
 }
 Object.assign(window, { pathInstances });
 snap.addEventListener('change', () => {
@@ -318,6 +338,7 @@ window.addEventListener('scroll', hideTips, { passive: true });
 // Multi-line
 
 const article = elide($('#article'), { lines: 3, position: 0.7 });
+transitions(article);
 const mpos = $<HTMLInputElement>('#mpos');
 mpos.addEventListener('input', () => {
   $('#mposOut').textContent = `${mpos.value}%`;
