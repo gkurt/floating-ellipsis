@@ -139,6 +139,63 @@ A side with no separator in reach keeps the plain cut, and is the fragment.
 
 The element also gets a `data-truncated` attribute, for CSS.
 
+### Example: a tooltip that grows out of the line
+
+`graphemeRect` and `ellipsisArea` tell you where every grapheme is right now,
+or for a hidden one, which ellipsis it's behind. That's all a tooltip needs to
+start as the truncated line and grow into the full text:
+
+```js
+// `tip` is a `position: fixed` element with the same font as the text.
+function growTip(t, tip) {
+  if (!t.truncated) return;
+
+  // Where each grapheme is now: its own box, or the middle of the ellipsis hiding it.
+  const from = t.graphemes.map((_, i) => t.graphemeRect(i));
+  const arriving = from.map((r) => !r);
+  t.state.hidden.forEach((part, j) => {
+    const area = t.ellipsisArea(j);
+    for (let i = part.start; i < part.end; i++) {
+      from[i] = new DOMRect(area.left + area.width / 2, area.top, 0, area.height);
+    }
+  });
+
+  // The tip as it ends up: the full text, one span per grapheme, over the line.
+  const spans = t.graphemes.map((g) => {
+    const span = document.createElement('span');
+    span.textContent = g;
+    span.style.position = 'relative';
+    return span;
+  });
+  tip.replaceChildren(...spans);
+  const line = t.lineRects()[0];
+  tip.style.left = `${line.left}px`;
+  tip.style.top = `${line.top}px`;
+  tip.hidden = false;
+
+  // Every grapheme travels from where it was. (Inline text can't be
+  // transformed, so they move by relative offsets, which don't reflow anything.)
+  spans.forEach((span, i) => {
+    const to = span.getBoundingClientRect();
+    span.animate(
+      [
+        { left: `${from[i].left - to.left}px`, top: `${from[i].top - to.top}px`, opacity: arriving[i] ? 0 : 1 },
+        { left: '0px', top: '0px', opacity: 1 },
+      ],
+      { duration: 400, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'backwards' },
+    );
+  });
+}
+
+el.addEventListener('pointerenter', () => growTip(t, tip));
+el.addEventListener('pointerleave', () => (tip.hidden = true));
+```
+
+The graphemes start exactly where they are on screen, whatever the tip's
+padding or line height, since each one is measured. If the tip wraps or moves
+to stay on screen, they travel there too. The demo's paths section adds that
+(and dots that fade out, and a background that grows) on top of this.
+
 ## Transitions
 
 ```js
