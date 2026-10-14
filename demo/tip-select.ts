@@ -5,13 +5,19 @@
  * But a press that lands on it (with a mouse or pen) is the tip's: it takes
  * the pointer, the press starts a selection in its text, and dragging extends
  * it, clamped to the tip's text so the selection never leaves it. A double
- * press selects a word or path segment, a triple press all of it. From that
- * first press on, the tip is pinned: `held()` is true, and callers shouldn't
- * close or replace it (hovering away included) until a press elsewhere,
- * Escape, or `release()` lets go; the first two call `onDismiss`. Escape
- * dismisses an unpinned tip too.
+ * press selects a word or path segment, a triple press all of it.
+ *
+ * A press also pins the tip, but only while it's hovered: `held()` is true
+ * then, and callers shouldn't close or replace it, even where it sticks out
+ * past what it belongs to. When the pointer leaves it (or a drag ends outside
+ * it), `keep(x, y)` decides: true leaves it open as a plain hover tip again
+ * (say the pointer is back on its row); false closes it, through `dismiss`.
+ * Escape dismisses it too, pinned or not.
  */
-export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
+export function selectableTip(
+  tip: HTMLElement,
+  { dismiss, keep }: { dismiss: () => void; keep: (x: number, y: number) => boolean },
+) {
   let holding = false;
   let dragging = false;
   let anchor: Caret | null = null;
@@ -36,23 +42,23 @@ export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
     tip.style.cursor = on ? 'text' : '';
   }
 
-  function release() {
-    if (!holding) return;
+  /** Let go, and close unless told to keep it. */
+  function close() {
     hold(false);
     dragging = false;
     if (selectionInTip()) selection()!.removeAllRanges();
+    dismiss();
+  }
+
+  /** The pointer is off the tip: back to hovering, or closed. */
+  function leave(x: number, y: number) {
+    if (!holding || dragging) return;
+    hold(false);
+    if (!keep(x, y)) close();
   }
 
   const onPress = (e: PointerEvent) => {
-    if (e.button !== 0 || e.pointerType === 'touch') return;
-    if (!showing() || !inside(e.clientX, e.clientY)) {
-      // Anywhere else lets go of a held tip.
-      if (holding) {
-        release();
-        onDismiss();
-      }
-      return;
-    }
+    if (e.button !== 0 || e.pointerType === 'touch' || !showing() || !inside(e.clientX, e.clientY)) return;
     // The tip's press: not the text under it.
     e.preventDefault();
     e.stopPropagation();
@@ -80,14 +86,11 @@ export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
     if (!holding) return;
     dragging = false;
     if (tip.hasPointerCapture(e.pointerId)) tip.releasePointerCapture(e.pointerId);
+    if (!inside(e.clientX, e.clientY)) leave(e.clientX, e.clientY);
   };
 
   const onKey = (e: KeyboardEvent) => {
-    // Escape dismisses the tip, held or not.
-    if (e.key === 'Escape' && showing()) {
-      release();
-      onDismiss();
-    }
+    if (e.key === 'Escape' && showing()) close();
   };
 
   // Capture, so the press is ours before the page under the tip sees it.
@@ -95,13 +98,19 @@ export function selectableTip(tip: HTMLElement, onDismiss: () => void) {
   tip.addEventListener('pointermove', onMove);
   tip.addEventListener('pointerup', onUp);
   tip.addEventListener('pointercancel', onUp);
+  tip.addEventListener('pointerleave', (e) => leave(e.clientX, e.clientY));
   document.addEventListener('keydown', onKey);
 
   return {
-    /** Whether the tip is pinned (pressed onto): keep it open and as it is. */
+    /** Whether the tip is pinned (pressed onto, and hovered): keep it open and as it is. */
     held: () => holding,
-    /** Let go (e.g. the page scrolled out from under the tip). */
-    release,
+    /** Let go without closing (e.g. the caller is about to hide it anyway). */
+    release() {
+      if (!holding) return;
+      hold(false);
+      dragging = false;
+      if (selectionInTip()) selection()!.removeAllRanges();
+    },
   };
 }
 

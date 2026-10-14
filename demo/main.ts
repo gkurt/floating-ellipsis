@@ -1,6 +1,7 @@
 import { type Elide, type EllipsisStyle, type Gap, elide, separators } from '../src/index.js';
 import { growTip } from './grow-tip.js';
 import { selectableTip } from './tip-select.js';
+import { tipDelays } from './tip-delay.js';
 import { type Effect, transitions } from '../src/transitions.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
@@ -329,16 +330,45 @@ const peekTip = $('#peekTip');
 // What the tips show now, so moving within a row (or an ellipsis) doesn't restart them.
 let tipRow: Element | null = null;
 let peeking: { instance: Elide; index: number; row: Element } | null = null;
-// A press on a full-text tip makes it selectable (see tip-select.ts). While
-// it's pinned like that, nothing closes or replaces it; otherwise it closes as
-// soon as the pointer leaves the row, like any hover tip.
-const tipHolds = [selectableTip(expandTip, () => hideTips()), selectableTip(growTipEl, () => hideTips())];
+// What's waiting out the delay to show.
+let waitingRow: Element | null = null;
+let waitingPeek: { instance: Elide; index: number } | null = null;
+
+// Tips wait a moment before showing, unless one of the same list (its
+// `data-tip-group`) is showing or just closed (see tip-delay.ts).
+let tipDelay = 500;
+const delays = tipDelays({ delay: () => tipDelay });
+segmented('delay', (v) => (tipDelay = Number(v)));
+
+// A press on a full-text tip makes it selectable (see tip-select.ts), and
+// keeps it open while it's hovered, even where it sticks out past its row.
+// Otherwise a tip closes as soon as the pointer leaves its row.
+const tipOwner = () => tipRow ?? growRow;
+const tipHoldOptions = {
+  keep: (x: number, y: number) => !!tipOwner()?.contains(document.elementFromPoint(x, y)),
+  dismiss: () => {
+    hideTips();
+    hideGrowTip();
+  },
+};
+const tipHolds = [selectableTip(expandTip, tipHoldOptions), selectableTip(growTipEl, tipHoldOptions)];
 const tipHeld = () => tipHolds.some((h) => h.held());
+/** Hide a tip, and any selection made in it. */
+function closeTip(tip: HTMLElement) {
+  const s = document.getSelection();
+  if (s && tip.contains(s.anchorNode)) s.removeAllRanges();
+  tip.hidden = true;
+}
 
 function hideTips() {
   if (tipHeld()) return;
-  expandTip.hidden = true;
-  growTipEl.hidden = true;
+  delays.cancel();
+  waitingRow = null;
+  waitingPeek = null;
+  const shown = peeking?.row ?? tipRow;
+  if (shown) delays.closed(shown);
+  closeTip(expandTip);
+  closeTip(growTipEl);
   peekTip.hidden = true;
   tipRow = null;
   setPeeking(null);
@@ -444,20 +474,36 @@ function showRow(row: Element) {
   // The same tooltip as the README's example (see grow-tip.ts).
   if (reveal === 'grow') growTip(instance, growTipEl);
   else showExpand(instance);
+  if (!expandTip.hidden || !growTipEl.hidden) delays.opened(row);
+}
+/** Show a row's tip once the delay allows. */
+function requestRow(row: Element) {
+  if (row === tipRow || row === waitingRow || tipHeld()) return;
+  waitingRow = row;
+  delays.request(row, () => {
+    waitingRow = null;
+    showRow(row);
+  });
 }
 list.addEventListener('pointermove', (e) => {
   if (tipHeld()) return;
   const row = (e.target as HTMLElement).closest('li');
   const instance = rowInstance(row);
   if (!row || !instance) return hideTips();
-  if (reveal !== 'peek') return showRow(row);
+  if (reveal !== 'peek') return requestRow(row);
   // The ellipsis element only spans its marks; its area covers the gaps too.
   const index = instance.ellipsisAt(e.clientX, e.clientY, 4);
-  if (index === peeking?.index && instance === peeking.instance) return;
+  const current = peeking ?? waitingPeek;
+  if (current && index === current.index && instance === current.instance) return;
   hideTips();
   if (index < 0) return;
-  setPeeking({ instance, index, row });
-  showPeek(instance, index);
+  waitingPeek = { instance, index };
+  delays.request(row, () => {
+    waitingPeek = null;
+    setPeeking({ instance, index, row });
+    showPeek(instance, index);
+    delays.opened(row);
+  });
 });
 list.addEventListener('pointerleave', hideTips);
 // Keyboard: focusing a row shows its full text, or the first hidden part.
@@ -513,24 +559,35 @@ for (const path of longPaths) {
   growInstances.push(instance);
   li.addEventListener('focus', () => showGrowRow(li));
 }
-// The row whose tip is showing.
+// The row whose tip is showing, and the one waiting out the delay.
 let growRow: Element | null = null;
+let waitingGrowRow: Element | null = null;
 function showGrowRow(row: Element) {
   const instance = growInstances[Array.prototype.indexOf.call(growList.children, row)];
   if (!instance || row === growRow || tipHeld()) return;
+  if (growRow) delays.closed(growRow);
   growRow = row;
   growTipEl.hidden = true;
   growTip(instance, growTipEl);
+  if (!growTipEl.hidden) delays.opened(row);
 }
-const hideGrowTip = () => {
+function hideGrowTip() {
   if (tipHeld()) return;
-  growTipEl.hidden = true;
+  delays.cancel();
+  waitingGrowRow = null;
+  if (growRow) delays.closed(growRow);
+  closeTip(growTipEl);
   growRow = null;
-};
+}
 growList.addEventListener('pointermove', (e) => {
   if (tipHeld()) return;
   const row = (e.target as HTMLElement).closest('li');
-  if (row) showGrowRow(row);
+  if (!row || row === growRow || row === waitingGrowRow) return;
+  waitingGrowRow = row;
+  delays.request(row, () => {
+    waitingGrowRow = null;
+    showGrowRow(row);
+  });
 });
 growList.addEventListener('pointerleave', hideGrowTip);
 growList.addEventListener('focusout', hideGrowTip);

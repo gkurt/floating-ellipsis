@@ -171,7 +171,9 @@
           <p>
             The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact
             ink of every dot. Enough for a tooltip that lines up letter for letter, or one that only answers the
-            ellipsis. Rows are focusable too.
+            ellipsis. Rows are focusable too. Press on a full-path tip to select its text: it stays open while you
+            hover it. Each list is a <code>data-tip-group</code>, so after the first tip's delay, its neighbours
+            show at once.
           </p>
         </div>
         <div class="controls compact">
@@ -181,6 +183,14 @@
               <button aria-pressed="true" value="expand">Full path, in place</button
               ><button value="grow">Full path, grown from the ellipsis</button
               ><button value="peek">Hidden part, on the ellipsis</button>
+            </div>
+          </div>
+          <div class="control">
+            <span id="delay-label">Tooltip delay</span>
+            <div class="seg" data-name="delay" role="group" aria-labelledby="delay-label">
+              <button value="0">None</button
+              ><button aria-pressed="true" value="500">500ms</button
+              ><button value="1000">1s</button>
             </div>
           </div>
           <div class="control">
@@ -195,7 +205,7 @@
         </div>
         <div class="stage">
           <div class="resizable files" id="filesBox" style="width: 62%">
-            <ul class="file-list" id="files" aria-label="Files"></ul>
+            <ul class="file-list" id="files" aria-label="Files" data-tip-group="paths"></ul>
             <button class="handle" aria-label="Resize the file list (left and right arrow keys)"></button>
           </div>
         </div>
@@ -212,12 +222,12 @@
             The README's example, live: a few dozen lines on top of <code>graphemeRect</code> and
             <code>ellipsisArea</code>. Every glyph starts where it is and the hidden ones come out of their ellipsis.
             It stays on one line, sliding left to stay on screen, and only text wider than the window wraps. The
-            second row has two ellipses. Hover or focus a row.
+            second row has two ellipses. Hover or focus a row; the tooltip delay above applies here too.
           </p>
         </div>
         <div class="stage">
           <div class="resizable files" id="growBox" style="width: 56%">
-            <ul class="file-list" id="growFiles" aria-label="Long paths"></ul>
+            <ul class="file-list" id="growFiles" aria-label="Long paths" data-tip-group="long-paths"></ul>
             <button class="handle" aria-label="Resize the list (left and right arrow keys)"></button>
           </div>
         </div>
