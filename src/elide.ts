@@ -129,8 +129,8 @@ export class Elide {
   private readonly listeners = new Set<(change: ElideChange) => void>();
   private readonly renderListeners = new Set<(state: ElideState) => void>();
   private lastWidth = -1;
-  /** Far from the screen, as far as the IntersectionObserver knows. */
-  private far = false;
+  /** Far from the screen, as far as the IntersectionObserver knows (null until it has said). */
+  private far: boolean | null = null;
   /** A pass put off while far from the screen (see `putOff`). */
   private owed: ChangeReason | null = null;
   /** Something is being read from the instance, so its passes can't wait. */
@@ -494,12 +494,16 @@ export class Elide {
       observed.delete(host);
       sharedObserver?.unobserve(host);
       nearObserver?.unobserve(host);
-      this.far = false;
+      this.far = null;
       if (this.owed) this.schedule(this.owed);
       return;
     }
     if (observed.get(host) === this || typeof ResizeObserver === 'undefined') return;
-    sharedObserver ??= new ResizeObserver((entries) => Elide.resized(entries));
+    if (!sharedObserver) {
+      sharedObserver = new ResizeObserver((entries) => Elide.resized(entries));
+      // Not bubbling, but it can be caught on its way down.
+      document.addEventListener('contentvisibilityautostatechange', (e) => Elide.unskipped(e), true);
+    }
     observed.set(host, this);
     sharedObserver.observe(host);
     if (typeof IntersectionObserver === 'undefined') return;
@@ -853,7 +857,7 @@ export class Elide {
    * soon as anything is read from this one.
    */
   private schedule(reason: ChangeReason) {
-    if (this.putOff(reason, this.far)) return;
+    if (this.putOff(reason, this.far === true)) return;
     if (!queued.has(this)) queued.set(this, reason);
     if (flushing) return;
     flushing = true;
@@ -886,6 +890,19 @@ export class Elide {
     if (this.settings.lines > 1 ? this.heightLock === null : reason === 'init' && !WRAP_MODE) return false;
     this.owed ??= reason;
     return true;
+  }
+
+  /**
+   * Content that `content-visibility: auto` stopped skipping: passes that
+   * waited for it (see `pass`) run now. The ResizeObserver often can't tell:
+   * the size it last reported is still right.
+   */
+  private static unskipped(event: Event) {
+    if (!(event.target instanceof Element) || ('skipped' in event && event.skipped === true)) return;
+    for (const line of event.target.querySelectorAll('[data-fp-text]')) {
+      const instance = line.parentElement ? observed.get(line.parentElement) : undefined;
+      if (instance?.owed) instance.schedule(instance.owed);
+    }
   }
 
   /** The shared IntersectionObserver: passes put off run as their elements come near. */
@@ -921,7 +938,7 @@ export class Elide {
       if (!instance) continue;
       const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
       // Height changes are usually our own doing (fewer lines); only width matters.
-      if (Math.abs(width - instance.lastWidth) < 0.01 || instance.putOff('resize', instance.far)) continue;
+      if ((Math.abs(width - instance.lastWidth) < 0.01 && !instance.owed) || instance.putOff('resize', instance.far === true)) continue;
       heights.set(instance, entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     if (heights.size === 0) return;
@@ -974,8 +991,12 @@ export class Elide {
     const cs = getComputedStyle(host);
     const run = this.prepare(cs);
     this.lastWidth = run.width;
+    // Once the IntersectionObserver has had its say, it decides: going by
+    // the box instead can disagree right at the edge, and then nothing would
+    // run the pass when it comes near (the observer has nothing new to say).
     const box = run.box;
-    const far = box.bottom < -innerHeight || box.top > 2 * innerHeight || box.right < -innerWidth || box.left > 2 * innerWidth;
+    const far =
+      this.far ?? (box.bottom < -innerHeight || box.top > 2 * innerHeight || box.right < -innerWidth || box.left > 2 * innerWidth);
     if (this.putOff(reason, far)) return null;
     const previous = this.current;
     const reset = this.pendingReset || !previous;
