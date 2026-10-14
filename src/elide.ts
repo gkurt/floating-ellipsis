@@ -90,7 +90,7 @@ export interface ElideOptions {
   observe?: boolean;
   /**
    * Wrap every grapheme in its own element so it can be styled or animated
-   * (see `floating-points/transitions`). Costs more DOM; meant for short texts.
+   * (see `floating-ellipsis/transitions`). Costs more DOM; meant for short texts.
    */
   glyphs?: boolean;
   /** Put the full text in the element's `title` while truncated. Default false. */

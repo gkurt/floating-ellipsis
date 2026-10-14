@@ -1,4 +1,4 @@
-# floating-points
+# floating-ellipsis
 
 Fluid, balanced ellipsis. Smart text truncation for the DOM.
 
@@ -24,7 +24,7 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM.
   nearest dot.
 
 ```js
-import { elide } from 'floating-points';
+import { elide } from 'floating-ellipsis';
 
 const t = elide(document.querySelector('.filename'), {
   position: 'middle',
@@ -114,8 +114,8 @@ The element also gets a `data-truncated` attribute, for CSS.
 ## Transitions
 
 ```js
-import { elide } from 'floating-points';
-import { transitions } from 'floating-points/transitions';
+import { elide } from 'floating-ellipsis';
+import { transitions } from 'floating-ellipsis/transitions';
 
 const t = elide(el, { position: 0.5, glyphs: true });
 const stop = transitions(t, { effect: 'merge' }); // 'fade' | 'blur' | 'merge'
