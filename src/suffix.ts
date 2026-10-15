@@ -5,20 +5,20 @@ export class Suffix {
   readonly el: HTMLSpanElement = document.createElement('span');
   /** Its width when last measured for fitting. */
   width = 0;
-  private readonly host: HTMLElement;
+  readonly #host: HTMLElement;
   /** A node taken from elsewhere, and where it was, to put it back. */
-  private home: [node: Node, parent: Node, next: Node | null] | null = null;
+  #home: [node: Node, parent: Node, next: Node | null] | null = null;
   /** Tells when a node's content changes. */
-  private readonly watcher: MutationObserver;
+  readonly #watcher: MutationObserver;
 
   /** `resized`: the content changed width since it was fitted, so the text must fit again. */
   constructor(host: HTMLElement, resized: () => void) {
-    this.host = host;
+    this.#host = host;
     this.el.setAttribute('data-fp-suffix', '');
     this.el.style.whiteSpace = 'nowrap';
     // Only a change of width matters: a listener that sets the same label
     // again on every pass mustn't start another one.
-    this.watcher = new MutationObserver(() => {
+    this.#watcher = new MutationObserver(() => {
       if (Math.abs(this.el.getBoundingClientRect().width - this.width) > 0.01) resized();
     });
   }
@@ -27,13 +27,13 @@ export class Suffix {
   fill(content: string | Node): void {
     this.giveBack(false);
     if (typeof content === 'object') {
-      if (content.parentNode) this.home = [content, content.parentNode, content.nextSibling];
-      this.watcher.observe(content, { subtree: true, childList: true, characterData: true, attributes: true });
+      if (content.parentNode) this.#home = [content, content.parentNode, content.nextSibling];
+      this.#watcher.observe(content, { subtree: true, childList: true, characterData: true, attributes: true });
     }
     // The joiner keeps it on the line of what comes before it (a line can
     // break after the ellipsis' marks, which are inline blocks).
     this.el.replaceChildren(WORD_JOINER, content);
-    this.host.append(this.el);
+    this.#host.append(this.el);
   }
 
   /** Its width now, for fitting. Reads layout. */
@@ -50,12 +50,12 @@ export class Suffix {
    * child comes back with the host's content on `destroy` (`destroying`).
    */
   giveBack(destroying: boolean): void {
-    this.watcher.disconnect();
-    const home = this.home;
-    this.home = null;
+    this.#watcher.disconnect();
+    const home = this.#home;
+    this.#home = null;
     if (!home) return;
     const [node, parent, next] = home;
-    if (parent !== this.host) parent.insertBefore(node, next?.parentNode === parent ? next : null);
+    if (parent !== this.#host) parent.insertBefore(node, next?.parentNode === parent ? next : null);
     else if (!destroying) node.parentNode?.removeChild(node);
   }
 }

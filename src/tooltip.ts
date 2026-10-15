@@ -129,33 +129,33 @@ const OPEN = 'data-fp-tip-open';
 export class Tooltip {
   /** The tip, in `container`. It's `position: fixed`. */
   readonly element: HTMLElement;
-  private settings: Settings;
-  private triggers = new WeakMap<Element, Elide>();
-  private triggerOf = new WeakMap<Elide, Element>();
-  private current: TooltipTarget | null = null;
-  private waiting: TooltipTarget | null = null;
-  private timer = 0;
-  private closedAt = -Infinity;
-  private unrender: (() => void) | null = null;
+  #settings: Settings;
+  #triggers = new WeakMap<Element, Elide>();
+  #triggerOf = new WeakMap<Elide, Element>();
+  #current: TooltipTarget | null = null;
+  #waiting: TooltipTarget | null = null;
+  #timer = 0;
+  #closedAt = -Infinity;
+  #unrender: (() => void) | null = null;
   /** The tip's text, one span per grapheme. */
-  private spans: HTMLSpanElement[] = [];
+  #spans: HTMLSpanElement[] = [];
   /** Puts the text back in the flow once it has grown. */
-  private landing: (() => void) | null = null;
-  private scrolled = [0, 0];
+  #landing: (() => void) | null = null;
+  #scrolled = [0, 0];
   /** A selection carried over to the tip, and the one it replaced. */
-  private carried: { text: string; original: Range } | null = null;
-  private holding = false;
-  private dragging = false;
-  private anchor = 0;
+  #carried: { text: string; original: Range } | null = null;
+  #holding = false;
+  #dragging = false;
+  #anchor = 0;
   // Pointer events don't count clicks (their `detail` is 0), so presses are
   // counted here: one soon enough after the last, close enough to it, adds one.
-  private presses = { count: 0, time: 0, x: 0, y: 0 };
+  #presses = { count: 0, time: 0, x: 0, y: 0 };
   /** Where the tip's `left: 0; top: 0` is in the viewport (not at 0, 0 in a container that is its containing block). */
-  private frame = { x: 0, y: 0 };
-  private listening = new AbortController();
+  #frame = { x: 0, y: 0 };
+  #listening = new AbortController();
 
   constructor(options: TooltipOptions = {}) {
-    this.settings = { ...DEFAULTS, ...options };
+    this.#settings = { ...DEFAULTS, ...options };
     const tip = document.createElement('div');
     tip.setAttribute('aria-hidden', 'true');
     tip.hidden = true;
@@ -167,47 +167,47 @@ export class Tooltip {
       isolation: 'isolate',
       pointerEvents: 'none',
     });
-    (this.settings.container ?? document.body).append(tip);
+    (this.#settings.container ?? document.body).append(tip);
     this.element = tip;
 
-    const on = { signal: this.listening.signal };
+    const on = { signal: this.#listening.signal };
     const passive = { ...on, passive: true };
     // Capture, so a press on the tip is its own before the page under it sees it.
-    document.addEventListener('pointerdown', this.onPress, { ...on, capture: true });
-    document.addEventListener('pointermove', this.onHover, passive);
-    document.addEventListener('pointerout', (e) => !e.relatedTarget && this.close(), passive);
-    document.addEventListener('focusin', this.onFocus, on);
-    document.addEventListener('focusout', this.onBlur, on);
-    document.addEventListener('keydown', (e) => e.key === 'Escape' && this.close(true), on);
-    document.addEventListener('scroll', this.onScroll, { ...passive, capture: true });
-    window.addEventListener('resize', () => this.close(true), passive);
-    tip.addEventListener('pointermove', this.onDrag, on);
-    tip.addEventListener('pointerup', this.onRelease, on);
-    tip.addEventListener('pointercancel', this.onRelease, on);
+    document.addEventListener('pointerdown', this.#onPress, { ...on, capture: true });
+    document.addEventListener('pointermove', this.#onHover, passive);
+    document.addEventListener('pointerout', (e) => !e.relatedTarget && this.#close(), passive);
+    document.addEventListener('focusin', this.#onFocus, on);
+    document.addEventListener('focusout', this.#onBlur, on);
+    document.addEventListener('keydown', (e) => e.key === 'Escape' && this.#close(true), on);
+    document.addEventListener('scroll', this.#onScroll, { ...passive, capture: true });
+    window.addEventListener('resize', () => this.#close(true), passive);
+    tip.addEventListener('pointermove', this.#onDrag, on);
+    tip.addEventListener('pointerup', this.#onRelease, on);
+    tip.addEventListener('pointercancel', this.#onRelease, on);
     // WebKit also fires it on letting go of a captured pointer still over the tip.
-    tip.addEventListener('pointerleave', (e) => !this.inside(e.clientX, e.clientY, true) && this.leave(e.clientX, e.clientY), on);
+    tip.addEventListener('pointerleave', (e) => !this.#inside(e.clientX, e.clientY, true) && this.#leave(e.clientX, e.clientY), on);
   }
 
   get options(): Readonly<TooltipOptions> {
-    return this.settings;
+    return this.#settings;
   }
 
   /** What the tip is showing, or null. */
   get target(): TooltipTarget | null {
-    return this.current;
+    return this.#current;
   }
 
   /** Whether the tip is held: pressed onto and hovered, or holding a selection. It won't close or change by itself then. */
   get held(): boolean {
-    return this.holding;
+    return this.#holding;
   }
 
   update(options: TooltipOptions): void {
-    const { reveal, container } = this.settings;
+    const { reveal, container } = this.#settings;
     if ((options.reveal !== undefined && options.reveal !== reveal) || (options.container !== undefined && options.container !== container))
-      this.close(true);
-    this.settings = { ...this.settings, ...options };
-    if (this.settings.container !== container) (this.settings.container ?? document.body).append(this.element);
+      this.#close(true);
+    this.#settings = { ...this.#settings, ...options };
+    if (this.#settings.container !== container) (this.#settings.container ?? document.body).append(this.element);
   }
 
   /**
@@ -215,155 +215,155 @@ export class Tooltip {
    * the row it's in) is hovered or focused. Returns a function that detaches it.
    */
   attach(instance: Elide, trigger: Element = instance.element): () => void {
-    this.triggers.set(trigger, instance);
-    this.triggerOf.set(instance, trigger);
+    this.#triggers.set(trigger, instance);
+    this.#triggerOf.set(instance, trigger);
     return () => {
-      if (this.current?.instance === instance) this.close(true);
-      if (this.triggers.get(trigger) === instance) this.triggers.delete(trigger);
-      if (this.triggerOf.get(instance) === trigger) this.triggerOf.delete(instance);
+      if (this.#current?.instance === instance) this.#close(true);
+      if (this.#triggers.get(trigger) === instance) this.#triggers.delete(trigger);
+      if (this.#triggerOf.get(instance) === trigger) this.#triggerOf.delete(instance);
     };
   }
 
   /** Show `instance`'s tip now ('peek': for its ellipsis `ellipsis`). False when there's nothing to show. */
   show(instance: Elide, ellipsis = 0): boolean {
-    const trigger = this.triggerOf.get(instance) ?? instance.element;
-    this.open({ instance, trigger, ellipsis: this.settings.reveal === 'peek' ? ellipsis : null });
-    return this.current?.instance === instance;
+    const trigger = this.#triggerOf.get(instance) ?? instance.element;
+    this.#open({ instance, trigger, ellipsis: this.#settings.reveal === 'peek' ? ellipsis : null });
+    return this.#current?.instance === instance;
   }
 
   /** Close the tip, held or not. */
   hide(): void {
-    this.close(true);
+    this.#close(true);
   }
 
   destroy(): void {
-    this.close(true);
-    this.listening.abort();
+    this.#close(true);
+    this.#listening.abort();
     this.element.remove();
   }
 
   // -------------------------------------------------------------------------
   // Showing and hiding
 
-  private same(a: TooltipTarget | null, b: TooltipTarget | null) {
+  #same(a: TooltipTarget | null, b: TooltipTarget | null) {
     return !!a && !!b && a.instance === b.instance && a.ellipsis === b.ellipsis;
   }
 
   /** The attached trigger `node` is in, and its instance. */
-  private triggerAt(node: EventTarget | null): { trigger: Element; instance: Elide } | null {
+  #triggerAt(node: EventTarget | null): { trigger: Element; instance: Elide } | null {
     for (let el = node instanceof Element ? node : null; el; el = el.parentElement) {
-      const instance = this.triggers.get(el);
+      const instance = this.#triggers.get(el);
       if (instance) return instance.truncated && !instance.expanded ? { trigger: el, instance } : null;
     }
     return null;
   }
 
   /** Show `target` once the delay allows. */
-  private request(target: TooltipTarget) {
-    this.cancel();
-    const warm = this.current !== null || performance.now() - this.closedAt < this.settings.grace;
-    if (warm || this.settings.delay <= 0) return this.open(target);
-    this.waiting = target;
-    this.timer = window.setTimeout(() => this.open(target), this.settings.delay);
+  #request(target: TooltipTarget) {
+    this.#cancel();
+    const warm = this.#current !== null || performance.now() - this.#closedAt < this.#settings.grace;
+    if (warm || this.#settings.delay <= 0) return this.#open(target);
+    this.#waiting = target;
+    this.#timer = window.setTimeout(() => this.#open(target), this.#settings.delay);
   }
 
   /** Forget a tip that was waiting to show. */
-  private cancel() {
-    clearTimeout(this.timer);
-    this.timer = 0;
-    this.waiting = null;
+  #cancel() {
+    clearTimeout(this.#timer);
+    this.#timer = 0;
+    this.#waiting = null;
   }
 
-  private open(target: TooltipTarget) {
-    this.cancel();
-    if (this.holding) return;
-    this.close(false, true);
+  #open(target: TooltipTarget) {
+    this.#cancel();
+    if (this.#holding) return;
+    this.#close(false, true);
     if (!target.instance.truncated || target.instance.expanded) return;
-    const { reveal, respectReducedMotion } = this.settings;
+    const { reveal, respectReducedMotion } = this.#settings;
     const still = respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const shown = reveal === 'peek' ? this.peek(target) : this.full(target, reveal === 'grow' && !still);
-    if (!shown) return this.close(true);
-    this.current = target;
-    this.scrolled = [scrollX, scrollY];
+    const shown = reveal === 'peek' ? this.#peek(target) : this.#full(target, reveal === 'grow' && !still);
+    if (!shown) return this.#close(true);
+    this.#current = target;
+    this.#scrolled = [scrollX, scrollY];
     target.trigger.setAttribute(OPEN, '');
     if (target.ellipsis !== null) target.instance.ellipses[target.ellipsis]?.setAttribute(OPEN, '');
-    if (reveal !== 'peek') this.carrySelection(target.instance);
+    if (reveal !== 'peek') this.#carrySelection(target.instance);
     // Laid out again, it no longer lines up with the text.
-    this.unrender = target.instance.onRender(() => this.close());
-    this.settings.onShow?.(target);
+    this.#unrender = target.instance.onRender(() => this.#close());
+    this.#settings.onShow?.(target);
   }
 
   /**
    * Close the tip, unless it's held and not `force`d. `switching` to another
    * tip: it doesn't count as closing for the grace period.
    */
-  private close(force = false, switching = false) {
-    if (this.holding && !force) return;
-    if (!switching) this.cancel();
-    this.release();
-    const target = this.current;
+  #close(force = false, switching = false) {
+    if (this.#holding && !force) return;
+    if (!switching) this.#cancel();
+    this.#release();
+    const target = this.#current;
     if (!target) return;
-    this.restoreSelection();
+    this.#restoreSelection();
     this.element.hidden = true;
-    this.landing = null;
+    this.#landing = null;
     for (const a of this.element.getAnimations({ subtree: true })) a.cancel();
     target.trigger.removeAttribute(OPEN);
     if (target.ellipsis !== null) target.instance.ellipses[target.ellipsis]?.removeAttribute(OPEN);
-    this.unrender?.();
-    this.unrender = null;
-    this.current = null;
-    this.closedAt = performance.now();
-    this.settings.onHide?.(target);
+    this.#unrender?.();
+    this.#unrender = null;
+    this.#current = null;
+    this.#closedAt = performance.now();
+    this.#settings.onHide?.(target);
   }
 
-  private onHover = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' || this.holding) return;
-    const found = this.triggerAt(e.target);
-    if (!found) return this.close();
+  #onHover = (e: PointerEvent) => {
+    if (e.pointerType === 'touch' || this.#holding) return;
+    const found = this.#triggerAt(e.target);
+    if (!found) return this.#close();
     let ellipsis: number | null = null;
-    if (this.settings.reveal === 'peek') {
-      ellipsis = found.instance.ellipsisAt(e.clientX, e.clientY, this.settings.slop);
-      if (ellipsis < 0) return this.close();
+    if (this.#settings.reveal === 'peek') {
+      ellipsis = found.instance.ellipsisAt(e.clientX, e.clientY, this.#settings.slop);
+      if (ellipsis < 0) return this.#close();
     }
     const target = { ...found, ellipsis };
-    if (this.same(target, this.current)) return this.cancel();
-    if (this.same(target, this.waiting)) return;
-    this.close(false, true);
-    this.request(target);
+    if (this.#same(target, this.#current)) return this.#cancel();
+    if (this.#same(target, this.#waiting)) return;
+    this.#close(false, true);
+    this.#request(target);
   };
 
-  private onFocus = (e: FocusEvent) => {
-    if (this.holding) return;
-    const found = this.triggerAt(e.target);
+  #onFocus = (e: FocusEvent) => {
+    if (this.#holding) return;
+    const found = this.#triggerAt(e.target);
     if (!found) return;
-    const target = { ...found, ellipsis: this.settings.reveal === 'peek' ? 0 : null };
-    if (!this.same(target, this.current)) this.open(target);
+    const target = { ...found, ellipsis: this.#settings.reveal === 'peek' ? 0 : null };
+    if (!this.#same(target, this.#current)) this.#open(target);
   };
 
-  private onBlur = (e: FocusEvent) => {
-    const trigger = this.current?.trigger;
+  #onBlur = (e: FocusEvent) => {
+    const trigger = this.#current?.trigger;
     if (!trigger || !(e.target instanceof Node) || !trigger.contains(e.target)) return;
     if (e.relatedTarget instanceof Node && trigger.contains(e.relatedTarget)) return;
-    this.close();
+    this.#close();
   };
 
   /** The tip is fixed: a scroll takes the text out from under it. */
-  private onScroll = (e: Event) => {
-    const trigger = this.current?.trigger;
+  #onScroll = (e: Event) => {
+    const trigger = this.#current?.trigger;
     if (!trigger) return;
     if (e.target instanceof Node && e.target !== document) {
-      if (e.target.contains(trigger)) this.close(true);
+      if (e.target.contains(trigger)) this.#close(true);
       return;
     }
     // Scroll anchoring can fire a scroll event that scrolls nothing.
-    if (scrollX !== this.scrolled[0] || scrollY !== this.scrolled[1]) this.close(true);
+    if (scrollX !== this.#scrolled[0] || scrollY !== this.#scrolled[1]) this.#close(true);
   };
 
   // -------------------------------------------------------------------------
   // Layout
 
   /** Fresh contents for the tip: its background layer, then `children`. */
-  private fill(reveal: Reveal, ...children: (Node | string)[]) {
+  #fill(reveal: Reveal, ...children: (Node | string)[]) {
     const tip = this.element;
     const bg = document.createElement('div');
     bg.setAttribute('data-fp-tip-bg', '');
@@ -379,9 +379,9 @@ export class Tooltip {
   }
 
   /** Put the tip's top-left corner at `x`, `y` in the viewport. */
-  private place(x: number, y: number) {
-    this.element.style.left = `${x - this.frame.x}px`;
-    this.element.style.top = `${y - this.frame.y}px`;
+  #place(x: number, y: number) {
+    this.element.style.left = `${x - this.#frame.x}px`;
+    this.element.style.top = `${y - this.#frame.y}px`;
   }
 
   /**
@@ -391,12 +391,12 @@ export class Tooltip {
    * left only when wrapping would make it narrower than `aspect`. It moves
    * up if it would run off the bottom.
    */
-  private full(target: TooltipTarget, grow: boolean): boolean {
+  #full(target: TooltipTarget, grow: boolean): boolean {
     const t = target.instance;
     const lines = t.lineRects();
     const first = lines[0];
     if (!first || t.graphemes.length === 0) return false;
-    const origin = grow ? this.origin(t) : null;
+    const origin = grow ? this.#origin(t) : null;
     const font = getComputedStyle(t.element);
 
     const tip = this.element;
@@ -407,7 +407,7 @@ export class Tooltip {
       maxWidth: 'none',
       whiteSpace: 'nowrap',
       overflowWrap: '',
-      userSelect: this.settings.selectable ? 'text' : '',
+      userSelect: this.#settings.selectable ? 'text' : '',
     });
     const spans = t.graphemes.map((g, i) => {
       const span = document.createElement('span');
@@ -417,14 +417,14 @@ export class Tooltip {
       if (cls) span.className = cls;
       return span;
     });
-    this.spans = spans;
+    this.#spans = spans;
     const text = document.createElement('span');
     text.append(...spans);
-    const bg = this.fill(this.settings.reveal, text);
+    const bg = this.#fill(this.#settings.reveal, text);
 
-    const { edge, breaks, maxWidth, aspect } = this.settings;
+    const { edge, breaks, maxWidth, aspect } = this.#settings;
     let box = tip.getBoundingClientRect();
-    this.frame = { x: box.left, y: box.top };
+    this.#frame = { x: box.left, y: box.top };
     const head = spans[0]!.getBoundingClientRect();
     // Where its text starts in it: padding, and half the leading.
     const dx = head.left - box.left;
@@ -457,13 +457,13 @@ export class Tooltip {
       box = tip.getBoundingClientRect();
       x = Math.max(Math.min(x, view - edge - box.width), edge);
     }
-    this.place(x, first.top - dy);
+    this.#place(x, first.top - dy);
     box = tip.getBoundingClientRect();
     const targets = origin ? spans.map((span) => span.getBoundingClientRect()) : [];
     const bottom = innerHeight - edge;
     if (box.bottom > bottom) {
       const shift = Math.min(box.bottom - bottom, box.top - edge);
-      this.place(box.left, box.top - shift);
+      this.#place(box.left, box.top - shift);
       box = new DOMRect(box.left, box.top - shift, box.width, box.height);
       for (const r of targets) r.y -= shift;
     }
@@ -478,7 +478,7 @@ export class Tooltip {
       top: first.top - dy,
       bottom: last.bottom + dy,
     };
-    this.grow(origin, targets, box, start, bg);
+    this.#grow(origin, targets, box, start, bg);
     return true;
   }
 
@@ -487,7 +487,7 @@ export class Tooltip {
    * in the ellipsis hiding it (spread across it, in order). And the marks of
    * every ellipsis, as drawn.
    */
-  private origin(t: Elide): Origin {
+  #origin(t: Elide): Origin {
     const from = t.graphemes.map((_, i) => t.graphemeRect(i));
     const part = t.graphemes.map(() => -1);
     const line = t.lineRects()[0]!;
@@ -519,17 +519,11 @@ export class Tooltip {
    * layer of their own, so the background growing doesn't lay them out, and
    * go back into the text when it lands.
    */
-  private grow(
-    origin: Origin,
-    targets: DOMRect[],
-    box: DOMRect,
-    start: Record<'left' | 'right' | 'top' | 'bottom', number>,
-    bg: HTMLElement,
-  ) {
-    const { duration, easing } = this.settings;
+  #grow(origin: Origin, targets: DOMRect[], box: DOMRect, start: Record<'left' | 'right' | 'top' | 'bottom', number>, bg: HTMLElement) {
+    const { duration, easing } = this.#settings;
     const timing = { duration, easing, fill: 'backwards' } as const;
     const tip = this.element;
-    const spans = this.spans;
+    const spans = this.#spans;
     const { from, part } = origin;
     const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
     const runs: { start: number; end: number }[] = [];
@@ -630,18 +624,18 @@ export class Tooltip {
 
     const inset = `${start.top - box.top}px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
     const growing = bg.animate([{ inset }, { inset: '0px' }], timing);
-    this.landing = () => {
+    this.#landing = () => {
       for (const group of groups) group.removeAttribute('style');
       text.removeAttribute('style');
       Object.assign(tip.style, { width: '', height: '' });
     };
-    growing.onfinish = () => this.land();
+    growing.onfinish = () => this.#land();
   }
 
   /** Finish the 'grow' animation now, with the text back in the flow. */
-  private land() {
-    const landing = this.landing;
-    this.landing = null;
+  #land() {
+    const landing = this.#landing;
+    this.#landing = null;
     for (const a of this.element.getAnimations({ subtree: true })) a.finish();
     landing?.();
   }
@@ -650,7 +644,7 @@ export class Tooltip {
    * What ellipsis `target.ellipsis` hides, centred on its ink: above it, or
    * below when there's no room above, and kept inside the window.
    */
-  private peek(target: TooltipTarget): boolean {
+  #peek(target: TooltipTarget): boolean {
     const index = target.ellipsis ?? 0;
     const ink = target.instance.ellipsisInk(index);
     const part = target.instance.state.hidden[index];
@@ -658,13 +652,13 @@ export class Tooltip {
     const tip = this.element;
     for (const p of FONT) tip.style.removeProperty(p);
     Object.assign(tip.style, { maxWidth: '', whiteSpace: '', overflowWrap: '', userSelect: '' });
-    this.spans = [];
-    this.fill('peek', part.text);
+    this.#spans = [];
+    this.#fill('peek', part.text);
 
-    const { edge, offset } = this.settings;
+    const { edge, offset } = this.#settings;
     const view = document.documentElement.clientWidth;
     let box = tip.getBoundingClientRect();
-    this.frame = { x: box.left, y: box.top };
+    this.#frame = { x: box.left, y: box.top };
     if (box.width > view - edge * 2) {
       tip.style.maxWidth = `${view - edge * 2}px`;
       box = tip.getBoundingClientRect();
@@ -672,7 +666,7 @@ export class Tooltip {
     const center = ink.left + ink.width / 2;
     const x = Math.min(Math.max(center - box.width / 2, edge), view - edge - box.width);
     const above = ink.top - offset - box.height >= edge;
-    this.place(x, above ? ink.top - offset - box.height : ink.bottom + offset);
+    this.#place(x, above ? ink.top - offset - box.height : ink.bottom + offset);
     tip.setAttribute('data-side', above ? 'top' : 'bottom');
     tip.style.setProperty('--fp-tip-anchor', `${center - x}px`);
     return true;
@@ -690,83 +684,83 @@ export class Tooltip {
   // if the pointer is back on its trigger, and closes otherwise. A press
   // elsewhere lets go of it and closes it.
 
-  private selectable() {
-    return this.settings.selectable && this.current !== null && this.settings.reveal !== 'peek' && this.spans.length > 0;
+  #selectable() {
+    return this.#settings.selectable && this.#current !== null && this.#settings.reveal !== 'peek' && this.#spans.length > 0;
   }
 
   /** Whether a point is on the tip; `strictly` inside it, off its edges. */
-  private inside(x: number, y: number, strictly = false) {
+  #inside(x: number, y: number, strictly = false) {
     const r = this.element.getBoundingClientRect();
     if (strictly) return x > r.left && x < r.right && y > r.top && y < r.bottom;
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
   }
 
-  private selectionInTip() {
+  #selectionInTip() {
     const s = document.getSelection();
     return !!s && !s.isCollapsed && this.element.contains(s.anchorNode) && this.element.contains(s.focusNode);
   }
 
-  private hold(on: boolean) {
-    this.holding = on;
+  #hold(on: boolean) {
+    this.#holding = on;
     this.element.style.pointerEvents = on ? 'auto' : 'none';
     this.element.style.cursor = on ? 'text' : '';
     this.element.toggleAttribute('data-held', on);
   }
 
   /** Let go of a held tip, dropping any selection in it. */
-  private release() {
-    this.dragging = false;
-    if (!this.holding) return;
-    this.hold(false);
-    if (this.selectionInTip()) document.getSelection()!.removeAllRanges();
+  #release() {
+    this.#dragging = false;
+    if (!this.#holding) return;
+    this.#hold(false);
+    if (this.#selectionInTip()) document.getSelection()!.removeAllRanges();
   }
 
   /** The pointer is off the tip: back to a plain hover tip over its trigger, or closed. */
-  private leave(x: number, y: number) {
-    if (!this.holding || this.dragging || this.selectionInTip()) return;
-    this.hold(false);
-    if (!this.current?.trigger.contains(document.elementFromPoint(x, y))) this.close();
+  #leave(x: number, y: number) {
+    if (!this.#holding || this.#dragging || this.#selectionInTip()) return;
+    this.#hold(false);
+    if (!this.#current?.trigger.contains(document.elementFromPoint(x, y))) this.#close();
   }
 
-  private onPress = (e: PointerEvent) => {
+  #onPress = (e: PointerEvent) => {
     if (e.button !== 0 || e.pointerType === 'touch') return;
-    if (!this.selectable() || !this.inside(e.clientX, e.clientY)) {
-      if (this.holding) this.close(true);
+    if (!this.#selectable() || !this.#inside(e.clientX, e.clientY)) {
+      if (this.#holding) this.#close(true);
       return;
     }
     e.preventDefault();
     e.stopPropagation();
     const tip = this.element;
-    this.land();
-    this.hold(true);
+    this.#land();
+    this.#hold(true);
     tip.setPointerCapture(e.pointerId);
-    const p = this.presses;
+    const p = this.#presses;
     const again = e.timeStamp - p.time < 500 && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 5;
-    this.presses = { count: again ? p.count + 1 : 1, time: e.timeStamp, x: e.clientX, y: e.clientY };
-    const at = this.caretAt(e.clientX, e.clientY);
+    this.#presses = { count: again ? p.count + 1 : 1, time: e.timeStamp, x: e.clientX, y: e.clientY };
+    const at = this.#caretAt(e.clientX, e.clientY);
     if (at === null) return;
-    if (this.presses.count === 2) return this.selectAround(at);
-    if (this.presses.count >= 3) return this.select(0, this.spans.length);
-    this.anchor = at;
-    this.dragging = true;
-    this.select(at, at);
+    if (this.#presses.count === 2) return this.#selectAround(at);
+    if (this.#presses.count >= 3) return this.#select(0, this.#spans.length);
+    this.#anchor = at;
+    this.#dragging = true;
+    this.#select(at, at);
   };
 
-  private onDrag = (e: PointerEvent) => {
-    if (!this.dragging) return;
-    const at = this.caretAt(e.clientX, e.clientY);
-    if (at !== null) this.select(this.anchor, at);
+  #onDrag = (e: PointerEvent) => {
+    if (!this.#dragging) return;
+    const at = this.#caretAt(e.clientX, e.clientY);
+    if (at !== null) this.#select(this.#anchor, at);
   };
 
-  private onRelease = (e: PointerEvent) => {
-    if (!this.holding) return;
-    this.dragging = false;
+  #onRelease = (e: PointerEvent) => {
+    if (!this.#holding) return;
+    this.#dragging = false;
     if (this.element.hasPointerCapture(e.pointerId)) this.element.releasePointerCapture(e.pointerId);
-    if (!this.inside(e.clientX, e.clientY)) this.leave(e.clientX, e.clientY);
+    if (!this.#inside(e.clientX, e.clientY)) this.#leave(e.clientX, e.clientY);
   };
 
   /** The grapheme boundary under a point, with the point first pulled inside the tip's text. */
-  private caretAt(x: number, y: number): number | null {
+  #caretAt(x: number, y: number): number | null {
     const tip = this.element;
     const r = tip.getBoundingClientRect();
     const cs = getComputedStyle(tip);
@@ -777,38 +771,38 @@ export class Tooltip {
     const offset = caret?.offset ?? 0;
     if (!node || !tip.contains(node)) return null;
     const span = node.parentElement;
-    const i = span ? this.spans.indexOf(span) : -1;
+    const i = span ? this.#spans.indexOf(span) : -1;
     if (node instanceof Text && i >= 0) return offset > 0 ? i + 1 : i;
     // An element: the first grapheme at or after that child, else the end.
     const child = node.childNodes[offset] ?? null;
     const after = child
-      ? this.spans.findIndex(
+      ? this.#spans.findIndex(
           (s) => child === s || child.contains(s) || (child.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
         )
       : -1;
-    return after >= 0 ? after : this.spans.length;
+    return after >= 0 ? after : this.#spans.length;
   }
 
   /** Select graphemes from boundary `from` to boundary `to` (either way round). */
-  private select(from: number, to: number) {
+  #select(from: number, to: number) {
     const at = (i: number): [Node, number] => {
-      const span = this.spans[Math.min(i, this.spans.length - 1)]!;
-      return [span.firstChild!, i < this.spans.length ? 0 : (span.textContent ?? '').length];
+      const span = this.#spans[Math.min(i, this.#spans.length - 1)]!;
+      return [span.firstChild!, i < this.#spans.length ? 0 : (span.textContent ?? '').length];
     };
-    if (this.spans.length === 0) return;
+    if (this.#spans.length === 0) return;
     document.getSelection()?.setBaseAndExtent(...at(from), ...at(to));
   }
 
   /** Select the run around a boundary, between spaces and `breaks`. */
-  private selectAround(at: number) {
-    const g = this.current?.instance.graphemes ?? [];
-    const stop = (s: string) => /\s/.test(s) || this.settings.breaks.includes(s);
+  #selectAround(at: number) {
+    const g = this.#current?.instance.graphemes ?? [];
+    const stop = (s: string) => /\s/.test(s) || this.#settings.breaks.includes(s);
     let a = at;
     let b = at;
     while (a > 0 && !stop(g[a - 1]!)) a--;
     while (b < g.length && !stop(g[b]!)) b++;
     if (a === b) b = Math.min(g.length, b + 1);
-    this.select(a, b);
+    this.#select(a, b);
   }
 
   /**
@@ -816,7 +810,7 @@ export class Tooltip {
    * text in the tip: where it touches an ellipsis, all the ellipsis hides.
    * That doesn't hold the tip, and when it closes, the original comes back.
    */
-  private carrySelection(t: Elide) {
+  #carrySelection(t: Elide) {
     const s = document.getSelection();
     if (!s || s.isCollapsed || s.rangeCount === 0) return;
     const range = s.getRangeAt(0);
@@ -825,14 +819,14 @@ export class Tooltip {
     const to = t.graphemeAt(range.endContainer, range.endOffset, 'end');
     if (from === null || to === null || to <= from) return;
     const original = range.cloneRange();
-    this.select(from, to);
-    if (this.element.contains(s.anchorNode)) this.carried = { text: s.toString(), original };
+    this.#select(from, to);
+    if (this.element.contains(s.anchorNode)) this.#carried = { text: s.toString(), original };
   }
 
   /** Drop the selection in the tip; one it was only carrying goes back where it came from. */
-  private restoreSelection() {
-    const carried = this.carried;
-    this.carried = null;
+  #restoreSelection() {
+    const carried = this.#carried;
+    this.#carried = null;
     const s = document.getSelection();
     if (!s || !this.element.contains(s.anchorNode)) return;
     const unchanged = carried && s.toString() === carried.text;

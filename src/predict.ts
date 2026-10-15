@@ -87,22 +87,22 @@ const CHECKS = 32;
  * though engines differ), and fewer cuts need rendering to tell.
  */
 export class Margin {
-  private most = 0;
-  private checked = 0;
-  private readonly cautious: number;
+  #most = 0;
+  #checked = 0;
+  readonly #cautious: number;
 
   constructor(cautious: number) {
-    this.cautious = cautious;
+    this.#cautious = cautious;
   }
 
   get value(): number {
-    return this.checked < CHECKS ? this.cautious : Math.min(this.cautious, Math.max(0.1, 3 * this.most));
+    return this.#checked < CHECKS ? this.#cautious : Math.min(this.#cautious, Math.max(0.1, 3 * this.#most));
   }
 
   /** A judgement turned out `error` px off. */
   check(error: number): void {
-    this.most = Math.max(this.most, Math.abs(error));
-    this.checked++;
+    this.#most = Math.max(this.#most, Math.abs(error));
+    this.#checked++;
   }
 }
 
@@ -117,25 +117,25 @@ export function marginFor(typeset: Typeset, fontSize: number): Margin {
 }
 
 export class Predictor {
-  private readonly model: WidthModel;
-  private readonly n: number;
+  readonly #model: WidthModel;
+  readonly #n: number;
   /** Where the line must end, and how far a judged cut must stay from it. */
-  private readonly edge: number;
-  private readonly margin: Margin;
-  private measured: { right: number; width: number } | null = null;
+  readonly #edge: number;
+  readonly #margin: Margin;
+  #measured: { right: number; width: number } | null = null;
 
   constructor(model: WidthModel, n: number, edge: number, margin: Margin) {
-    this.model = model;
-    this.n = n;
-    this.edge = edge;
-    this.margin = margin;
+    this.#model = model;
+    this.#n = n;
+    this.#edge = edge;
+    this.#margin = margin;
   }
 
   /** `cut`, rendered, ends at `right`. */
   saw(cut: readonly Range[], right: number): void {
     const expected = this.right(cut);
-    if (expected !== null) this.margin.check(expected - right);
-    this.measured = { right, width: cutWidth(this.model, this.n, cut) };
+    if (expected !== null) this.#margin.check(expected - right);
+    this.#measured = { right, width: cutWidth(this.#model, this.#n, cut) };
   }
 
   /**
@@ -143,24 +143,24 @@ export class Predictor {
    * was too far off to go on judging this text by it.
    */
   off(expected: number, right: number): boolean {
-    const margin = this.margin.value;
-    this.margin.check(expected - right);
+    const margin = this.#margin.value;
+    this.#margin.check(expected - right);
     return Math.abs(expected - right) > margin / 2;
   }
 
   /** Where `cut` would end, rendered; null before a measurement. */
   right(cut: readonly Range[]): number | null {
-    const m = this.measured;
-    return m && m.right + cutWidth(this.model, this.n, cut) - m.width;
+    const m = this.#measured;
+    return m && m.right + cutWidth(this.#model, this.#n, cut) - m.width;
   }
 
   /** Whether `cut` fits, when that's certain enough; null when it has to be rendered to tell. */
   fits(cut: readonly Range[]): boolean | null {
     const right = this.right(cut);
     if (right === null) return null;
-    const margin = this.margin.value;
-    if (right <= this.edge - margin) return true;
-    if (right >= this.edge + margin) return false;
+    const margin = this.#margin.value;
+    if (right <= this.#edge - margin) return true;
+    if (right >= this.#edge + margin) return false;
     return null;
   }
 }

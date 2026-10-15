@@ -23,22 +23,22 @@ const defaults = new Map<string, unknown>(Object.entries(DEFAULTS));
 
 export class Binding {
   readonly instance: Elide;
-  private applied: ElideOptions;
-  private unsubscribe: (() => void) | null = null;
-  private listener: ElideOptions['onChange'];
+  #applied: ElideOptions;
+  #unsubscribe: (() => void) | null = null;
+  #listener: ElideOptions['onChange'];
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { onChange, ...rest } = options;
     this.instance = elide(element, rest);
-    this.applied = rest;
-    this.listen(onChange);
+    this.#applied = rest;
+    this.#listen(onChange);
   }
 
   /** Make the instance match `options`, as if it had been created with them. */
   set(options: ElideOptions = {}): void {
     const { onChange, ...rest } = options;
-    this.listen(onChange);
-    const before = new Map<string, unknown>(Object.entries(this.applied));
+    this.#listen(onChange);
+    const before = new Map<string, unknown>(Object.entries(this.#applied));
     const after = new Map<string, unknown>(Object.entries(rest));
     const changed: Record<string, unknown> = {};
     let any = false;
@@ -47,19 +47,19 @@ export class Binding {
       changed[key] = after.get(key) ?? defaults.get(key);
       any = true;
     }
-    this.applied = rest;
+    this.#applied = rest;
     if (any) this.instance.update(changed);
   }
 
   destroy(): void {
-    this.unsubscribe?.();
+    this.#unsubscribe?.();
     this.instance.destroy();
   }
 
-  private listen(fn: ((change: ElideChange) => void) | undefined) {
-    if (fn === this.listener) return;
-    this.unsubscribe?.();
-    this.listener = fn;
-    this.unsubscribe = fn ? this.instance.onChange(fn) : null;
+  #listen(fn: ((change: ElideChange) => void) | undefined) {
+    if (fn === this.#listener) return;
+    this.#unsubscribe?.();
+    this.#listener = fn;
+    this.#unsubscribe = fn ? this.instance.onChange(fn) : null;
   }
 }

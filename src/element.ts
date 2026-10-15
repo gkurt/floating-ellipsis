@@ -71,32 +71,32 @@ function parseSnap(value: string): Snap | null {
 export class ElideElement extends HTMLElement {
   static readonly observedAttributes: readonly string[] = ATTRIBUTES;
 
-  private binding: Binding | null = null;
-  private extra: ElideOptions = {};
+  #binding: Binding | null = null;
+  #extra: ElideOptions = {};
   /** A copy of its content as first connected, without the suffix. */
-  private initial: Node = document.createDocumentFragment();
-  private suffix: Element | null = null;
+  #initial: Node = document.createDocumentFragment();
+  #suffix: Element | null = null;
   /** The last `snap` attribute and what it made, so it isn't new on every change. */
-  private snapped: [string, Snap | null] = ['', null];
+  #snapped: [string, Snap | null] = ['', null];
 
-  private readonly emit = (detail: ElideChange) => {
+  readonly #emit = (detail: ElideChange) => {
     this.dispatchEvent(new CustomEvent('elidechange', { detail }));
-    this.extra.onChange?.(detail);
+    this.#extra.onChange?.(detail);
   };
 
   /** The live instance while connected. */
   get instance(): Elide | null {
-    return this.binding?.instance ?? null;
+    return this.#binding?.instance ?? null;
   }
 
   /** Options on top of the attributes. */
   get options(): ElideOptions {
-    return this.extra;
+    return this.#extra;
   }
 
   set options(options: ElideOptions) {
-    this.extra = options;
-    this.binding?.set(this.resolved());
+    this.#extra = options;
+    this.#binding?.set(this.#resolved());
   }
 
   /** The full text, truncated or not. */
@@ -114,35 +114,35 @@ export class ElideElement extends HTMLElement {
       document.addEventListener('DOMContentLoaded', () => this.isConnected && this.connectedCallback(), { once: true });
       return;
     }
-    if (this.binding) return;
+    if (this.#binding) return;
     if (getComputedStyle(this).display === 'inline') this.style.display = 'block';
-    this.suffix = this.querySelector(':scope > [slot="suffix"]');
+    this.#suffix = this.querySelector(':scope > [slot="suffix"]');
     const content = document.createDocumentFragment();
-    for (const node of this.childNodes) if (node !== this.suffix) content.append(node.cloneNode(true));
-    this.initial = content;
-    this.binding = new Binding(this, this.resolved());
+    for (const node of this.childNodes) if (node !== this.#suffix) content.append(node.cloneNode(true));
+    this.#initial = content;
+    this.#binding = new Binding(this, this.#resolved());
   }
 
   disconnectedCallback(): void {
-    this.binding?.destroy();
-    this.binding = null;
+    this.#binding?.destroy();
+    this.#binding = null;
   }
 
   attributeChangedCallback(): void {
-    this.binding?.set(this.resolved());
+    this.#binding?.set(this.#resolved());
   }
 
-  private resolved(): ElideOptions {
+  #resolved(): ElideOptions {
     const attr = (name: (typeof ATTRIBUTES)[number]) => this.getAttribute(name);
     const flag = (name: (typeof ATTRIBUTES)[number]) => {
       const v = attr(name);
       return v === null ? undefined : v !== 'false';
     };
     const options: ElideOptions = {
-      text: attr('text') ?? this.initial,
-      onChange: this.emit,
+      text: attr('text') ?? this.#initial,
+      onChange: this.#emit,
     };
-    if (this.suffix) options.suffix = this.suffix;
+    if (this.#suffix) options.suffix = this.#suffix;
     const showSuffix = attr('show-suffix');
     if (showSuffix === 'always' || showSuffix === 'truncated') options.showSuffix = showSuffix;
     const find = attr('find');
@@ -165,15 +165,15 @@ export class ElideElement extends HTMLElement {
     if (justify !== null) options.justify = isJustify(justify) ? justify : false;
     const snap = attr('snap');
     if (snap !== null) {
-      if (this.snapped[0] !== snap) this.snapped = [snap, parseSnap(snap)];
-      options.snap = this.snapped[1];
+      if (this.#snapped[0] !== snap) this.#snapped = [snap, parseSnap(snap)];
+      options.snap = this.#snapped[1];
     }
     const copy = attr('copy');
     if (copy === 'full' || copy === 'visible') options.copy = copy;
     options.trim = flag('trim');
     options.glyphs = flag('glyphs');
     options.title = flag('tooltip-title');
-    const { onChange: _, ...extra } = this.extra;
+    const { onChange: _, ...extra } = this.#extra;
     return Object.fromEntries(Object.entries({ ...options, ...extra }).filter(([, v]) => v !== undefined));
   }
 }

@@ -13,17 +13,17 @@ export type Pass<T> = Generator<void, T, void>;
 
 /** Where a pass is, reading layout or writing to the DOM. Each switch yields. */
 export class Phase {
-  private writing = false;
+  #writing = false;
 
   *read(): Generator<void, void, void> {
-    if (!this.writing) return;
-    this.writing = false;
+    if (!this.#writing) return;
+    this.#writing = false;
     yield;
   }
 
   *write(): Generator<void, void, void> {
-    if (this.writing) return;
-    this.writing = true;
+    if (this.#writing) return;
+    this.#writing = true;
     yield;
   }
 }
