@@ -8,6 +8,7 @@ This file provides guidance to AI agents when working with code in this reposito
 bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun run test:browser # Layout tests in Chromium, Firefox and WebKit (Vitest browser mode + Playwright)
+bun run bench      # Benchmarks in Chromium: main-thread time and layouts per scenario (BENCH_PROFILE=1 for CPU profiles)
 bun run tegami     # Write a changelog entry (.tegami/<slug>.md) interactively
 bun run size       # Gzipped size of each entry, as an app bundles it, against its budget (after build)
 bun typecheck      # Type check (TypeScript 7, native tsc)
@@ -33,7 +34,7 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/options.ts` — the public option, state and change types, and the option defaults.
 - `src/lockstep.ts` — runs many passes so they share layouts: each pass is a generator that yields when it switches between reading and writing (`Phase`).
 - `src/justify.ts` — fills the lines holding ellipses to the edge (a pass step).
-- `src/predict.ts` — judges single-line cuts from glyph widths and one measurement, so they needn't be rendered.
+- `src/predict.ts` — judges single-line cuts from glyph widths, kerning pairs and one measurement, so they needn't be rendered.
 - `src/lines.ts` — reading the line boxes of laid-out inline text.
 - `src/markup.ts` — inline markup: reading text with the elements around it (`readMarkup`), shallow copies of them (`nest`), and the screen-reader copy as generated content (`speak`), so find in page doesn't find the text twice.
 - `src/highlight.ts` — filling a piece of the line (a run, a grapheme beside an ellipsis, or what an ellipsis hides) with its highlight classes and element copies, and finding graphemes in it.
@@ -52,7 +53,7 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/bind.ts` — `Binding`, shared by the framework bindings: keeps an instance in step with options handed over whole each time (compared by value, `onChange` as one subscription).
 - `src/element.ts`, `src/react.ts`, `src/vue.ts`, `src/svelte.ts` — framework bindings (`floating-ellipsis/element|react|vue|svelte`): `<elide-text>` (`define()`), `useElide`/`Elided`, `vElide`, the `elide` action. React is an optional peer; Vue and Svelte bindings import nothing from them.
 - `test/` — `bun test` suites for `cut`, `metrics`, `lockstep` and `text` (`elideText` with a fake `measure`).
-- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, highlights, `tooltip`, `transitions`, the bindings (with `elideText` against real fonts) and Unicode (scripts and emoji under many option combinations), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text) and assertions (`expectFits`, `expectConsistent`, `expectFlush`, `sweep`). `vitest.config.ts` adds two commands: `mouse` (real pointer at frame coordinates) and `reducedMotion`.
+- `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, highlights, `tooltip`, `transitions`, the bindings (with `elideText` against real fonts) and Unicode (scripts and emoji under many option combinations), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text) and assertions (`expectFits`, `expectConsistent`, `expectFlush`, `sweep`). `vitest.config.ts` adds commands: `mouse` (real pointer at frame coordinates), `reducedMotion`, and in Chromium `layouts`, `metrics` and `profile` (DevTools protocol). `elide.bench.ts` holds the benchmarks (`bun run bench`, `--mode bench`), each scenario's median main-thread time and layouts.
 
 ## Architecture
 
@@ -62,7 +63,7 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - A test failing in one engine because of a bug found there is marked `knownBug(engine)` from `helpers.ts` (an expected failure, so CI turns red once it's fixed), with the bug described in a comment by the test. Don't loosen an invariant to make an engine pass.
 - A layout pass searches for the most visible graphemes that still fit in `lines`, then plans the ink gap on each side of every ellipsis and spreads leftover slack so ellipsis lines end flush with the box.
 - Passes are generators run in lockstep (`lockstep.ts`): all instances read layout, then all write, so N instances share each layout instead of forcing their own. Never read layout in a write phase or write in a read phase; `yield* phase.read()` / `phase.write()` before each. Passes are queued and flushed in a microtask; public getters call `sync()` to flush first.
-- Measure performance on the demo's table page (`/table.html`) and with many instances; a single instance hides layout costs that grow with the page.
+- Measure performance with `bun run bench` (compare against the previous commit, alternating runs: timings vary from run to run) and on the demo's table page (`/table.html`), always with many instances; a single instance hides layout costs that grow with the page. `BENCH_PROFILE=1` prints the functions that took the most time and saves CPU profiles in `.vitest/profiles`.
 - Each update emits an `ElideChange` (graphemes shown/hidden, previous boxes); `transitions` only consumes these, so it stays a separate entry point. `tooltip` likewise only uses the public instance API.
 - Imports from parent directories go through the `#src/` subpath alias (`package.json` `imports`), with `.ts` extensions.
 

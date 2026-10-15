@@ -13,6 +13,7 @@ import {
   inkGap,
   inkRuns,
   measure,
+  metricsVersion,
 } from './metrics.ts';
 
 export type Shape = 'dot' | 'bullet' | 'ring' | 'square';
@@ -116,12 +117,36 @@ const diameter = (m: GlyphMetrics) => (m.left + m.right + m.ascent + m.descent) 
 export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, count: number): MarkLayout {
   const font = fontOf(cs);
   const fontSize = parseFloat(cs.fontSize);
-  const ascent = fontAscent(font);
   const letterSpacing = parseFloat(cs.letterSpacing);
+  const transform = cs.textTransform;
+  // The same marks, set the same way, measure the same (until fonts load):
+  // the same layout, which tells a pass that nothing changed.
+  const marks = typeof style === 'string' ? style : `${style.shape} ${style.count} ${style.size} ${style.spacing} ${style.like}`;
+  const key = `${marks}|${font.css}|${fontSize}|${letterSpacing}|${transform}|${count}|${metricsVersion()}`;
+  let layout = layouts.get(key);
+  if (!layout) {
+    if (layouts.size > 256) layouts.clear();
+    layouts.set(key, (layout = measureMarks(style, font, fontSize, letterSpacing, transform, count)));
+  }
+  return layout;
+}
+
+/** Mark layouts by the marks and how they're set (see `layoutMarks`). */
+const layouts = new Map<string, MarkLayout>();
+
+function measureMarks(
+  style: EllipsisStyle,
+  font: Font,
+  fontSize: number,
+  letterSpacing: number,
+  transform: string,
+  count: number,
+): MarkLayout {
+  const ascent = fontAscent(font);
   const spacing = Number.isFinite(letterSpacing) ? letterSpacing : 0;
 
   if (typeof style === 'string') {
-    const marks = graphemes(applyTextTransform(style, cs.textTransform));
+    const marks = graphemes(applyTextTransform(style, transform));
     const metrics = marks.map((g) => {
       const m = measure(font, g);
       return spacing !== 0 ? { ...m, advance: m.advance + spacing } : m;
@@ -186,13 +211,16 @@ export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, count
 /** Give drawn marks their shape (see `MarkLayout.css`), keeping the margins set by spacing. */
 export function styleMarks(marks: readonly HTMLElement[], css: string): void {
   for (const el of marks) {
-    if (el.dataset.fpCss === css) continue;
+    if (styled.get(el) === css) continue;
     const margin = el.style.marginLeft;
     el.style.cssText = css;
     el.style.marginLeft = margin;
-    el.dataset.fpCss = css;
+    styled.set(el, css);
   }
 }
+
+/** The style `styleMarks` last gave each mark. */
+const styled = new WeakMap<HTMLElement, string>();
 
 /**
  * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`.

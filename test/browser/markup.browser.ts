@@ -298,6 +298,24 @@ describe('find in page', () => {
     expect(found(t).every((el) => el.getAttribute('hidden') === '')).toBe(true);
   });
 
+  it('keeps what each ellipsis hides up to date, word by word, as the cut moves and the text changes', () => {
+    const t = make(box(PROSE, 'font:14px/20px monospace'), { position: 'middle' });
+    const expectWords = () =>
+      t.state.hidden.forEach((part, j) => {
+        expect(found(t)[j]!.textContent).toBe(part.text);
+        for (const word of found(t)[j]!.querySelectorAll<HTMLElement>('[data-fp-word]')) {
+          const [s, e] = word.dataset.fpWord!.split(':').map(Number);
+          expect(t.graphemes.slice(s, e).join('')).toContain(word.textContent);
+        }
+      });
+    for (const _w of sweep(t, 140, 600, 23)) expectWords();
+    t.element.style.width = '300px';
+    t.refresh();
+    // As wide in monospace, so (mostly) the same cut: what it hides is new all the same.
+    t.update({ text: PROSE.replace(/[a-z]/g, (c) => String.fromCharCode(((c.charCodeAt(0) - 96) % 26) + 97)) });
+    expectWords();
+  });
+
   it('expands the text in place when it finds a match, until a press elsewhere, with find: expand', async () => {
     const t = make(box(PROSE), { position: 'middle', find: 'expand' });
     found(t)[0]!.dispatchEvent(new Event('beforematch', { bubbles: true }));

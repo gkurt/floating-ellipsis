@@ -12,6 +12,10 @@ declare module 'vitest/browser' {
     reducedMotion: (on: boolean) => Promise<void>;
     /** Layouts the page has done so far (Chromium only). */
     layouts: () => Promise<number>;
+    /** Performance metrics so far, by name: counts, and durations in seconds (Chromium only). */
+    metrics: () => Promise<Record<string, number>>;
+    /** Sample the CPU (`start`), or stop and save the profile, returning the most time-consuming functions in ms (Chromium only). */
+    profile: (action: 'start' | 'stop', file?: string) => Promise<[name: string, ms: number][]>;
   }
 }
 

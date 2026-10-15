@@ -5,6 +5,7 @@
  * advance after another, and the visible gap between two glyphs is the
  * distance between their ink (bounding box) edges.
  */
+import { isWhitespace } from './graphemes.ts';
 
 /** Horizontal metrics of a glyph, relative to its pen origin. */
 export interface GlyphMetrics {
@@ -26,17 +27,23 @@ export interface Typeset {
   letterSpacing: number;
   transform: string;
   glyphs: Map<string, GlyphMetrics>;
+  /** What kerning adds to a pair of graphemes' advances, by the first and then the second. */
+  pairs: Map<string, Map<string, number>>;
 }
 
-/** How text in an element with computed style `cs` is set, no graphemes measured yet. */
+/** Glyph and pair metrics for each way of setting text, shared by every element set that way. */
+const typesets = new Map<string, Pick<Typeset, 'glyphs' | 'pairs'>>();
+
+/** How text in an element with computed style `cs` is set, with the graphemes measured so far. */
 export function typesetOf(cs: CSSStyleDeclaration): Typeset {
-  const letterSpacing = parseFloat(cs.letterSpacing);
-  return {
-    font: fontOf(cs),
-    letterSpacing: Number.isFinite(letterSpacing) ? letterSpacing : 0,
-    transform: cs.textTransform,
-    glyphs: new Map(),
-  };
+  const parsed = parseFloat(cs.letterSpacing);
+  const font = fontOf(cs);
+  const letterSpacing = Number.isFinite(parsed) ? parsed : 0;
+  const transform = cs.textTransform;
+  const key = `${font.css}|${font.scale}|${letterSpacing}|${transform}`;
+  let measured = typesets.get(key);
+  if (!measured) typesets.set(key, (measured = { glyphs: new Map(), pairs: new Map() }));
+  return { font, letterSpacing, transform, ...measured };
 }
 
 /** Metrics of grapheme `g` as `run` lays it out (letter-spacing in its advance). */
@@ -50,9 +57,27 @@ export function glyphIn(run: Typeset, g: string): GlyphMetrics {
   return m;
 }
 
+/**
+ * What kerning (and ligatures) add to the advances of graphemes `a` and `b`
+ * set side by side by `run`: usually nothing, a fraction of a pixel for pairs
+ * like 'AV'.
+ */
+export function kerning(run: Typeset, a: string, b: string): number {
+  let after = run.pairs.get(a);
+  if (!after) run.pairs.set(a, (after = new Map()));
+  let k = after.get(b);
+  if (k === undefined) {
+    const [ta, tb] = [applyTextTransform(a, run.transform), applyTextTransform(b, run.transform)];
+    const ctx = context(run.font);
+    k = (ctx.measureText(ta + tb).width - measureRaw(run.font, ta).advance - measureRaw(run.font, tb).advance) * run.font.scale;
+    after.set(b, k);
+  }
+  return k;
+}
+
 /** The ink box of grapheme `g`, laid out in `box` by `run`: the box itself for whitespace (it has no ink). */
 export function glyphInk(run: Typeset, g: string | undefined, box: DOMRect): DOMRect {
-  if (g === undefined || /^\s+$/u.test(g)) return box;
+  if (g === undefined || isWhitespace(g)) return box;
   return inkBox(glyphIn(run, g), box.left, box.top + fontAscent(run.font));
 }
 
@@ -163,6 +188,7 @@ type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 let ctx: Context | null = null;
 const glyphCache = new Map<string, Map<string, GlyphMetrics>>();
 const runCache = new Map<string, [number, number][]>();
+const ascentCache = new Map<string, number>();
 
 function canvas(width: number, height: number): Context {
   const c =
@@ -175,9 +201,12 @@ function canvas(width: number, height: number): Context {
   return c;
 }
 
+/** The font last given to `ctx`. (Reading `ctx.font` back is slow, and normalized.) */
+let ctxFont = '';
+
 function context(font: Font): Context {
   ctx ??= canvas(1, 1);
-  if (ctx.font !== font.css) ctx.font = font.css;
+  if (ctxFont !== font.css) ctx.font = ctxFont = font.css;
   return ctx;
 }
 
@@ -222,7 +251,9 @@ export function advance(font: string, text: string): number {
 
 /** Font ascent of the content area, used to locate the baseline in a box. */
 export function fontAscent(font: Font): number {
-  return context(font).measureText('x').fontBoundingBoxAscent * font.scale;
+  let ascent = ascentCache.get(font.css);
+  if (ascent === undefined) ascentCache.set(font.css, (ascent = context(font).measureText('x').fontBoundingBoxAscent));
+  return ascent * font.scale;
 }
 
 /**
@@ -272,10 +303,18 @@ export function dotSpacing(font: Font, text: string): number | null {
   return (runs[runs.length - 1]![0] - runs[0]![1] - runs.slice(1, -1).reduce((s, [a, b]) => s + b - a, 0)) / (runs.length - 1);
 }
 
+let version = 0;
+
+/** Goes up whenever cached metrics are forgotten: anything measured before is stale. */
+export const metricsVersion = (): number => version;
+
 /** Forget cached metrics, e.g. after web fonts finish loading. */
 export function clearMetrics(): void {
+  version++;
   glyphCache.clear();
   runCache.clear();
+  ascentCache.clear();
+  typesets.clear();
 }
 
 export function applyTextTransform(text: string, transform: string): string {

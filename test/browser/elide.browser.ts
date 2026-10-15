@@ -58,6 +58,37 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
+  // What cuts are judged by, without rendering them, has to hold up: kerned
+  // pairs, ligatures (of three letters too), kerning turned off, and
+  // whitespace that collapses.
+  it.each([
+    ['kerning', 'AVATAR Typography: WAVE, Tower, Yacht, LAVA AWAY, "quoted" text, 1234567890', ''],
+    ['ligatures', 'office efficient affluent traffic waffle fluffy offline baffled shuffle stiff', ''],
+    ['kerning off', 'AVATAR Typography: WAVE, Tower, Yacht, LAVA AWAY, "quoted" text, 1234567890', 'font-kerning:none'],
+    ['collapsing spaces', '  AVATAR  Typography:\tWAVE,\nTower,   Yacht, LAVA AWAY  ', ''],
+  ])('fits one line at every width, shrinking and growing, with %s', (_, text, css) => {
+    const t = make(box(text, `font:${font};${css}`), { position: 'middle' });
+    let before = -1;
+    let widest = 0;
+    for (const w of sweep(t, 40, 560, 7)) {
+      expectFits(t);
+      expectConsistent(t);
+      expect(shown(t)).toBeGreaterThanOrEqual(before);
+      before = shown(t);
+      widest = w;
+    }
+    // Back down from the widest box tried (any wider could show more).
+    for (let w = widest; w >= 40; w -= 11) {
+      t.element.style.width = `${w}px`;
+      t.refresh('resize');
+      expectFits(t);
+      expectConsistent(t);
+      // A narrower box never shows more.
+      expect(shown(t)).toBeLessThanOrEqual(before);
+      before = shown(t);
+    }
+  });
+
   it.each([2, 3])('fits %i lines at every width', (lines) => {
     const t = make(box(PROSE, `font:${font}`), { lines, position: 'middle' });
     let before = -1;

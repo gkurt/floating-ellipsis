@@ -15,7 +15,15 @@ export interface Marking {
   chains: readonly (Chain | null)[];
   /** What find in page found, kept in sight (see `find`). */
   match: Range | null;
+  /** No grapheme has a class or an element around it. */
+  plain: boolean;
+  /** The whole text, and where each grapheme starts in it (length n + 1). */
+  text: string;
+  offsets: readonly number[];
 }
+
+/** Whether graphemes `[from, to)` are plain text, with nothing to wrap them in. */
+const plainIn = ({ plain, match }: Marking, from: number, to: number) => plain && (!match || match[1] <= from || match[0] >= to);
 
 /** Graphemes `[from, to)` as stretches that share their class, elements and being found. */
 function stretches(graphemes: readonly string[], { classes, chains, match }: Marking, from: number, to: number) {
@@ -52,14 +60,17 @@ const chainId = (chain: Chain | null) => {
  * runs straight into the next, as in Chinese or Japanese (`words`: `wordsOf`).
  */
 export function besideEllipsis(
-  { classes, chains, match }: Marking,
+  marking: Marking,
   graphemes: readonly string[],
-  words: Int32Array,
+  wordsOf: () => Int32Array,
   [a, b]: Range,
   edge: number,
   wraps: boolean,
 ): number {
   if (a >= b) return 0;
+  if (plainIn(marking, edge, edge + 1)) return 1;
+  const { classes, chains, match } = marking;
+  const words = wordsOf();
   const mark = (i: number) => `${classes[i] ?? ''}|${chainId(chains[i] ?? null)}|${!!match && i >= match[0] && i < match[1]}`;
   const own = mark(edge);
   if (own === '|0|false') return 1;
@@ -85,10 +96,10 @@ const filled = new WeakMap<HTMLElement, string>();
  * ('start', 'end').
  */
 export function fillPiece(el: HTMLElement, graphemes: readonly string[], marking: Marking, [from, to]: Range, shown: Range): void {
-  const runs = stretches(graphemes, marking, from, to);
-  if (runs.every((r) => r.cls === null && r.chain === null && !r.found)) {
+  const runs = plainIn(marking, from, to) ? null : stretches(graphemes, marking, from, to);
+  if (!runs || runs.every((r) => r.cls === null && r.chain === null && !r.found)) {
     filled.delete(el);
-    const text = runs.map((r) => r.text).join('');
+    const text = marking.text.slice(marking.offsets[from], marking.offsets[to]);
     const node = el.firstChild;
     if (node instanceof Text && el.childNodes.length === 1) {
       if (node.data !== text) node.data = text;

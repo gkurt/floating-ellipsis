@@ -70,6 +70,18 @@ export function drawMarks(join: Join, style: EllipsisStyle, glue: boolean): void
   join.ellipsis.replaceChildren(...join.drawn);
 }
 
+/** Margins around the join's ellipsis, and before each of its marks after the first (`inner`). */
+export function space(join: Join, left: number, right: number, inner: readonly number[]): void {
+  const style = join.ellipsis.style;
+  style.marginLeft = left !== 0 ? `${left}px` : '';
+  style.marginRight = right !== 0 ? `${right}px` : '';
+  join.marks.forEach((mark, i) => {
+    if (i === 0) return;
+    const before = inner[i - 1] ?? 0;
+    mark.style.marginLeft = before !== 0 ? `${before}px` : '';
+  });
+}
+
 /** Show what the join's ellipsis hides in its place, or hide it again (`find`: from find in page only until found). */
 export function showHidden(join: Join, shown: boolean, find: boolean): void {
   if (shown) join.found.removeAttribute('hidden');
@@ -85,8 +97,11 @@ export function setFindable(join: Join, find: boolean): void {
   if (join.found.getAttribute('hidden') !== hiding(find)) join.found.setAttribute('hidden', hiding(find));
 }
 
-/** What `fillWords` last put in each join, so filling it again is free. */
-const worded = new WeakMap<HTMLElement, string>();
+/**
+ * What `fillWords` last put in each join: the range, and each node by the
+ * piece it holds, so filling it again only touches what changed.
+ */
+const worded = new WeakMap<HTMLElement, { graphemes: readonly string[]; key: string; nodes: Map<string, Node> }>();
 
 /**
  * Put graphemes `[from, to)` in what the join's ellipsis hides, for find in
@@ -94,31 +109,51 @@ const worded = new WeakMap<HTMLElement, string>();
  * span of its own, `data-fp-word` its whole range. Find in page fires
  * `beforematch` at the innermost of those a match starts in, which is how
  * the match is known. (Inline, they hide nothing themselves, and a match can
- * run on across them.)
+ * run on across them.) Pieces filled last time stay: a cut that moves by a
+ * few graphemes changes a few words at its ends.
  */
 export function fillWords(join: Join, graphemes: readonly string[], words: Int32Array, [from, to]: Range): void {
   const key = `${from}:${to}`;
-  if (worded.get(join.found) === key) return;
-  worded.set(join.found, key);
-  const nodes: Node[] = [];
+  const seen = worded.get(join.found);
+  // Pieces of other text are no use.
+  const last = seen?.graphemes === graphemes ? seen : undefined;
+  if (last?.key === key) return;
+  const nodes = new Map<string, Node>();
+  const want: Node[] = [];
   for (let i = from; i < to;) {
-    const [s, e] = wordAround(words, i);
-    const end = words[i]! < 0 ? i + 1 : Math.min(to, e);
-    const text = graphemes.slice(i, end).join('');
-    if (words[i]! < 0) {
-      const last = nodes.at(-1);
-      if (last instanceof Text) last.data += text;
-      else nodes.push(document.createTextNode(text));
-    } else {
-      const span = document.createElement('span');
-      span.setAttribute('hidden', 'until-found');
-      span.dataset.fpWord = `${s}:${e}`;
-      span.textContent = text;
-      nodes.push(span);
+    // A word (or what's left of it), or the run of graphemes up to the next one.
+    const word = words[i]! >= 0;
+    let end = i + 1;
+    if (word) end = Math.min(to, wordAround(words, i)[1]);
+    else while (end < to && words[end]! < 0) end++;
+    const piece = `${i}:${end}`;
+    let node = last?.nodes.get(piece);
+    if (!node) {
+      const text = graphemes.slice(i, end).join('');
+      if (word) {
+        const span = document.createElement('span');
+        span.setAttribute('hidden', 'until-found');
+        span.dataset.fpWord = wordAround(words, i).join(':');
+        span.textContent = text;
+        node = span;
+      } else {
+        node = document.createTextNode(text);
+      }
     }
+    nodes.set(piece, node);
+    want.push(node);
     i = end;
   }
-  join.found.replaceChildren(...nodes);
+  worded.set(join.found, { graphemes, key, nodes });
+  // The pieces that stay are in order: drop the rest, and put new ones in around them.
+  const staying = new Set(want);
+  let child = join.found.firstChild;
+  while (child) {
+    const next = child.nextSibling;
+    if (!staying.has(child)) child.remove();
+    child = next;
+  }
+  reconcile(join.found, want);
 }
 
 /** What the join's ellipsis hides was filled otherwise (or shown): `fillWords` must fill it afresh. */

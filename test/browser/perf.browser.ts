@@ -35,8 +35,8 @@ describe.runIf(server.browser === 'chromium')('layouts', () => {
     });
     const resized = await layoutsDuring(() => (host.style.width = '700px'));
     // 900 instances, one after another, would take thousands.
-    expect(created).toBeLessThanOrEqual(12);
-    expect(resized).toBeLessThanOrEqual(12);
+    expect(created).toBeLessThanOrEqual(6);
+    expect(resized).toBeLessThanOrEqual(6);
   });
 
   it('scrolls a virtual list: recycled rows take new text, or rows are remounted', async () => {
@@ -61,7 +61,8 @@ describe.runIf(server.browser === 'chromium')('layouts', () => {
         await frames(1);
       }
     });
-    expect(recycled / 10).toBeLessThanOrEqual(6);
-    expect(remounted / 10).toBeLessThanOrEqual(6);
+    // Most rows' cuts are judged without rendering them (see `Predictor`).
+    expect(recycled / 10).toBeLessThanOrEqual(4);
+    expect(remounted / 10).toBeLessThanOrEqual(4);
   });
 });

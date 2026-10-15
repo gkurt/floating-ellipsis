@@ -1,5 +1,5 @@
 /** An instance's options and their defaults, its state, and its change events. */
-import type { Keep, Position, Snap } from './cut.ts';
+import type { Keep, Position, Range, Snap } from './cut.ts';
 import type { EllipsisStyle, Length } from './marks.ts';
 import type { Gap, GapPlan } from './metrics.ts';
 
@@ -221,6 +221,30 @@ export function changeOf(
     }
   }
   return { reason, state, previous: reset ? null : previous, reset, shown, hidden, hiddenGlyphs, glyphsBefore, marksBefore };
+}
+
+/**
+ * The state of `text` (whose grapheme `i` starts at `offsets[i]`) with
+ * `hidden` cut and `pins` kept.
+ */
+export function stateOf(
+  text: string,
+  offsets: readonly number[],
+  cut: { hidden: readonly Range[]; pins: readonly Range[]; lines: number; gaps: GapInfo[]; slack: number; expanded: boolean },
+): ElideState {
+  const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
+  const { hidden, pins, lines, gaps, slack, expanded } = cut;
+  return {
+    text,
+    length: offsets.length - 1,
+    truncated: hidden.length > 0,
+    expanded,
+    hidden: hidden.map(part),
+    kept: hidden.length > 0 ? pins.map(part) : [],
+    lines,
+    gaps,
+    slack,
+  };
 }
 
 /** Whether two lists of parts cover the same graphemes. */

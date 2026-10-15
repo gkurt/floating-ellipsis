@@ -55,6 +55,8 @@ export interface Layout {
   positions: number[];
   /** Island receiving each successive kept grapheme. */
   order: Int32Array;
+  /** For each island, the steps of `order` that give it a grapheme, in order. */
+  steps: Int32Array[];
 }
 
 /**
@@ -85,15 +87,32 @@ export function layoutFor(length: number, positions: readonly Position[]): Layou
   const p = (positions.length > 0 ? positions : ['end' as const]).map(positionValue).sort((a, b) => a - b);
   const weights = p.map((v, i) => v - (i > 0 ? p[i - 1]! : 0));
   weights.push(1 - p[p.length - 1]!);
-  return { length, positions: p, order: allocationOrder(weights, length) };
+  const order = allocationOrder(weights, length);
+  const counts = weights.map(() => 0);
+  for (const i of order) counts[i]!++;
+  const steps = counts.map((count) => new Int32Array(count));
+  counts.fill(0);
+  order.forEach((i, k) => (steps[i]![counts[i]!++] = k));
+  return { length, positions: p, order, steps };
+}
+
+/** How many of `steps` (sorted) come before `kept`. */
+function before(steps: Int32Array, kept: number): number {
+  let lo = 0;
+  let hi = steps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (steps[mid]! < kept) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** The visible islands when `kept` graphemes are shown. */
 export function islands(layout: Layout, kept: number): Range[] {
-  const { length: n, positions: p, order } = layout;
+  const { length: n, positions: p, steps } = layout;
   const m = p.length;
-  const sizes = Array.from({ length: m + 1 }, () => 0);
-  for (let k = 0; k < Math.min(kept, order.length); k++) sizes[order[k]!]!++;
+  const sizes = steps.map((s) => before(s, kept));
   const out: Range[] = [[0, sizes[0]!]];
   for (let i = 1; i < m; i++) {
     const size = sizes[i]!;
@@ -243,13 +262,15 @@ export const SLIVER = 3;
  * into a pin.
  */
 export function showSlivers(graphemes: readonly string[], cuts: readonly Range[], pins: readonly Range[]): Range[] {
+  if (pins.length === 0) return [...cuts];
   const n = graphemes.length;
   const byPin = ([s, e]: Range) => pins.some(([a, b]) => b === s || a === e);
   const pinned = (i: number) => pins.some(([a, b]) => i >= a && i < b);
   const sliver = (cut: Range) => {
+    if (!byPin(cut)) return false;
     let count = 0;
-    for (let i = cut[0]; i < cut[1]; i++) if (!isWhitespace(graphemes[i])) count++;
-    return byPin(cut) && count <= SLIVER;
+    for (let i = cut[0]; i < cut[1] && count <= SLIVER; i++) if (!isWhitespace(graphemes[i])) count++;
+    return count <= SLIVER;
   };
   const kept = cuts.filter((c) => !sliver(c)).map(([s, e]): [number, number] => [s, e]);
   for (const cut of cuts) {

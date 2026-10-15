@@ -20,33 +20,30 @@ import {
 import { byId, forgetFound, hookDocument, instances } from './document.ts';
 import { graphemes, isWhitespace } from './graphemes.ts';
 import { type Marking, besideEllipsis, childRanges, fillGlyphs, fillPiece, markGlyphs, textAt } from './highlight.ts';
-import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden } from './join.ts';
+import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space } from './join.ts';
 import { type Justified, justify } from './justify.ts';
-import { areaOf, boundsOf, contentEdges, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
+import { areaOf, boundsOf, contentEdges, contentHeight, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
 import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markInk, markStyleFor, styleMarks, toPx } from './marks.ts';
 import { type Chain, extentOf, markCopies, originals, readMarkup, speak } from './markup.ts';
-import { type Font, type GapPlan, type GlyphMetrics, glyphIn, glyphInk, planGap, resolveGap, typesetOf } from './metrics.ts';
+import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, glyphInk, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
   type ChangeReason,
   type ElideChange,
   type ElideOptions,
   type ElideState,
   type GapInfo,
-  type Part,
   type Settings,
   DEFAULTS,
   changeOf,
   defined,
   isVisible,
+  stateOf,
 } from './options.ts';
-import { Predictor } from './predict.ts';
+import { Predictor, advanceSums, kerningOf } from './predict.ts';
 import { Suffix } from './suffix.ts';
 
-interface Run {
-  font: Font;
-  letterSpacing: number;
-  transform: string;
+interface Run extends Typeset {
   /** The element's border box. */
   box: DOMRect;
   /** Content box edges and width. */
@@ -54,8 +51,6 @@ interface Run {
   right: number;
   width: number;
   marks: MarkLayout | null;
-  /** Glyph metrics by grapheme, for this pass's font. */
-  glyphs: Map<string, GlyphMetrics>;
   /** Running total of advances: `sums[i]` is the width of graphemes [0, i). */
   sums: Float64Array;
   /** The width of the suffix, as it shows when the pass starts. */
@@ -120,6 +115,12 @@ export class Elide {
   private classes: (string | null)[] = [];
   /** The elements around each grapheme, or null; empty for plain text. */
   private chains: (Chain | null)[] = [];
+  /** No grapheme has a class or elements around it. */
+  private plain = true;
+  /** No whitespace that layout collapses: runs of it, or at either end. */
+  private even = true;
+  /** The glyph metrics `Predictor` misjudged this text with, if it did (see `pass`). */
+  private misjudged: Typeset['glyphs'] | null = null;
   /** The screen-reader copy was made while the element was out of the document, so as plain text (see `speak`). */
   private unsaid = false;
   /** Holds `suffix`, after the line, while there is one. */
@@ -353,17 +354,20 @@ export class Elide {
     const n = this.g.length;
     const m = hidden.length;
     const out: { el: HTMLSpanElement; range: Range; shown: Range }[] = [];
+    const marking = this.marking;
+    const words = () => wordsOf(this.g);
+    const wraps = this.settings.lines > 1;
     for (let r = 0; r <= m; r++) {
       let a = r === 0 ? 0 : hidden[r - 1]![1];
       let b = r === m ? n : hidden[r]![0];
       const shown: Range = [a, b];
       if (r > 0) {
-        const take = besideEllipsis(this.marking, this.g, wordsOf(this.g), [a, b], a, this.settings.lines > 1);
+        const take = besideEllipsis(marking, this.g, words, [a, b], a, wraps);
         out.push({ el: this.join(r - 1).after, range: [a, a + take], shown });
         a += take;
       }
       if (r < m) {
-        const take = besideEllipsis(this.marking, this.g, wordsOf(this.g), [a, b], b - 1, this.settings.lines > 1);
+        const take = besideEllipsis(marking, this.g, words, [a, b], b - 1, wraps);
         out.push({ el: this.join(r).before, range: [b - take, b], shown });
         b -= take;
       }
@@ -634,6 +638,8 @@ export class Elide {
         ? { text: source, chains: null }
         : readMarkup(source === undefined ? this.original : [source], typeof suffix === 'object' ? suffix : null);
     this.text = text;
+    this.even = !/^\s|\s$|\s\s|[\t\n\r\f]/.test(text);
+    this.misjudged = null;
     this.g = graphemes(text);
     this.offsets = [0];
     for (const s of this.g) this.offsets.push(this.offsets[this.offsets.length - 1]! + s.length);
@@ -667,6 +673,7 @@ export class Elide {
     const keep = asArray(this.settings.keep);
     this.pins = toGraphemeRanges(keepRanges(this.text, keep), this.offsets);
     this.classes = graphemeClasses(keepClasses(this.text, keep), this.offsets);
+    this.plain = this.chains.length === 0 && this.classes.every((c) => c === null);
     markGlyphs(this.glyphEls, 'data-fp-kept', this.pins);
     this.glyphEls.forEach((el, i) => (el.className = this.classes[i] ?? ''));
     this.bias = null;
@@ -753,15 +760,16 @@ export class Elide {
   private prepare(cs: CSSStyleDeclaration): Run {
     const box = this.element.getBoundingClientRect();
     const { left, right } = contentEdges(this.element, cs, box);
+    const typeset = typesetOf(cs);
     return {
-      ...typesetOf(cs),
+      ...typeset,
       box,
       left,
       right,
       // As a ResizeObserver reports it.
       width: right - left,
       marks: null,
-      sums: new Float64Array(this.g.length + 1),
+      sums: advanceSums(this.g, typeset),
       suffix: this.suffix?.measure() ?? 0,
     };
   }
@@ -827,7 +835,14 @@ export class Elide {
 
   private get marking(): Marking {
     const sought = this.sought;
-    return { classes: this.classes, chains: this.chains, match: sought?.by === 'find' ? sought.range : null };
+    return {
+      classes: this.classes,
+      chains: this.chains,
+      match: sought?.by === 'find' ? sought.range : null,
+      plain: this.plain,
+      text: this.text,
+      offsets: this.offsets,
+    };
   }
 
   /** Show the suffix as the text is (or isn't) truncated. */
@@ -936,21 +951,8 @@ export class Elide {
     const group = groupMetrics(layout, layout.inner);
     return hidden.map(([s, e], j) => {
       const plan = planGap(this.neighbour(run, s - 1), group, this.neighbour(run, e), target);
-      this.applySpacing(j, plan.marginLeft, plan.marginRight, layout.inner);
+      space(this.joins[j]!, plan.marginLeft, plan.marginRight, layout.inner);
       return plan;
-    });
-  }
-
-  private applySpacing(index: number, left: number, right: number, inner: readonly number[]) {
-    const join = this.joins[index]!;
-    const style = join.ellipsis.style;
-    style.marginLeft = left !== 0 ? `${left}px` : '';
-    style.marginRight = right !== 0 ? `${right}px` : '';
-    join.marks.forEach((mark, i) => {
-      if (i > 0) {
-        const before = inner[i - 1] ?? 0;
-        mark.style.marginLeft = before !== 0 ? `${before}px` : '';
-      }
     });
   }
 
@@ -968,7 +970,7 @@ export class Elide {
       boxes: () => lineBoxes(...this.lineParts()),
       lineOf: (j, boxes) => this.lineOf(j, boxes),
       fits: () => this.measure(run),
-      space: (j, left, right, inner) => this.applySpacing(j, left, right, inner),
+      space: (j, left, right, inner) => space(this.joins[j]!, left, right, inner),
       spread: (ls) => (this.lineEl.style.letterSpacing = ls !== 0 ? `${run.letterSpacing + ls}px` : ''),
     };
   }
@@ -1085,14 +1087,7 @@ export class Elide {
     for (const [instance, height] of heights) {
       const host = instance.element;
       if (observed.get(host) !== instance) continue;
-      const cs = getComputedStyle(host);
-      const now =
-        host.getBoundingClientRect().height -
-        parseFloat(cs.paddingTop) -
-        parseFloat(cs.paddingBottom) -
-        parseFloat(cs.borderTopWidth) -
-        parseFloat(cs.borderBottomWidth);
-      if (Math.abs(now - height) <= 0.5) continue;
+      if (Math.abs(contentHeight(host) - height) <= 0.5) continue;
       sharedObserver?.unobserve(host);
       requestAnimationFrame(() => {
         if (observed.get(host) === instance) sharedObserver?.observe(host);
@@ -1152,14 +1147,22 @@ export class Elide {
       cs.direction === 'ltr' &&
       /^(start|left|justify)$/.test(cs.textAlign) &&
       // A highlight or an element may change the font, which the glyph widths don't know.
-      this.classes.every((c) => c === null) &&
-      this.chains.length === 0 &&
+      this.plain &&
+      this.even &&
       this.suffix === null &&
-      !this.revealed;
+      !this.revealed &&
+      this.misjudged !== run.glyphs;
     let base: { cut: Range[]; end: number } | null = null;
     // (Or the full text, when it has just been set and shows in full.)
     const fresh = this.fresh;
-    if (predictable && this.g.length > 0 && (fresh || ((reason === 'resize' || reason === 'init') && !this.pendingReset))) {
+    // The cut last rendered is spaced as this pass would space it, unless the font or the marks changed.
+    const steady =
+      reason !== 'update' &&
+      reason !== 'fonts' &&
+      !this.pendingReset &&
+      this.lastRun?.glyphs === run.glyphs &&
+      (this.lastRun.marks === run.marks || !previous?.truncated);
+    if (predictable && this.g.length > 0 && (fresh || steady)) {
       const { end } = lineSpan([this.lineEl], run.left, run.right);
       const added = fresh ? 0 : (previous?.gaps.reduce((sum, g) => sum + g.slack, 0) ?? 0);
       base = { cut: fresh ? [] : (previous?.hidden.map((p): Range => [p.start, p.end]) ?? []), end: end - added };
@@ -1209,17 +1212,17 @@ export class Elide {
 
     const held = hold ? [holdStyle(host, 'height', height), holdStyle(host, 'overflow', 'clip')] : [];
     try {
-      for (let i = 0; i < n; i++) run.sums[i + 1] = run.sums[i]! + glyphIn(run, this.g[i]!).advance;
       const layout = run.marks;
       let predictor: Predictor | null = null;
       if (base && layout) {
         const model = {
           sums: run.sums,
+          kerns: kerningOf(this.g, run),
           neighbour: (i: number) => this.neighbour(run, i),
           group: groupMetrics(layout, layout.inner),
           target: resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm),
         };
-        predictor = new Predictor(model, n, run.right, 0.1 * layout.fontSize + 0.25);
+        predictor = new Predictor(model, n, run.right, 0.05 * layout.fontSize + 0.1);
         predictor.saw(base.cut, base.end);
       }
       // Whether a cut was judged without being rendered, and so has yet to
@@ -1227,7 +1230,15 @@ export class Elide {
       let judged = false;
       let tried: Range[] | null = null;
       const at = (k: number) => this.worthCutting(run, hiddenRanges(this.g, this.layout, k, pins, snap, trim));
+      // What each cut tried so far did: different probes can come to the same cut.
+      const outcomes = new Map<string, boolean>();
       const attempt = function* (this: Elide, cut: Range[]): Generator<void, boolean, void> {
+        const key = cut.join();
+        let ok = outcomes.get(key);
+        if (ok === undefined) outcomes.set(key, (ok = yield* probe.call(this, cut)));
+        return ok;
+      };
+      const probe = function* (this: Elide, cut: Range[]): Generator<void, boolean, void> {
         const sure = predictor?.fits(cut) ?? null;
         if (sure !== null) {
           judged = true;
@@ -1242,8 +1253,9 @@ export class Elide {
         predictor?.saw(cut, fit.end);
         return fit.ok;
       };
-      // A judgement shouldn't be wrong, but if the final measurement says it
-      // was, the cut is found again without judging.
+      // A judgement shouldn't be wrong, but if the final measurement says
+      // the model was off, the cut is found again without judging (and this
+      // text, set this way, isn't judged again).
       for (;;) {
         pins = pinned();
         hidden = [];
@@ -1273,15 +1285,19 @@ export class Elide {
           hidden = at(step.value);
         }
         const measured = fit.ok && tried !== null && sameRanges(tried, hidden);
+        const expected = measured ? null : (predictor?.right(hidden) ?? null);
         yield* phase.write();
         plans = this.render(run, hidden);
         if (!measured) {
           yield* phase.read();
           fit = this.measure(run);
         }
-        if (fit.ok || !judged) break;
+        const off = expected !== null && Math.abs(expected - fit.end) > predictor!.margin / 2;
+        if (off) this.misjudged = run.glyphs;
+        if ((fit.ok && !off) || !judged) break;
         predictor = null;
         judged = false;
+        outcomes.clear();
       }
       if (hidden.length > 0) ({ gaps, slack } = yield* justify(this.justified(run, plans, fit.lines, hidden), phase));
       yield* phase.write();
@@ -1339,22 +1355,7 @@ export class Elide {
   }
 
   private makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.pins, slack = 0): ElideState {
-    const part = ([start, end]: Range): Part => ({
-      start,
-      end,
-      text: this.text.slice(this.offsets[start], this.offsets[end]),
-    });
-    return {
-      text: this.text,
-      length: this.g.length,
-      truncated: hidden.length > 0,
-      expanded: this.revealed,
-      hidden: hidden.map(part),
-      kept: hidden.length > 0 ? pins.map(part) : [],
-      lines,
-      gaps,
-      slack,
-    };
+    return stateOf(this.text, this.offsets, { hidden, pins, lines, gaps, slack, expanded: this.revealed });
   }
 }
 

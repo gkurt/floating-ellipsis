@@ -62,6 +62,13 @@ export function contentEdges(el: HTMLElement, cs: CSSStyleDeclaration, box: DOMR
   };
 }
 
+/** The height of `el`'s content box, unrounded (as a ResizeObserver reports it). */
+export function contentHeight(el: HTMLElement): number {
+  const cs = getComputedStyle(el);
+  const px = (v: string) => parseFloat(v);
+  return el.getBoundingClientRect().height - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.borderTopWidth) - px(cs.borderBottomWidth);
+}
+
 /**
  * The space `el` (an ellipsis) takes up between the text either side of it:
  * its box and margins, over the height of its line, one of `lines`.

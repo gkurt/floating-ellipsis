@@ -66,6 +66,7 @@ bun i
 bun dev        # demo at http://localhost:4181
 bun run test   # unit tests (pure logic)
 bun run test:browser  # layout tests in Chromium, Firefox and WebKit
+bun run bench  # main-thread time and layouts for crowded tables, lists and long text (Chromium)
 bun run build  # dist/ with type declarations
 bun run size   # what each entry costs gzipped, against its budget
 ```
@@ -627,10 +628,14 @@ line.
    `getClientRects()`, so every CSS property that affects layout is respected.
    A search finds the most graphemes that fit in `lines` lines. It starts from
    what the summed glyph widths say fits, shifted by how far off that was last
-   time, so it usually only has to confirm it. On one line, a cut close to one
-   already measured is judged from the glyph widths alone when it clears the
-   edge by a safe margin (a tenth of an em), so a resize often needs a single
-   layout. The full text is only tried when its summed glyph widths could fit.
+   time, so it usually only has to confirm it. On one line, once one cut has
+   been measured, any other is judged from the glyph widths and the kerning
+   between neighbours alone when it clears the edge by a safe margin (a
+   twentieth of an em), so a resize or new text usually needs no layout but
+   the one that checks the answer. If that check finds the widths were off
+   (three-letter ligatures, `font-kerning: none`), the cut is found again by
+   rendering, and that text isn't judged again. The full text is only tried
+   when its summed glyph widths could fit.
 2. **Islands.** With N ellipses, the kept text forms N + 1 islands: the first
    anchored at the start, the last at the end, and the ones in between centred
    where they sit in the text. Kept graphemes are handed out one at a time in
