@@ -351,6 +351,12 @@ describe('words', () => {
     expect(at('Hello, wonderful world.', 9, 12)).toBe('Hello, wonderful ….');
   });
 
+  it('keeps a cut at the end or start of the text there, punctuation and all', () => {
+    const text = 'The quick brown fox jumps over the lazy dog in Safari.';
+    expect(at(text, 30, text.length)).toBe('The quick brown fox jumps over …');
+    expect(at('“Quick brown fox', 0, 4)).toBe('… brown fox');
+  });
+
   it('finds words in text written without spaces', () => {
     const text = '日本語の文章を省略します';
     const cut = at(text, 4, 6);

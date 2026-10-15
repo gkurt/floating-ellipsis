@@ -9,7 +9,7 @@ import { Elided, useElide } from '#src/react.ts';
 import { elide as action } from '#src/svelte.ts';
 import { elideText } from '#src/text.ts';
 import { elideOf, vElide } from '#src/vue.ts';
-import { FONTS, PATH, PROSE, box, frames, rendered, track } from './helpers.ts';
+import { FONTS, PATH, PROSE, box, frames, rendered, spoken, track } from './helpers.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -101,7 +101,7 @@ describe('React', () => {
     const el = container.querySelector<HTMLElement>('.path')!;
     expect(el.tagName).toBe('DIV');
     expect(el.hasAttribute('data-truncated')).toBe(true);
-    expect(el.querySelector('[data-fp-full]')!.textContent).toBe(PATH);
+    expect(spoken(el)).toBe(PATH);
     flushSync(() =>
       root.render(createElement(Elided, { text: 'Short', as: 'span', className: 'path', style: { width: 200, display: 'block' } })),
     );

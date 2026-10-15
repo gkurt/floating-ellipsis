@@ -23,19 +23,21 @@ Prefer these scripts over ad-hoc commands. Do not prefix them with `bun run` whe
 a bare alias exists (`bun check`, `bun typecheck`) — those are whitelisted for
 agent use. Before finishing, run `bun run fix` then `bun run checks` — the linter,
 formatter and `tsc` own all mechanical style rules. Fix the code; don't disable rules.
-After touching `elide`, `justify`, `lines`, `marks`, `tooltip`, `transitions`, `text` or a binding, also
+After touching `elide`, `justify`, `lines`, `marks`, `markup`, `highlight`, `tooltip`, `transitions`, `text` or a binding, also
 run `bun run test:browser` (first time: `bunx playwright install chromium firefox webkit`).
 
 ## Project Structure
 
 - `src/index.ts` — public entry; re-exports `elide`/`Elide`, cut helpers, metrics and types.
-- `src/elide.ts` — the `Elide` class: reads the element, fits the text to `lines`, renders ellipses, schedules passes (shared ResizeObserver/IntersectionObserver, microtask batches), and exposes state/geometry hooks (`ellipsisInk`, `marks`, `lineRects`, `onChange`).
+- `src/elide.ts` — the `Elide` class: reads the element, fits the text (and `suffix`) to `lines`, renders ellipses, schedules passes (shared ResizeObserver/IntersectionObserver, microtask batches), expands in place (`expand()`, find in page, focus), and exposes state/geometry hooks (`ellipsisInk`, `marks`, `lineRects`, `onChange`).
 - `src/options.ts` — the public option, state and change types, and the option defaults.
 - `src/lockstep.ts` — runs many passes so they share layouts: each pass is a generator that yields when it switches between reading and writing (`Phase`).
 - `src/justify.ts` — fills the lines holding ellipses to the edge (a pass step).
 - `src/predict.ts` — judges single-line cuts from glyph widths and one measurement, so they needn't be rendered.
 - `src/lines.ts` — reading the line boxes of laid-out inline text.
-- `src/document.ts` — document-wide hooks: copying across an ellipsis, re-truncating when fonts load, the instance registry.
+- `src/markup.ts` — inline markup: reading text with the elements around it (`readMarkup`), shallow copies of them (`nest`), and the screen-reader copy as generated content (`speak`), so find in page doesn't find the text twice.
+- `src/highlight.ts` — filling a piece of the line (a run, a grapheme beside an ellipsis, or what an ellipsis hides) with its highlight classes and element copies, and finding graphemes in it.
+- `src/document.ts` — document-wide hooks: copying across an ellipsis, expanding what find in page found (`beforematch`), re-truncating when fonts load, the instance registry.
 - `src/cut.ts` — pure range math: where ellipses go (`position`), what stays (`keep`), `separators()`/`words()` snapping (one segment engine; whole segments go by `fewestSegments`, the shortest run that hides enough), the `searchMax`/`searchSteps` fit search and its `estimateKept` starting point.
 - `src/metrics.ts` — glyph measurement (canvas) and the balanced-gap math (`inkGap`, `planGap`). Kerning is ignored on purpose.
 - `src/marks.ts` — what an ellipsis is made of: characters of a string, or drawn dots/bullets/rings/squares sized from the font.
@@ -86,4 +88,4 @@ changes don't. Never edit `version` or `CHANGELOG.md` by hand: the release PR do
 ## Documentation
 
 When changing user-facing APIs, update all relevant docs in the same change:
-docs pages, README.md, SKILL.md, AGENTS.md, llms.txt. Documentation must not go stale.
+docs pages, README.md, AGENTS.md. Documentation must not go stale.

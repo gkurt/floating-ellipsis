@@ -17,6 +17,7 @@ import {
   rendered,
   shown,
   spacer,
+  spoken,
   sweep,
   track,
   visible,
@@ -298,7 +299,11 @@ describe('elide', () => {
 
   it('gives screen readers the full text', () => {
     const t = make(box(PROSE), { position: 'middle' });
-    expect(t.element.querySelector('[data-fp-full]')!.textContent).toBe(PROSE);
+    expect(spoken(t.element)).toBe(PROSE);
+    // As generated content, which find in page doesn't find (it would count every match twice).
+    const copy = t.element.querySelector('[data-fp-full]')!;
+    expect(copy.textContent).toBe('');
+    expect(getComputedStyle(copy.firstElementChild!, '::before').content).toBe(`"${PROSE}"`);
     expect(t.element.querySelector('[data-fp-text]')!.getAttribute('aria-hidden')).toBe('true');
   });
 

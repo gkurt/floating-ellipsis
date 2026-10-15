@@ -4,8 +4,13 @@ import type { EllipsisStyle, Length } from './marks.ts';
 import type { Gap, GapPlan } from './metrics.ts';
 
 export interface ElideOptions {
-  /** Text to show. Defaults to the element's text content (whitespace collapsed). */
-  text?: string;
+  /**
+   * What to show: a string, or a node whose text and inline elements (links,
+   * code, emphasis) are shown, copied around whatever part of them shows (a
+   * fragment for several). Defaults to the element's own content, read the
+   * same way. Whitespace in content is collapsed.
+   */
+  text?: string | Node;
   /** Maximum number of lines. Default 1. */
   lines?: number;
   /**
@@ -58,9 +63,13 @@ export interface ElideOptions {
   maxGap?: Length | null;
   /** Drop whitespace touching an ellipsis. Default true. */
   trim?: boolean;
-  /** Experimental: move cuts to nicer boundaries, see `separators()`. */
+  /** Move cuts to nicer boundaries: `words()`, or `separators()` for paths. */
   snap?: Snap | null;
-  /** Re-truncate when the element is resized. Default true. */
+  /**
+   * Re-truncate when the element is resized and when web fonts load. An
+   * element more than a screen away from the viewport waits until it comes
+   * near, when what it shows meanwhile can't change its height. Default true.
+   */
   observe?: boolean;
   /**
    * Wrap every grapheme in its own element so it can be styled or animated
@@ -74,6 +83,22 @@ export interface ElideOptions {
    * 'full' (default) the hidden text, 'visible' the ellipsis itself.
    */
   copy?: 'full' | 'visible';
+  /**
+   * Content that follows the text on its last line and is never cut: a
+   * "Read more" button, a badge, a timestamp. A string, or a node, which is
+   * moved there (and back on `destroy()`). Default null.
+   */
+  suffix?: string | Node | null;
+  /** When the suffix shows: 'always' (default) or only while the text is 'truncated'. */
+  showSuffix?: 'always' | 'truncated';
+  /**
+   * What find in page does with text an ellipsis hides. 'keep' (default):
+   * finds it, and keeps the word the match starts in visible, like `keep`,
+   * marked `data-fp-match`, until a press elsewhere or a match in other text.
+   * 'expand': finds it, and expands the text in place (see `expand()`)
+   * until then. false: doesn't find it.
+   */
+  find?: 'keep' | 'expand' | false;
   /** Shorthand for `instance.onChange(fn)`. */
   onChange?: (change: ElideChange) => void;
 }
@@ -94,6 +119,9 @@ export const DEFAULTS: Settings = {
   glyphs: false,
   title: false,
   copy: 'full',
+  suffix: null,
+  showSuffix: 'always',
+  find: 'keep',
 };
 
 /** `o` without the keys set to undefined, so they don't override defaults. */
@@ -125,6 +153,8 @@ export interface ElideState {
   /** Number of graphemes in `text`. */
   length: number;
   truncated: boolean;
+  /** The hidden parts show in place of their ellipses (see `expand()`). */
+  expanded: boolean;
   /** The hidden parts, one per ellipsis, in order. */
   hidden: Part[];
   /** Kept parts (from `keep`) that are showing while truncated. */
@@ -158,6 +188,39 @@ export interface ElideChange {
   glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>;
   /** Mark boxes of each ellipsis just before the update. */
   marksBefore: DOMRect[][];
+}
+
+/**
+ * What a pass changed, for `onChange`: null when there's nothing to tell (a
+ * resize or refresh that left the cut as it was).
+ */
+export function changeOf(
+  reason: ChangeReason,
+  previous: ElideState | null,
+  state: ElideState,
+  reset: boolean,
+  glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>,
+  marksBefore: DOMRect[][],
+): ElideChange | null {
+  const same = previous && !reset && sameParts(previous.hidden, state.hidden);
+  if (same && (reason === 'resize' || reason === 'refresh')) return null;
+  const shown: number[] = [];
+  const hidden: number[] = [];
+  const hiddenGlyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
+  if (!reset && previous) {
+    for (let i = 0; i < state.length; i++) {
+      const was = isVisible(previous, i);
+      const is = isVisible(state, i);
+      if (is && !was) {
+        shown.push(i);
+      } else if (was && !is) {
+        hidden.push(i);
+        const before = glyphsBefore.get(i);
+        if (before) hiddenGlyphs.set(i, before);
+      }
+    }
+  }
+  return { reason, state, previous: reset ? null : previous, reset, shown, hidden, hiddenGlyphs, glyphsBefore, marksBefore };
 }
 
 /** Whether two lists of parts cover the same graphemes. */

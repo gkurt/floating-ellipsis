@@ -44,7 +44,7 @@ function expectWholeGraphemes(t: Elide) {
   const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
   let end = 0;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node.parentElement?.closest('[data-fp-ellipsis], [data-fp-ghosts]')) continue;
+    if (node.parentElement?.closest('[data-fp-ellipsis], [data-fp-ghosts], [data-fp-found]')) continue;
     end += (node as Text).data.length;
     expect(bounds.has(end), `split at ${end} in ${JSON.stringify(shown)}`).toBe(true);
   }

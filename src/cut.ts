@@ -105,6 +105,17 @@ export function islands(layout: Layout, kept: number): Range[] {
   return out.filter(([s, e]) => e > s);
 }
 
+/**
+ * `pins` less the one to give way when they can't all fit: the last, unless
+ * it holds `first`, which gives way only once it's all that's left.
+ */
+export function giveWay(pins: readonly Range[], first: Range | null): Range[] {
+  const holds = (p: Range) => !!first && p[0] <= first[0] && p[1] >= first[1];
+  let i = pins.length - 1;
+  while (i > 0 && holds(pins[i]!)) i--;
+  return pins.filter((_, k) => k !== i);
+}
+
 /** Sorted, merged copy of `ranges` (touching ranges merge too). */
 export function union(ranges: readonly Range[]): Range[] {
   const sorted = ranges.filter(([s, e]) => e > s).sort((a, b) => a[0] - b[0]);
@@ -203,6 +214,16 @@ export function estimateKept(
     return w;
   };
   return searchMax(0, n - 1, (k) => width(k) <= room);
+}
+
+/**
+ * Characters (code units) showing with `hidden` cut, each cut showing
+ * `marks` instead; at least one. `offsets[i]` is where grapheme `i` starts.
+ */
+export function shownLength(offsets: readonly number[], hidden: readonly Range[], marks: number): number {
+  let n = offsets[offsets.length - 1]!;
+  for (const [s, e] of hidden) n += marks - (offsets[e]! - offsets[s]!);
+  return Math.max(1, n);
 }
 
 /** Whether two lists of ranges are the same. */
@@ -345,7 +366,7 @@ export function separators(chars: string | RegExp = '/\\', options: SeparatorOpt
   return segmentSnap((g) => (i) => test(g[i]!), { fragment: 'head', ...options });
 }
 
-const wordGaps = new WeakMap<readonly string[], Uint8Array>();
+const wordIds = new WeakMap<readonly string[], Int32Array>();
 let wordSegmenter: Intl.Segmenter | null | undefined;
 const WORD_CHAR = /[\p{L}\p{M}\p{N}_]/u;
 
@@ -362,31 +383,56 @@ export function words(options: SeparatorOptions = {}): Snap {
 
 /** Which graphemes are outside words (spaces, punctuation), by index. */
 function wordGapsOf(g: readonly string[]): (i: number) => boolean {
-  let gaps = wordGaps.get(g);
-  if (!gaps) {
-    if (wordSegmenter === undefined)
-      wordSegmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
-    const found = new Uint8Array(g.length).fill(1);
-    if (wordSegmenter) {
-      // Grapheme `i` starts at string offset `offsets[i]`.
-      const offsets: number[] = [];
-      let at = 0;
-      for (const s of g) {
-        offsets.push(at);
-        at += s.length;
-      }
-      let i = 0;
-      for (const { index, segment, isWordLike } of wordSegmenter.segment(g.join(''))) {
-        while (i < g.length && offsets[i]! < index) i++;
-        for (; i < g.length && offsets[i]! < index + segment.length; i++) if (isWordLike) found[i] = 0;
-      }
-    } else {
-      g.forEach((s, i) => (found[i] = WORD_CHAR.test(s) ? 0 : 1));
+  const ids = wordsOf(g);
+  return (i) => ids[i]! < 0;
+}
+
+/**
+ * The word each grapheme is in, numbered from 0 in order, or -1 outside
+ * words (spaces, punctuation). Words come from `Intl.Segmenter`, so text
+ * written without spaces splits into words too. Cached for `g`.
+ */
+export function wordsOf(g: readonly string[]): Int32Array {
+  let ids = wordIds.get(g);
+  if (ids) return ids;
+  if (wordSegmenter === undefined)
+    wordSegmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
+  ids = new Int32Array(g.length).fill(-1);
+  if (wordSegmenter) {
+    // Grapheme `i` starts at string offset `offsets[i]`.
+    const offsets: number[] = [];
+    let at = 0;
+    for (const s of g) {
+      offsets.push(at);
+      at += s.length;
     }
-    wordGaps.set(g, (gaps = found));
+    let i = 0;
+    let word = 0;
+    for (const { index, segment, isWordLike } of wordSegmenter.segment(g.join(''))) {
+      while (i < g.length && offsets[i]! < index) i++;
+      for (; i < g.length && offsets[i]! < index + segment.length; i++) if (isWordLike) ids[i] = word;
+      if (isWordLike) word++;
+    }
+  } else {
+    let word = 0;
+    g.forEach((s, i) => {
+      if (WORD_CHAR.test(s)) ids[i] = word;
+      else if (i > 0 && ids[i - 1]! >= 0) word++;
+    });
   }
-  const known = gaps;
-  return (i) => known[i] === 1;
+  wordIds.set(g, ids);
+  return ids;
+}
+
+/** The whole word grapheme `i` is in, given `wordsOf`; just `i` outside words. */
+export function wordAround(ids: Int32Array, i: number): Range {
+  const id = ids[i]!;
+  if (id < 0) return [i, i + 1];
+  let s = i;
+  let e = i + 1;
+  while (s > 0 && ids[s - 1] === id) s--;
+  while (e < ids.length && ids[e] === id) e++;
+  return [s, e];
 }
 
 /**
@@ -507,9 +553,10 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
       return { start: s, end: e };
     };
     if (fragment === false) {
-      // Separators at the cut's edges stay visible when there's more to hide.
-      const from = isSep(start) && start + 1 < end ? start + 1 : start;
-      const to = isSep(end - 1) && end - 1 > from ? end - 1 : end;
+      // Separators at the cut's edges stay visible when there's more to hide,
+      // unless the cut takes the start or end of the text: it keeps it.
+      const from = start > 0 && isSep(start) && start + 1 < end ? start + 1 : start;
+      const to = end < n && isSep(end - 1) && end - 1 > from ? end - 1 : end;
       const fewest = fewestSegments(isSep, n, from, to, low, high);
       if (fewest) return fewest;
     }

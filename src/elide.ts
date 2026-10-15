@@ -10,26 +10,23 @@ import {
   layoutFor,
   sameRanges,
   searchSteps,
+  shownLength,
+  giveWay,
   toGraphemeRanges,
+  union,
+  wordAround,
+  wordsOf,
 } from './cut.ts';
-import { byId, hookDocument, instances } from './document.ts';
+import { byId, forgetFound, hookDocument, instances } from './document.ts';
 import { graphemes, isWhitespace } from './graphemes.ts';
-import { childRanges, fillPiece, textAt } from './highlight.ts';
+import { type Marking, besideEllipsis, childRanges, fillGlyphs, fillPiece, markGlyphs, textAt } from './highlight.ts';
+import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden } from './join.ts';
 import { type Justified, justify } from './justify.ts';
-import { boundsOf, lineBoxes, lineSpan } from './lines.ts';
+import { areaOf, boundsOf, contentEdges, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
-import { type EllipsisStyle, type MarkLayout, buildMarks, groupMetrics, layoutMarks, markStyleFor, styleMarks, toPx } from './marks.ts';
-import {
-  type Font,
-  type GapPlan,
-  type GlyphMetrics,
-  applyTextTransform,
-  fontAscent,
-  fontOf,
-  measure,
-  planGap,
-  resolveGap,
-} from './metrics.ts';
+import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markInk, markStyleFor, styleMarks, toPx } from './marks.ts';
+import { type Chain, extentOf, markCopies, originals, readMarkup, speak } from './markup.ts';
+import { type Font, type GapPlan, type GlyphMetrics, glyphIn, glyphInk, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
   type ChangeReason,
   type ElideChange,
@@ -39,11 +36,12 @@ import {
   type Part,
   type Settings,
   DEFAULTS,
+  changeOf,
   defined,
   isVisible,
-  sameParts,
 } from './options.ts';
 import { Predictor } from './predict.ts';
+import { Suffix } from './suffix.ts';
 
 interface Run {
   font: Font;
@@ -60,6 +58,8 @@ interface Run {
   glyphs: Map<string, GlyphMetrics>;
   /** Running total of advances: `sums[i]` is the width of graphemes [0, i). */
   sums: Float64Array;
+  /** The width of the suffix, as it shows when the pass starts. */
+  suffix: number;
 }
 
 /** How the rendered text lies: whether it fits, on how many lines, and where it ends. */
@@ -80,19 +80,12 @@ interface Painted {
   marksBefore: DOMRect[][];
 }
 
-interface Join {
-  el: HTMLSpanElement;
-  before: HTMLSpanElement;
-  ellipsis: HTMLSpanElement;
-  after: HTMLSpanElement;
-  marks: HTMLSpanElement[];
-}
+/** What expanded an instance: find in page, focus on a link it hid, or `expand()`. */
+type Opener = 'find' | 'focus' | 'api';
 
 const SR_ONLY =
   'position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;' +
   'clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;user-select:none';
-
-const WORD_JOINER = '\u2060';
 
 /** Whether wrapping can be turned off without touching how white space collapses. */
 const WRAP_MODE = typeof CSS !== 'undefined' && CSS.supports('text-wrap-mode', 'nowrap');
@@ -116,6 +109,8 @@ export class Elide {
 
   private settings: Settings;
   private readonly id = String(nextId++);
+  /** The `text` option as given (undefined: the element's own content). */
+  private source: string | Node | undefined;
   private text = '';
   private g: string[] = [];
   private offsets: number[] = [0];
@@ -123,6 +118,19 @@ export class Elide {
   private pins: Range[] = [];
   /** The classes `keep` gives each grapheme, or null. */
   private classes: (string | null)[] = [];
+  /** The elements around each grapheme, or null; empty for plain text. */
+  private chains: (Chain | null)[] = [];
+  /** The screen-reader copy was made while the element was out of the document, so as plain text (see `speak`). */
+  private unsaid = false;
+  /** Holds `suffix`, after the line, while there is one. */
+  private suffix: Suffix | null = null;
+  /** What wants the hidden parts shown in place, if anything; and whether they are. */
+  private opener: Opener | null = null;
+  /** What to keep in sight for now, as if kept: what find in page found, or a focused link the cut hid. */
+  private sought: { range: Range; by: 'find' | 'focus' } | null = null;
+  private revealed = false;
+  /** The element (in the original) of the focused link in the screen-reader copy. */
+  private focused: Element | null = null;
   private layout: Layout = layoutFor(0, ['end']);
   private readonly original: Node[];
   private readonly srEl: HTMLSpanElement;
@@ -149,10 +157,10 @@ export class Elide {
   private destroyed = false;
   private style: EllipsisStyle = '…';
   private painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
-  /** The element's own inline height (value, priority) while we hold it. */
-  private heightLock: [string, string] | null = null;
-  /** The element's own inline overflow (value, priority) while a put-off pass has it clipped. */
-  private clipped: [string, string] | null = null;
+  /** Gives the element its own inline height back, while we hold it. */
+  private heightLock: (() => void) | null = null;
+  /** Gives the element its own inline overflow back, while a put-off pass has it clipped. */
+  private clipped: (() => void) | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { text, onChange, ...rest } = options;
@@ -163,13 +171,20 @@ export class Elide {
     this.srEl = document.createElement('span');
     this.srEl.setAttribute('data-fp-full', '');
     this.srEl.style.cssText = SR_ONLY;
+    // Focus moving within the copy goes out and in again: only leaving it counts.
+    this.srEl.addEventListener('focusin', (e) => this.focusOn(e.target));
+    this.srEl.addEventListener('focusout', (e) => {
+      const next = e.relatedTarget;
+      this.focusOn(next instanceof Node && this.srEl.contains(next) ? next : null);
+    });
     this.lineEl = document.createElement('span');
     this.lineEl.setAttribute('data-fp-text', '');
     this.lineEl.setAttribute('aria-hidden', 'true');
     this.join(0);
 
-    this.setText(text ?? (element.textContent ?? '').replace(/\s+/g, ' ').trim());
+    this.setText(text);
     element.replaceChildren(this.srEl, this.lineEl);
+    this.setSuffix();
     // The full text until the first pass, which is scheduled (see `schedule`).
     // On one line, so that the first pass can wait (see `putOff`).
     this.showAll();
@@ -180,7 +195,15 @@ export class Elide {
     instances.add(this);
     // Turns off fallback.css's plain truncation.
     element.setAttribute('data-elide', '');
-    byId.set(this.id, { instance: this, hidden: () => this.current?.hidden ?? [] });
+    byId.set(this.id, {
+      instance: this,
+      hidden: () => this.current?.hidden ?? [],
+      found: (part, word) => this.foundIn(part, word),
+      unfound: () => {
+        if (this.opener === 'find') this.collapse();
+        if (this.sought?.by === 'find') this.seek(null);
+      },
+    });
     hookDocument();
     this.schedule('init');
     this.observe(this.settings.observe);
@@ -242,16 +265,7 @@ export class Elide {
    */
   ellipsisArea(index = 0): DOMRect | null {
     const e = this.ellipses[index];
-    if (!e) return null;
-    const r = e.getBoundingClientRect();
-    const cs = getComputedStyle(e);
-    const left = r.left - parseFloat(cs.marginLeft);
-    const right = r.right + parseFloat(cs.marginRight);
-    const middle = r.top + r.height / 2;
-    const line = this.lineRects().find((l) => middle >= l.top && middle <= l.bottom);
-    const top = Math.min(r.top, line?.top ?? r.top);
-    const bottom = Math.max(r.bottom, line?.bottom ?? r.bottom);
-    return new DOMRect(left, top, Math.max(0, right - left), bottom - top);
+    return e ? areaOf(e, this.lineRects()) : null;
   }
 
   /**
@@ -261,10 +275,12 @@ export class Elide {
    * `slop` widens every area by that many pixels on each side.
    */
   ellipsisAt(x: number, y: number, slop = 0): number {
-    return this.ellipses.findIndex((_, i) => {
-      const a = this.ellipsisArea(i);
-      return !!a && x >= a.left - slop && x < a.right + slop && y >= a.top - slop && y < a.bottom + slop;
-    });
+    return indexAt(
+      this.ellipses.map((_, i) => this.ellipsisArea(i)),
+      x,
+      y,
+      slop,
+    );
   }
 
   /**
@@ -276,21 +292,7 @@ export class Elide {
     const join = this.joins[index];
     const layout = this.lastRun?.marks;
     if (!join || !layout || index >= (this.current?.hidden.length ?? 0)) return [];
-    if (layout.metrics.length !== join.marks.length) return [];
-    if (layout.drawn) return join.marks.map((m) => m.getBoundingClientRect());
-    const box = join.ellipsis.getBoundingClientRect();
-    const baseline = box.top + layout.ascent;
-    const boxes = join.marks.map((el, i) => {
-      const r = el.getBoundingClientRect();
-      const m = layout.metrics[i]!;
-      return new DOMRect(r.left - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
-    });
-    const runs = layout.runs;
-    if (boxes.length === 1 && runs && runs.length > 1) {
-      const ink = boxes[0]!;
-      return runs.map(([a, b]) => new DOMRect(ink.left + a, ink.top, b - a, ink.height));
-    }
-    return boxes;
+    return layout.metrics.length === join.marks.length ? markInk(layout, join.marks, join.ellipsis) : [];
   }
 
   /**
@@ -340,37 +342,55 @@ export class Elide {
     return (child instanceof Text ? pieces.get(node) : pieces.get(child))?.[0] ?? null;
   }
 
-  /** The graphemes each element of the visible text holds, as rendered now. */
-  private pieces(): Map<Node, Range> {
+  /**
+   * Where `render` puts the graphemes with `hidden` cut: visible run r lies
+   * between ellipsis r - 1 and ellipsis r. Its first grapheme sits in the join
+   * before it and its last in the join after it, so a line break can't part
+   * an ellipsis from its neighbours (see `beside`). `shown` is the visible run
+   * of each piece.
+   */
+  private layoutOf(hidden: readonly Range[]): { el: HTMLSpanElement; range: Range; shown: Range }[] {
     const n = this.g.length;
-    const hidden = this.current?.hidden ?? [];
     const m = hidden.length;
-    const map = new Map<Node, Range>([[this.lineEl, [0, n]]]);
-    // An element holding text, and in text mode each text node and highlight in it.
-    const hold = (el: HTMLElement, range: Range) => {
-      map.set(el, range);
-      if (!this.settings.glyphs) for (const [node, r] of childRanges(el, range, this.offsets)) map.set(node, r);
-    };
-    // As `render` lays them out: visible run r gives its first grapheme to the
-    // join before it and its last to the join after it.
+    const out: { el: HTMLSpanElement; range: Range; shown: Range }[] = [];
     for (let r = 0; r <= m; r++) {
-      let a = r === 0 ? 0 : hidden[r - 1]!.end;
-      let b = r === m ? n : hidden[r]!.start;
+      let a = r === 0 ? 0 : hidden[r - 1]![1];
+      let b = r === m ? n : hidden[r]![0];
+      const shown: Range = [a, b];
       if (r > 0) {
-        const take = a < b ? 1 : 0;
-        hold(this.joins[r - 1]!.after, [a, a + take]);
+        const take = besideEllipsis(this.marking, this.g, wordsOf(this.g), [a, b], a, this.settings.lines > 1);
+        out.push({ el: this.join(r - 1).after, range: [a, a + take], shown });
         a += take;
       }
       if (r < m) {
-        const take = a < b ? 1 : 0;
-        hold(this.joins[r]!.before, [b - take, b]);
+        const take = besideEllipsis(this.marking, this.g, wordsOf(this.g), [a, b], b - 1, this.settings.lines > 1);
+        out.push({ el: this.join(r).before, range: [b - take, b], shown });
         b -= take;
       }
-      hold(this.runEl(r), [a, b]);
+      out.push({ el: this.runEl(r), range: [a, b], shown });
     }
+    return out;
+  }
+
+  /** The cut showing now. */
+  private get cut(): Range[] {
+    return (this.current?.hidden ?? []).map((p): Range => [p.start, p.end]);
+  }
+
+  /** The graphemes each element of the visible text holds, as rendered now. */
+  private pieces(): Map<Node, Range> {
+    const hidden = this.current?.hidden ?? [];
+    const map = new Map<Node, Range>([[this.lineEl, [0, this.g.length]]]);
+    // An element holding text, and in text mode each text node and highlight in it.
+    const hold = (el: HTMLElement, range: Range, glyphs = this.settings.glyphs) => {
+      map.set(el, range);
+      if (!glyphs) for (const [node, r] of childRanges(el, range, this.offsets)) map.set(node, r);
+    };
+    for (const { el, range } of this.layoutOf(this.cut)) hold(el, range);
     hidden.forEach((part, j) => {
       const join = this.joins[j]!;
       map.set(join.ellipsis, [part.start, part.end]);
+      hold(join.found, [part.start, part.end], false);
       map.set(join.el, [map.get(join.before)![0], map.get(join.after)![1]]);
     });
     if (this.settings.glyphs) this.glyphEls.forEach((el, i) => map.set(el, [i, i + 1]));
@@ -391,33 +411,14 @@ export class Elide {
       const el = this.glyphEls[index];
       return el?.isConnected ? el.getBoundingClientRect() : null;
     }
-    // Where `render` put it: visible run r is split into the join before it
-    // (its first grapheme), its own element, and the join after it (its last).
-    const hidden = this.current.hidden;
-    const m = hidden.length;
-    for (let r = 0; r <= m; r++) {
-      let a = r === 0 ? 0 : hidden[r - 1]!.end;
-      let b = r === m ? n : hidden[r]!.start;
-      if (index < a || index >= b) continue;
-      let el: HTMLElement = this.runEl(r);
-      let from = a;
-      if (r > 0 && a < b) {
-        if (index === a) el = this.joins[r - 1]!.after;
-        else from = ++a;
-      }
-      if (r < m && a < b && index === b - 1 && el === this.runEl(r)) {
-        el = this.joins[r]!.before;
-        from = b - 1;
-      }
-      const found = textAt(el, this.offsets[index]! - this.offsets[from]!);
-      if (!found) return null;
-      const [node, at] = found;
-      const range = document.createRange();
-      range.setStart(node, at);
-      range.setEnd(node, at + (this.offsets[index + 1]! - this.offsets[index]!));
-      return range.getBoundingClientRect();
-    }
-    return null;
+    const piece = this.layoutOf(this.cut).find(({ range: [a, b] }) => index >= a && index < b);
+    const found = piece && textAt(piece.el, this.offsets[index]! - this.offsets[piece.range[0]]!);
+    if (!found) return null;
+    const [node, at] = found;
+    const range = document.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, at + (this.offsets[index + 1]! - this.offsets[index]!));
+    return range.getBoundingClientRect();
   }
 
   /** Ink box of grapheme `index` in glyph mode, or null when it isn't showing. */
@@ -425,12 +426,98 @@ export class Elide {
     this.sync();
     const el = this.glyphEls[index];
     if (!el?.isConnected || !this.lastRun) return null;
-    return this.inkOf(this.lastRun, index, el.getBoundingClientRect());
+    return glyphInk(this.lastRun, this.g[index], el.getBoundingClientRect());
   }
 
   /** The classes `keep` gives grapheme `index` (space-separated), or null. */
   classOf(index: number): string | null {
     return this.classes[index] ?? null;
+  }
+
+  /** Whether what the ellipses hide is showing in their place (see `expand`). */
+  get expanded(): boolean {
+    this.sync();
+    return this.revealed;
+  }
+
+  /**
+   * Show what the ellipses hide in their place: all of the text, on as many
+   * lines as it takes, until `collapse()`. The cut stays as it was (`state`),
+   * so collapsing is quick. With `find: 'expand'`, find in page does this
+   * when it finds hidden text, and so does focus reaching a link the cut hides.
+   */
+  expand(): void {
+    this.open('api');
+  }
+
+  /** Put the ellipses back after `expand()` (or find in page) showed what they hide. */
+  collapse(): void {
+    if (this.opener === null || this.destroyed) return;
+    this.opener = null;
+    forgetFound(this);
+    this.schedule('refresh');
+  }
+
+  private open(by: Opener) {
+    if (this.destroyed) return;
+    if (by !== 'find') forgetFound(this);
+    if (this.opener !== null) {
+      // Asked for outright, it stays open, whatever opened it first.
+      if (by === 'api') this.opener = by;
+      return;
+    }
+    this.opener = by;
+    // A pass on its way ends expanded; otherwise the parts are shown now.
+    this.sync();
+    if (this.revealed || !this.current) return;
+    this.reveal(true);
+    this.current = { ...this.current, expanded: true };
+    for (const fn of this.renderListeners) fn(this.current);
+  }
+
+  /** A link (or anything focusable) in the screen-reader copy took focus, or lost it (null). */
+  private focusOn(target: EventTarget | null) {
+    const focused = target instanceof Element ? (originals.get(target) ?? null) : null;
+    if (focused === this.focused) return;
+    this.focused = focused;
+    const seen = this.markFocus();
+    const expand = this.settings.find === 'expand';
+    if (focused && !seen && expand) this.open('focus');
+    else if (focused && !seen) this.seek(extentOf(this.chains, focused), 'focus');
+    else if (!focused && this.opener === 'focus') this.collapse();
+    else if (!focused && this.sought?.by === 'focus') this.seek(null);
+  }
+
+  /**
+   * Find in page found text ellipsis `part` hides, starting in `word` when
+   * that's known: expand, or keep the word in sight.
+   */
+  private foundIn(part: number, word: Range | null) {
+    if (this.settings.find === 'expand') return this.open('find');
+    // The browser shows the hidden text it found once this returns: put it
+    // back before that's painted, with the word showing in the line instead.
+    const hidden = this.current?.hidden[part];
+    const range = word ?? (hidden ? wordAround(wordsOf(this.g), hidden.start) : null);
+    for (const join of this.joins) forgetWords(join);
+    requestAnimationFrame(() => this.seek(range, 'find'));
+  }
+
+  /** Keep `range` in sight for now (see `sought`), or stop (null). */
+  private seek(range: Range | null, by: 'find' | 'focus' = 'find') {
+    if (this.destroyed) return;
+    this.sought = range ? { range, by } : null;
+    const match = this.marking.match;
+    markGlyphs(this.glyphEls, 'data-fp-match', match ? [match] : []);
+    this.bias = null;
+    this.schedule('refresh');
+  }
+
+  /**
+   * Mark the copies in the line of the focused element `data-fp-focus`, so
+   * CSS can draw a focus ring there. Returns whether one of them shows.
+   */
+  private markFocus(): boolean {
+    return markCopies(this.lineEl, this.focused, 'data-fp-focus').some((el) => this.revealed || !el.closest('[data-fp-found]'));
   }
 
   /** Subscribe to visible-text changes. Returns an unsubscribe function. */
@@ -466,8 +553,10 @@ export class Elide {
     }
     if (s.observe !== before.observe) this.observe(s.observe);
     if (s.lines !== before.lines) this.bias = null;
-    if ((text !== undefined && text !== this.text) || s.glyphs !== before.glyphs) {
-      this.setText(text ?? this.text);
+    if (s.suffix !== before.suffix) this.setSuffix();
+    if ((text !== undefined && text !== this.source) || s.glyphs !== before.glyphs) {
+      this.sought = null;
+      this.setText(text ?? this.source);
       this.showAll();
       this.fresh = true;
       this.pendingReset = true;
@@ -498,12 +587,15 @@ export class Elide {
     byId.delete(this.id);
     this.listeners.clear();
     this.renderListeners.clear();
+    forgetFound(this);
     this.unlockHeight();
     this.clip(false);
     this.element.removeAttribute('data-truncated');
     this.element.removeAttribute('data-elide');
+    this.element.removeAttribute('data-fp-expanded');
     if (this.titled) this.element.removeAttribute('title');
     this.element.replaceChildren(...this.original);
+    this.suffix?.giveBack(true);
   }
 
   // -------------------------------------------------------------------------
@@ -533,11 +625,19 @@ export class Elide {
     nearObserver.observe(host);
   }
 
-  private setText(text: string) {
+  /** Read the text, and its elements, from `source`: a string, a node, or (undefined) the element's own content. */
+  private setText(source: string | Node | undefined) {
+    this.source = source;
+    const suffix = this.settings.suffix;
+    const { text, chains } =
+      typeof source === 'string'
+        ? { text: source, chains: null }
+        : readMarkup(source === undefined ? this.original : [source], typeof suffix === 'object' ? suffix : null);
     this.text = text;
     this.g = graphemes(text);
     this.offsets = [0];
     for (const s of this.g) this.offsets.push(this.offsets[this.offsets.length - 1]! + s.length);
+    this.chains = chains ? this.g.map((_, i) => chains[this.offsets[i]!] ?? null) : [];
     this.glyphEls = this.settings.glyphs
       ? this.g.map((s, i) => {
           const el = document.createElement('span');
@@ -546,17 +646,28 @@ export class Elide {
           return el;
         })
       : [];
-    this.srEl.textContent = text;
+    this.unsaid = !speak(this.srEl, this.element, this.g, this.chains) && !this.element.isConnected;
     this.setPins();
     this.setLayout();
+  }
+
+  /** Put `suffix` after the line (see `Suffix`). */
+  private setSuffix() {
+    const content = this.settings.suffix;
+    if (content !== null && content !== '') {
+      (this.suffix ??= new Suffix(this.element, () => this.refresh())).fill(content);
+      return;
+    }
+    this.suffix?.giveBack(false);
+    this.suffix?.el.remove();
+    this.suffix = null;
   }
 
   private setPins() {
     const keep = asArray(this.settings.keep);
     this.pins = toGraphemeRanges(keepRanges(this.text, keep), this.offsets);
     this.classes = graphemeClasses(keepClasses(this.text, keep), this.offsets);
-    for (const el of this.glyphEls) el.removeAttribute('data-fp-kept');
-    for (const [s, e] of this.pins) for (let i = s; i < e; i++) this.glyphEls[i]?.setAttribute('data-fp-kept', '');
+    markGlyphs(this.glyphEls, 'data-fp-kept', this.pins);
     this.glyphEls.forEach((el, i) => (el.className = this.classes[i] ?? ''));
     this.bias = null;
   }
@@ -570,17 +681,7 @@ export class Elide {
   private join(index: number): Join {
     let join = this.joins[index];
     if (!join) {
-      const span = (attr: string) => {
-        const el = document.createElement('span');
-        el.setAttribute(attr, '');
-        return el;
-      };
-      const el = span('data-fp-join');
-      el.style.whiteSpace = 'nowrap';
-      const ellipsis = span('data-fp-ellipsis');
-      ellipsis.dataset.fpEllipsis = `${this.id}:${index}`;
-      join = { el, before: span('data-fp-before'), ellipsis, after: span('data-fp-after'), marks: [] };
-      el.append(join.before, ellipsis, join.after);
+      join = createJoin(this.id, index, this.settings.find !== false);
       this.fillMarks(join);
       this.joins[index] = join;
     }
@@ -594,12 +695,8 @@ export class Elide {
 
   private fillMarks(join: Join) {
     this.style = markStyleFor(this.settings);
-    join.marks = buildMarks(this.style);
-    // WebKit breaks a line after the (inline-block) marks despite the join's
-    // `nowrap`, unless text sits right before and after them in the ellipsis.
-    // Only text that can wrap needs it: Firefox letter-spaces the joiners.
-    const glue = this.settings.lines > 1 && join.marks.length > 0;
-    join.ellipsis.replaceChildren(...(glue ? [WORD_JOINER, ...join.marks, WORD_JOINER] : join.marks));
+    // Only text that can wrap needs gluing: Firefox letter-spaces the joiners.
+    drawMarks(join, this.style, this.settings.lines > 1);
   }
 
   private runEl(index: number): HTMLSpanElement {
@@ -633,15 +730,11 @@ export class Elide {
 
   /** Hold the element's height at `height`, its computed height. */
   private lockHeight(height: string) {
-    if (!height.endsWith('px')) return;
-    const style = this.element.style;
-    this.heightLock = [style.getPropertyValue('height'), style.getPropertyPriority('height')];
-    style.setProperty('height', height, 'important');
+    if (height.endsWith('px')) this.heightLock = holdStyle(this.element, 'height', height);
   }
 
   private unlockHeight() {
-    if (!this.heightLock) return;
-    this.element.style.setProperty('height', ...this.heightLock);
+    this.heightLock?.();
     this.heightLock = null;
   }
 
@@ -651,43 +744,25 @@ export class Elide {
    * into view faster than the observers can tell, it is painted once like that.
    */
   private clip(on: boolean) {
-    const style = this.element.style;
     if (on === (this.clipped !== null)) return;
-    if (this.clipped) {
-      style.setProperty('overflow', ...this.clipped);
-      this.clipped = null;
-      return;
-    }
-    this.clipped = [style.getPropertyValue('overflow'), style.getPropertyPriority('overflow')];
-    style.setProperty('overflow', 'clip', 'important');
+    this.clipped?.();
+    this.clipped = on ? holdStyle(this.element, 'overflow', 'clip') : null;
   }
 
   /** What a pass needs to know about the element. Reads layout. */
   private prepare(cs: CSSStyleDeclaration): Run {
-    const host = this.element;
-    const box = host.getBoundingClientRect();
-    // The content box, from the unrounded border box (`clientWidth` is
-    // rounded to a whole pixel, which can leave the text overflowing).
-    const borderLeft = parseFloat(cs.borderLeftWidth);
-    const borderRight = parseFloat(cs.borderRightWidth);
-    // (Those two widths are rounded separately: a pixel's difference is no scrollbar.)
-    const gutter = host.offsetWidth - host.clientWidth - Math.round(borderLeft + borderRight);
-    const scrollbar = gutter > 1 ? gutter : 0;
-    const left = box.left + borderLeft + parseFloat(cs.paddingLeft);
-    const right = box.right - borderRight - parseFloat(cs.paddingRight) - scrollbar;
-    const letterSpacing = parseFloat(cs.letterSpacing);
+    const box = this.element.getBoundingClientRect();
+    const { left, right } = contentEdges(this.element, cs, box);
     return {
-      font: fontOf(cs),
-      letterSpacing: Number.isFinite(letterSpacing) ? letterSpacing : 0,
-      transform: cs.textTransform,
+      ...typesetOf(cs),
       box,
       left,
       right,
       // As a ResizeObserver reports it.
       width: right - left,
       marks: null,
-      glyphs: new Map(),
       sums: new Float64Array(this.g.length + 1),
+      suffix: this.suffix?.measure() ?? 0,
     };
   }
 
@@ -719,30 +794,17 @@ export class Elide {
   /** The glyph at `i` as an ellipsis' neighbour: null for none, or whitespace (it has no ink). */
   private neighbour(run: Run, i: number): GlyphMetrics | null {
     const g = this.g[i];
-    return g !== undefined && !isWhitespace(g) ? this.glyphMetrics(run, g) : null;
+    return g !== undefined && !isWhitespace(g) ? glyphIn(run, g) : null;
   }
 
-  private glyphMetrics(run: Run, g: string): GlyphMetrics {
-    let m = run.glyphs.get(g);
-    if (!m) {
-      m = measure(run.font, applyTextTransform(g, run.transform));
-      if (run.letterSpacing !== 0) m.advance += run.letterSpacing;
-      run.glyphs.set(g, m);
-    }
-    return m;
-  }
-
-  private inkOf(run: Run, index: number, box: DOMRect): DOMRect {
-    const g = this.g[index];
-    if (g === undefined || isWhitespace(g)) return box;
-    const m = this.glyphMetrics(run, g);
-    const baseline = box.top + fontAscent(run.font);
-    return new DOMRect(box.left - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
+  /** The line and the suffix after it: what has to fit. */
+  private lineParts(): HTMLElement[] {
+    return this.suffix ? [this.lineEl, this.suffix.el] : [this.lineEl];
   }
 
   /** Does the rendered text fit? Reads layout. */
   private measure(run: Run): Fit {
-    const { lines, inside, end } = lineSpan(this.lineEl, run.left, run.right);
+    const { lines, inside, end } = lineSpan(this.lineParts(), run.left, run.right);
     return { ok: inside && lines <= this.settings.lines, lines, end };
   }
 
@@ -759,27 +821,60 @@ export class Elide {
   /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
   /** `shown`: the visible run it's part of, which a highlight may go on into. */
   private fill(el: HTMLElement, from: number, to: number, shown: Range = [0, this.g.length]) {
-    if (this.settings.glyphs) {
-      const want = this.glyphEls.slice(from, to);
-      const have = el.childNodes;
-      if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
-      return;
-    }
-    fillPiece(el, this.g, this.classes, [from, to], shown);
+    if (this.settings.glyphs) fillGlyphs(el, this.glyphEls, this.chains, [from, to]);
+    else fillPiece(el, this.g, this.marking, [from, to], shown);
+  }
+
+  private get marking(): Marking {
+    const sought = this.sought;
+    return { classes: this.classes, chains: this.chains, match: sought?.by === 'find' ? sought.range : null };
+  }
+
+  /** Show the suffix as the text is (or isn't) truncated. */
+  private suffixFor(truncated: boolean) {
+    this.suffix?.show(truncated || this.settings.showSuffix === 'always');
   }
 
   /**
-   * Make `lineEl`'s children exactly `want`, moving as little as possible:
-   * ellipses that stay keep their place, so their animations and hover
-   * state survive resizing.
+   * Put the text each ellipsis hides in it, for find in page to find: word by
+   * word to keep a match in sight (see `fillWords`), or as it would show
+   * expanded (see `reveal`).
    */
-  private reconcile(want: Node[]) {
-    const parent = this.lineEl;
-    want.forEach((node, i) => {
-      const at = parent.childNodes[i];
-      if (at !== node) parent.insertBefore(node, at ?? null);
+  private fillFound(hidden: readonly Range[]) {
+    const { find } = this.settings;
+    this.joins.forEach((join, j) => {
+      const part = hidden[j] ?? [0, 0];
+      setFindable(join, find !== false);
+      if (find === 'keep') fillWords(join, this.g, wordsOf(this.g), part);
+      else fillPiece(join.found, this.g, this.marking, part, [0, this.g.length]);
     });
-    while (parent.childNodes.length > want.length) parent.lastChild!.remove();
+  }
+
+  /**
+   * Show what the first `count` ellipses hide in their place, the text
+   * wrapping onto as many lines as it takes (`on`), or put the ellipses back.
+   */
+  private reveal(on: boolean, hidden: readonly Range[] = this.cut) {
+    this.revealed = on;
+    this.joins.forEach((join, j) => {
+      const part = hidden[j];
+      const shown = on && !!part;
+      // Found word by word: shown, it's as the text would show.
+      if (shown && this.settings.find === 'keep') {
+        forgetWords(join);
+        fillPiece(join.found, this.g, this.marking, part, [0, this.g.length]);
+      }
+      showHidden(join, shown, this.settings.find !== false);
+    });
+    // A path or a URL has nowhere to wrap: it breaks where it must.
+    this.lineEl.style.overflowWrap = on ? 'break-word' : '';
+    if (on) {
+      this.lineEl.style.letterSpacing = '';
+      if (WRAP_MODE) this.lineEl.style.setProperty('text-wrap-mode', '');
+      else this.lineEl.style.whiteSpace = '';
+      this.unlockHeight();
+    }
+    this.element.toggleAttribute('data-fp-expanded', on);
   }
 
   /**
@@ -790,10 +885,11 @@ export class Elide {
     const first = this.joins[0]!;
     first.el.style.display = 'none';
     first.el.style.position = '';
-    this.reconcile([this.runEl(0), first.el]);
+    reconcile(this.lineEl, [this.runEl(0), first.el]);
     this.fill(this.runEl(0), 0, this.g.length);
     this.fill(first.before, 0, 0);
     this.fill(first.after, 0, 0);
+    this.suffixFor(false);
   }
 
   /**
@@ -810,16 +906,16 @@ export class Elide {
     }
     const n = this.g.length;
     this.lineEl.style.letterSpacing = '';
-    this.reconcile([this.runEl(0), first.el]);
+    reconcile(this.lineEl, [this.runEl(0), first.el]);
     this.fill(this.runEl(0), 0, n);
     this.fill(first.before, 0, 0);
     this.fill(first.after, n, n);
     first.el.style.position = 'absolute';
+    this.suffixFor(false);
   }
 
   /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
   private render(run: Run, hidden: readonly Range[]): GapPlan[] {
-    const n = this.g.length;
     const m = hidden.length;
     this.lineEl.style.letterSpacing = '';
     if (m === 0) {
@@ -830,27 +926,9 @@ export class Elide {
     for (let j = 0; j < m; j++) want.push(this.join(j).el, this.runEl(j + 1));
     this.joins[0]!.el.style.display = '';
     this.joins[0]!.el.style.position = '';
-    this.reconcile(want);
-
-    // Visible run r lies between ellipsis r - 1 and ellipsis r. Its first
-    // glyph sits in the join before it and its last in the join after it,
-    // so a line break can't separate an ellipsis from its neighbours.
-    for (let r = 0; r <= m; r++) {
-      let a = r === 0 ? 0 : hidden[r - 1]![1];
-      let b = r === m ? n : hidden[r]![0];
-      const shown: Range = [a, b];
-      if (r > 0) {
-        const take = a < b ? 1 : 0;
-        this.fill(this.joins[r - 1]!.after, a, a + take, shown);
-        a += take;
-      }
-      if (r < m) {
-        const take = a < b ? 1 : 0;
-        this.fill(this.joins[r]!.before, b - take, b, shown);
-        b -= take;
-      }
-      this.fill(this.runEl(r), a, b, shown);
-    }
+    reconcile(this.lineEl, want);
+    this.suffixFor(true);
+    for (const { el, range, shown } of this.layoutOf(hidden)) this.fill(el, range[0], range[1], shown);
 
     const layout = this.markLayout(run);
     if (layout.css !== null) for (let j = 0; j < m; j++) styleMarks(this.joins[j]!.marks, layout.css);
@@ -877,7 +955,7 @@ export class Elide {
   }
 
   /** The rendered text, for `justify` to fill its lines. */
-  private justified(run: Run, plans: GapPlan[], lines: number): Justified {
+  private justified(run: Run, plans: GapPlan[], lines: number, hidden: readonly Range[]): Justified {
     return {
       mode: this.settings.justify,
       maxGap: this.settings.maxGap === null ? null : toPx(this.settings.maxGap, run.marks!.fontSize),
@@ -886,8 +964,8 @@ export class Elide {
       right: run.right,
       layout: run.marks!,
       plans,
-      characters: this.lineEl.textContent?.length ?? 1,
-      boxes: () => lineBoxes(this.lineEl),
+      characters: shownLength(this.offsets, hidden, this.joins[0]?.marks.length ?? 0),
+      boxes: () => lineBoxes(...this.lineParts()),
       lineOf: (j, boxes) => this.lineOf(j, boxes),
       fits: () => this.measure(run),
       space: (j, left, right, inner) => this.applySpacing(j, left, right, inner),
@@ -1032,6 +1110,8 @@ export class Elide {
     const host = this.element;
     this.owed = null;
     if (this.destroyed || !host.isConnected) return null;
+    // Expanded text wraps as it likes: only a change of text or options needs a pass.
+    if (this.opener !== null && (reason === 'resize' || reason === 'fonts')) return null;
     // In content that `content-visibility: auto` skips, reading layout lays
     // it out there and then, one element at a time. Wait until it is
     // rendered: the ResizeObserver reports it then.
@@ -1071,13 +1151,16 @@ export class Elide {
       this.settings.justify !== 'spread' &&
       cs.direction === 'ltr' &&
       /^(start|left|justify)$/.test(cs.textAlign) &&
-      // A highlight may change the font, which the glyph widths don't know.
-      this.classes.every((c) => c === null);
+      // A highlight or an element may change the font, which the glyph widths don't know.
+      this.classes.every((c) => c === null) &&
+      this.chains.length === 0 &&
+      this.suffix === null &&
+      !this.revealed;
     let base: { cut: Range[]; end: number } | null = null;
     // (Or the full text, when it has just been set and shows in full.)
     const fresh = this.fresh;
     if (predictable && this.g.length > 0 && (fresh || ((reason === 'resize' || reason === 'init') && !this.pendingReset))) {
-      const { end } = lineSpan(this.lineEl, run.left, run.right);
+      const { end } = lineSpan([this.lineEl], run.left, run.right);
       const added = fresh ? 0 : (previous?.gaps.reduce((sum, g) => sum + g.slack, 0) ?? 0);
       base = { cut: fresh ? [] : (previous?.hidden.map((p): Range => [p.start, p.end]) ?? []), end: end - added };
     }
@@ -1096,6 +1179,11 @@ export class Elide {
     this.fresh = false;
     this.steadyLines(whiteSpace);
     this.clip(false);
+    if (this.revealed) this.reveal(false);
+    if (this.unsaid) {
+      speak(this.srEl, this.element, this.g, this.chains);
+      this.unsaid = false;
+    }
 
     // Where things were when last painted, for listeners that animate the
     // change. (Measuring now would see the old text reflowed at the new size.)
@@ -1113,20 +1201,15 @@ export class Elide {
     const { snap, trim } = this.settings;
     let hidden: Range[] = [];
     let fit: Fit = { ok: false, lines: 0, end: 0 };
-    let pins = this.pins;
+    const pinned = () => (this.sought ? union([this.sought.range, ...this.pins]) : this.pins);
+    let pins = pinned();
     let gaps: GapInfo[] = [];
     let slack = 0;
     let plans: GapPlan[] = [];
 
-    const held = (['height', 'overflow'] as const).map(
-      (p) => [p, host.style.getPropertyValue(p), host.style.getPropertyPriority(p)] as const,
-    );
-    if (hold) {
-      host.style.setProperty('height', height, 'important');
-      host.style.setProperty('overflow', 'clip', 'important');
-    }
+    const held = hold ? [holdStyle(host, 'height', height), holdStyle(host, 'overflow', 'clip')] : [];
     try {
-      for (let i = 0; i < n; i++) run.sums[i + 1] = run.sums[i]! + this.glyphMetrics(run, this.g[i]!).advance;
+      for (let i = 0; i < n; i++) run.sums[i + 1] = run.sums[i]! + glyphIn(run, this.g[i]!).advance;
       const layout = run.marks;
       let predictor: Predictor | null = null;
       if (base && layout) {
@@ -1162,16 +1245,16 @@ export class Elide {
       // A judgement shouldn't be wrong, but if the final measurement says it
       // was, the cut is found again without judging.
       for (;;) {
-        pins = this.pins;
+        pins = pinned();
         hidden = [];
         // Trying the full text means cancelling the ellipsis, so only do it
         // when the text might fit: its glyph widths summed can't exceed the
         // room on all lines (with some leeway for kerning and collapsed spaces).
-        const room = (run.right - run.left) * this.settings.lines;
+        const room = (run.right - run.left) * this.settings.lines - run.suffix;
         const full = run.sums[n]! <= room * 1.1 + 1 && (yield* attempt.call(this, []));
         if (!full && n > 0) {
           // Kept parts that can't all fit give way, last first.
-          while (pins.length > 0 && !(yield* attempt.call(this, at(0)))) pins = pins.slice(0, -1);
+          while (pins.length > 0 && !(yield* attempt.call(this, at(0)))) pins = giveWay(pins, this.sought?.range ?? null);
           yield* phase.write();
           // Where the search starts: what the canvas widths say fits. Kerning,
           // wrapping and rounding make that a guess, but a steady one, so it
@@ -1200,16 +1283,18 @@ export class Elide {
         predictor = null;
         judged = false;
       }
-      if (hidden.length > 0) ({ gaps, slack } = yield* justify(this.justified(run, plans, fit.lines), phase));
+      if (hidden.length > 0) ({ gaps, slack } = yield* justify(this.justified(run, plans, fit.lines, hidden), phase));
       yield* phase.write();
+      this.fillFound(hidden);
+      if (this.opener !== null) this.reveal(true, hidden);
     } finally {
-      if (hold) for (const [p, value, priority] of held) host.style.setProperty(p, value, priority);
+      for (const release of held.reverse()) release();
     }
 
     const state = this.makeState(hidden, fit.lines, gaps, pins, slack);
     this.current = state;
     this.unlockHeight();
-    if (hold && state.truncated && this.settings.lines > 1) {
+    if (hold && state.truncated && this.settings.lines > 1 && !this.revealed) {
       yield* phase.read();
       const natural = getComputedStyle(host).height;
       yield* phase.write();
@@ -1221,6 +1306,7 @@ export class Elide {
       else host.removeAttribute('title');
       this.titled = state.truncated;
     }
+    if (this.focused) this.markFocus();
 
     if (tracking) {
       yield* phase.read();
@@ -1231,50 +1317,9 @@ export class Elide {
 
   /** Tell listeners about a finished pass. */
   private finish({ reason, previous, state, reset, tracking, glyphsBefore, marksBefore }: Painted) {
-    if (tracking) this.emit(reason, previous, state, reset, glyphsBefore, marksBefore);
+    const change = tracking ? changeOf(reason, previous, state, reset, glyphsBefore, marksBefore) : null;
+    if (change) for (const fn of this.listeners) fn(change);
     for (const fn of this.renderListeners) fn(state);
-  }
-
-  private emit(
-    reason: ChangeReason,
-    previous: ElideState | null,
-    state: ElideState,
-    reset: boolean,
-    glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>,
-    marksBefore: DOMRect[][],
-  ) {
-    const same = previous && !reset && sameParts(previous.hidden, state.hidden);
-    if (same && (reason === 'resize' || reason === 'refresh')) return;
-    const n = state.length;
-
-    const shown: number[] = [];
-    const gone: number[] = [];
-    const hiddenGlyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
-    if (!reset && previous) {
-      for (let i = 0; i < n; i++) {
-        const was = isVisible(previous, i);
-        const is = isVisible(state, i);
-        if (is && !was) {
-          shown.push(i);
-        } else if (was && !is) {
-          gone.push(i);
-          const before = glyphsBefore.get(i);
-          if (before) hiddenGlyphs.set(i, before);
-        }
-      }
-    }
-    const change: ElideChange = {
-      reason,
-      state,
-      previous: reset ? null : previous,
-      reset,
-      shown,
-      hidden: gone,
-      hiddenGlyphs,
-      glyphsBefore,
-      marksBefore,
-    };
-    for (const fn of this.listeners) fn(change);
   }
 
   /** Remember glyph and mark positions, relative to the host, as they are about to be painted. */
@@ -1286,7 +1331,7 @@ export class Elide {
       this.glyphEls.forEach((el, i) => {
         if (!el.isConnected) return;
         const box = el.getBoundingClientRect();
-        glyphs.set(i, { box: local(box), ink: local(this.inkOf(run, i, box)) });
+        glyphs.set(i, { box: local(box), ink: local(glyphInk(run, this.g[i], box)) });
       });
     }
     const marks = (this.current?.hidden ?? []).map((_, j) => this.marks(j).map(local));
@@ -1303,6 +1348,7 @@ export class Elide {
       text: this.text,
       length: this.g.length,
       truncated: hidden.length > 0,
+      expanded: this.revealed,
       hidden: hidden.map(part),
       kept: hidden.length > 0 ? pins.map(part) : [],
       lines,

@@ -2,7 +2,18 @@
  * The marks an ellipsis is made of: characters of a string, or drawn shapes.
  */
 import { graphemes } from './graphemes.ts';
-import { type Font, type GlyphMetrics, applyTextTransform, dotSpacing, fontAscent, fontOf, inkGap, inkRuns, measure } from './metrics.ts';
+import {
+  type Font,
+  type GlyphMetrics,
+  applyTextTransform,
+  dotSpacing,
+  fontAscent,
+  fontOf,
+  inkBox,
+  inkGap,
+  inkRuns,
+  measure,
+} from './metrics.ts';
 
 export type Shape = 'dot' | 'bullet' | 'ring' | 'square';
 export type Length = number | `${number}em` | `${number}px`;
@@ -181,6 +192,19 @@ export function styleMarks(marks: readonly HTMLElement[], css: string): void {
     el.style.marginLeft = margin;
     el.dataset.fpCss = css;
   }
+}
+
+/**
+ * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`.
+ * For a single glyph like '…' the dots are found in the glyph itself.
+ */
+export function markInk(layout: MarkLayout, marks: readonly HTMLElement[], ellipsis: HTMLElement): DOMRect[] {
+  if (layout.drawn) return marks.map((m) => m.getBoundingClientRect());
+  const baseline = ellipsis.getBoundingClientRect().top + layout.ascent;
+  const boxes = marks.map((el, i) => inkBox(layout.metrics[i]!, el.getBoundingClientRect().left, baseline));
+  const ink = boxes[0];
+  if (boxes.length !== 1 || !ink || !layout.runs || layout.runs.length <= 1) return boxes;
+  return layout.runs.map(([a, b]) => new DOMRect(ink.left + a, ink.top, b - a, ink.height));
 }
 
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */

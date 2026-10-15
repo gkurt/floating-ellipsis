@@ -94,12 +94,24 @@ export function visible(t: Elide): string {
   return t.graphemes.filter((_, i) => isVisible(state, i)).join('');
 }
 
-/** The text actually rendered, without the ellipses. */
+/** The text actually rendered, without the ellipses (or the text they hide, for find in page). */
 export function rendered(t: Elide): string {
   const line = t.element.querySelector('[data-fp-text]')!.cloneNode(true);
   if (!(line instanceof Element)) return '';
-  for (const e of line.querySelectorAll('[data-fp-ellipsis], [data-fp-ghosts]')) e.remove();
+  for (const e of line.querySelectorAll('[data-fp-ellipsis], [data-fp-ghosts], [data-fp-found]')) e.remove();
   return line.textContent ?? '';
+}
+
+/** What a screen reader reads from the element's screen-reader copy: its text, generated or not. */
+export function spoken(el: HTMLElement): string {
+  const copy = el.querySelector('[data-fp-full]')!;
+  let text = '';
+  const walker = document.createTreeWalker(copy, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node instanceof Text) text += node.data;
+    else if (node instanceof Element) text += node.getAttribute('data-fp-say') ?? '';
+  }
+  return text;
 }
 
 /** How many graphemes show. */

@@ -253,7 +253,7 @@ export class Tooltip {
   private triggerAt(node: EventTarget | null): { trigger: Element; instance: Elide } | null {
     for (let el = node instanceof Element ? node : null; el; el = el.parentElement) {
       const instance = this.triggers.get(el);
-      if (instance) return instance.truncated ? { trigger: el, instance } : null;
+      if (instance) return instance.truncated && !instance.expanded ? { trigger: el, instance } : null;
     }
     return null;
   }
@@ -278,7 +278,7 @@ export class Tooltip {
     this.cancel();
     if (this.holding) return;
     this.close(false, true);
-    if (!target.instance.truncated) return;
+    if (!target.instance.truncated || target.instance.expanded) return;
     const { reveal, respectReducedMotion } = this.settings;
     const still = respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const shown = reveal === 'peek' ? this.peek(target) : this.full(target, reveal === 'grow' && !still);

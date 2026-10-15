@@ -20,6 +20,47 @@ export interface GlyphMetrics {
   descent: number;
 }
 
+/** A font as a pass lays text out in it, and the metrics of its graphemes so far. */
+export interface Typeset {
+  font: Font;
+  letterSpacing: number;
+  transform: string;
+  glyphs: Map<string, GlyphMetrics>;
+}
+
+/** How text in an element with computed style `cs` is set, no graphemes measured yet. */
+export function typesetOf(cs: CSSStyleDeclaration): Typeset {
+  const letterSpacing = parseFloat(cs.letterSpacing);
+  return {
+    font: fontOf(cs),
+    letterSpacing: Number.isFinite(letterSpacing) ? letterSpacing : 0,
+    transform: cs.textTransform,
+    glyphs: new Map(),
+  };
+}
+
+/** Metrics of grapheme `g` as `run` lays it out (letter-spacing in its advance). */
+export function glyphIn(run: Typeset, g: string): GlyphMetrics {
+  let m = run.glyphs.get(g);
+  if (!m) {
+    m = measure(run.font, applyTextTransform(g, run.transform));
+    if (run.letterSpacing !== 0) m.advance += run.letterSpacing;
+    run.glyphs.set(g, m);
+  }
+  return m;
+}
+
+/** The ink box of grapheme `g`, laid out in `box` by `run`: the box itself for whitespace (it has no ink). */
+export function glyphInk(run: Typeset, g: string | undefined, box: DOMRect): DOMRect {
+  if (g === undefined || /^\s+$/u.test(g)) return box;
+  return inkBox(glyphIn(run, g), box.left, box.top + fontAscent(run.font));
+}
+
+/** The ink box of a glyph with metrics `m`, laid out from `origin` on `baseline`. */
+export function inkBox(m: GlyphMetrics, origin: number, baseline: number): DOMRect {
+  return new DOMRect(origin - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
+}
+
 export type Gap = 'dots' | 'natural' | 'none' | number | `${number}em` | `${number}px`;
 
 export interface GapPlan {

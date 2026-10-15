@@ -23,6 +23,8 @@ const ATTRIBUTES = [
   'glyphs',
   'tooltip-title',
   'copy',
+  'show-suffix',
+  'find',
   'text',
 ] as const;
 
@@ -52,13 +54,17 @@ function parseSnap(value: string): Snap | null {
 }
 
 /**
- * Truncates its text to fit, like `elide(this, options)`. Attributes:
- * `lines`, `position` (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or
- * `/regex/flags`) and `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap` (`none` for no limit), `justify` (`false` to turn it off),
- * `trim` (`false`), `snap` (`words`, `paths`, or separator characters),
- * `glyphs`, `tooltip-title` (the `title` option), `copy` and `text` (else
- * its text content). The `options` property takes anything `elide` does and
- * wins over attributes. Fires `elidechange` with an `ElideChange` as `detail`.
+ * Truncates its content to fit, like `elide(this, options)`: its text, with
+ * inline elements (links, code, emphasis) kept. A child with
+ * `slot="suffix"` is the `suffix`. Attributes: `lines`, `position`
+ * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
+ * `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap`
+ * (`none` for no limit), `justify` (`false` to turn it off), `trim`
+ * (`false`), `snap` (`words`, `paths`, or separator characters), `glyphs`,
+ * `tooltip-title` (the `title` option), `copy`, `show-suffix`, `find`
+ * (`keep`, `expand` or `false`) and `text` (else its content). The `options` property takes
+ * anything `elide` does and wins over attributes. Fires `elidechange` with an
+ * `ElideChange` as `detail`.
  *
  * It's a block by default: its width must not depend on its content.
  */
@@ -67,7 +73,9 @@ export class ElideElement extends HTMLElement {
 
   private binding: Binding | null = null;
   private extra: ElideOptions = {};
-  private initialText = '';
+  /** A copy of its content as first connected, without the suffix. */
+  private initial: Node = document.createDocumentFragment();
+  private suffix: Element | null = null;
   /** The last `snap` attribute and what it made, so it isn't new on every change. */
   private snapped: [string, Snap | null] = ['', null];
 
@@ -108,7 +116,10 @@ export class ElideElement extends HTMLElement {
     }
     if (this.binding) return;
     if (getComputedStyle(this).display === 'inline') this.style.display = 'block';
-    this.initialText = (this.textContent ?? '').replace(/\s+/g, ' ').trim();
+    this.suffix = this.querySelector(':scope > [slot="suffix"]');
+    const content = document.createDocumentFragment();
+    for (const node of this.childNodes) if (node !== this.suffix) content.append(node.cloneNode(true));
+    this.initial = content;
     this.binding = new Binding(this, this.resolved());
   }
 
@@ -128,9 +139,15 @@ export class ElideElement extends HTMLElement {
       return v === null ? undefined : v !== 'false';
     };
     const options: ElideOptions = {
-      text: attr('text') ?? this.initialText,
+      text: attr('text') ?? this.initial,
       onChange: this.emit,
     };
+    if (this.suffix) options.suffix = this.suffix;
+    const showSuffix = attr('show-suffix');
+    if (showSuffix === 'always' || showSuffix === 'truncated') options.showSuffix = showSuffix;
+    const find = attr('find');
+    if (find === 'keep' || find === 'expand') options.find = find;
+    else if (find === 'false') options.find = false;
     const lines = attr('lines');
     if (lines !== null) options.lines = Number(lines);
     const position = attr('position');

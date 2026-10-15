@@ -17,6 +17,12 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   and squares sized from the font itself.
 - **Words and paths.** Cuts can snap to whole words (in any language
   `Intl.Segmenter` knows) or to path segments, dropping as little as they can.
+- **Links and markup.** Links, `code` and emphasis in the text show wherever
+  their text does, copied around whatever part of them is left.
+- **Suffixes.** A "Read more" button, a badge or a time that follows the text
+  on its last line and is never cut, and `expand()` to show it all.
+- **Find in page.** What an ellipsis hides is still found by the browser's
+  find in page, and the match stays in sight, or opens the text where it is.
 - **Copy-friendly.** Selecting across an ellipsis and copying gives the hidden
   text. Screen readers get the full text.
 - **Hooks.** Whether the text is truncated, what each ellipsis hides, the line
@@ -98,23 +104,26 @@ through trusted publishing (no token).
 
 ## Options
 
-| Option     | Default      |                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `text`     | element text | Text to show. Defaults to the element's text, with whitespace collapsed.                                                                                                                                                                                                                                                                                                                                                            |
-| `lines`    | `1`          | Maximum number of lines.                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `position` | `'end'`      | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses.                                                                                                                                                                                                                                                                                                                    |
-| `keep`     | `null`       | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. `{ match, class }` and `{ start, end, class }` also highlight them. When they can't all fit, the last ones give way first. See [Highlights](#highlights).                                                                                                                          |
-| `ellipsis` | `'…'`        | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                                                                                                                                                                                                                                                       |
-| `gap`      | `'dots'`     | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
-| `justify`  | `'dots'`     | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
-| `maxGap`   | `'0.75em'`   | The widest an ink gap next to or inside an ellipsis gets from `justify` (`'dots'`, `'ellipsis'`): px, or `'0.75em'` / `'12px'`. Room past it stays at the end of the line, which then isn't flush, so a long word wrapping or a dropped whole word doesn't spread the dots apart. `null`: no limit.                                                                                                                                 |
-| `trim`     | `true`       | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
-| `snap`     | `null`       | Move cuts to nicer boundaries: `words()` cuts prose between words, `separators('/\\')` paths at segments. See [Snapping](#snapping).                                                                                                                                                                                                                                                                                                |
-| `observe`  | `true`       | Re-truncate on resize (ResizeObserver) and when web fonts load. An element more than a screen away from the viewport puts this off until it comes near, when what it shows meanwhile can't change its height (one line, or several held at their height once truncated).                                                                                                                                                            |
-| `glyphs`   | `false`      | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text.                                                                                                                                                                                                                                                                                       |
-| `title`    | `false`      | Put the full text in the element's `title` while it is truncated.                                                                                                                                                                                                                                                                                                                                                                   |
-| `copy`     | `'full'`     | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis).                                                                                                                                                                                                                                                                                                               |
-| `onChange` | —            | Same as `instance.onChange(fn)`.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Option       | Default         |                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`       | element content | What to show: a string, or a node whose text and inline elements are shown (see [Markup](#markup)). Defaults to the element's own content, read the same way, with whitespace collapsed.                                                                                                                                                                                                                                            |
+| `lines`      | `1`             | Maximum number of lines.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `position`   | `'end'`         | `'start'`, `'middle'`, `'end'` or a number from 0 to 1. An array such as `[0.33, 0.67]` places several ellipses.                                                                                                                                                                                                                                                                                                                    |
+| `keep`       | `null`          | Parts that always stay visible: a string (first match), a RegExp (every match if global), `{ start, end }` string offsets, or an array of these. `{ match, class }` and `{ start, end, class }` also highlight them. When they can't all fit, the last ones give way first. See [Highlights](#highlights).                                                                                                                          |
+| `ellipsis`   | `'…'`           | A string, where each character is a separate mark (`'...'`, `'·····'`). Or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                                                                                                                                                                                                                                                       |
+| `gap`        | `'dots'`        | Ink gap on both sides of the ellipsis. `'dots'`: the spacing between the ellipsis' own marks. `'natural'`: the average of the font's natural gaps. `'none'`: untouched. Or a number in px, or a string like `'0.1em'` / `'2px'`.                                                                                                                                                                                                    |
+| `justify`    | `'dots'`        | Where the leftover space on each line holding an ellipsis goes, so the line ends flush. `'dots'`: every gap (text, marks, text) becomes equal; a single `…` is redrawn as separate dots shaped like its own. `'ellipsis'`: into the two gaps around the ellipsis, equally, keeping the dots' own spacing. `'spread'`: letter-spacing across the line (single-line only; otherwise like `'ellipsis'`). `false`: leave it at the end. |
+| `maxGap`     | `'0.75em'`      | The widest an ink gap next to or inside an ellipsis gets from `justify` (`'dots'`, `'ellipsis'`): px, or `'0.75em'` / `'12px'`. Room past it stays at the end of the line, which then isn't flush, so a long word wrapping or a dropped whole word doesn't spread the dots apart. `null`: no limit.                                                                                                                                 |
+| `trim`       | `true`          | Drop whitespace next to an ellipsis.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `snap`       | `null`          | Move cuts to nicer boundaries: `words()` cuts prose between words, `separators('/\\')` paths at segments. See [Snapping](#snapping).                                                                                                                                                                                                                                                                                                |
+| `observe`    | `true`          | Re-truncate on resize (ResizeObserver) and when web fonts load. An element more than a screen away from the viewport puts this off until it comes near, when what it shows meanwhile can't change its height (one line, or several held at their height once truncated).                                                                                                                                                            |
+| `glyphs`     | `false`         | Wrap each grapheme in its own element, for per-glyph styling and transitions. Kept glyphs get `data-fp-kept`. Adds DOM; meant for short text.                                                                                                                                                                                                                                                                                       |
+| `title`      | `false`         | Put the full text in the element's `title` while it is truncated.                                                                                                                                                                                                                                                                                                                                                                   |
+| `copy`       | `'full'`        | What a copied selection holds where it crosses an ellipsis: `'full'` (the hidden text) or `'visible'` (the ellipsis).                                                                                                                                                                                                                                                                                                               |
+| `suffix`     | `null`          | Content that follows the text on its last line and is never cut: a string, or a node, which is moved there and given back on `destroy()`. See [Suffixes](#suffixes).                                                                                                                                                                                                                                                                |
+| `showSuffix` | `'always'`      | When the suffix shows: `'always'`, or only while the text is `'truncated'` (expanded counts).                                                                                                                                                                                                                                                                                                                                       |
+| `find`       | `'keep'`        | What find in page does with what an ellipsis hides: `'keep'` finds it and keeps the word a match starts in visible for now, `'expand'` finds it and expands the text in place, `false` leaves it out. See [Find in page](#find-in-page).                                                                                                                                                                                            |
+| `onChange`   | —               | Same as `instance.onChange(fn)`.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 `instance.update(options)` changes any option, including `text`.
 
@@ -156,8 +165,10 @@ highlighted too. Overlapping parts get both classes. In glyph mode the class
 goes on each glyph. `classOf(i)` tells the classes of grapheme `i`, and the
 [tooltip](#tooltips) gives its copy of the text the same classes.
 
-A highlight next to an ellipsis comes in pieces: the grapheme beside an
-ellipsis is kept with it, so the two never part across lines. A piece the
+A highlight next to an ellipsis can come in pieces: what's beside an
+ellipsis is kept with it, so the two never part across lines. That's as much
+of the highlight as can go with it (all of it on one line, up to a space on
+more), so a piece is seldom a lone letter. A piece the
 highlight goes on from, or into, says so with `data-fp-open` (`start`,
 `end`), so rounded corners can be kept to the outer ends:
 
@@ -211,14 +222,109 @@ graphemes it moves counts as one more left over), but a cut never moves past
 the cuts either side, nor takes the start or end of the text unless it was
 already there.
 
+### Markup
+
+```html
+<p class="post">
+  We moved the <a href="/docs/keep">kept parts</a> into their own pass, so <code>lineSpan()</code> is <em>much</em> simpler.
+</p>
+```
+
+```js
+elide(document.querySelector('.post'), { lines: 3 });
+elide(el, { text: fragment }); // or hand it the content: a node, or a fragment for several
+```
+
+The text is read with the inline elements around it, and each part of the
+line that shows sits inside copies of its elements: a link cut by an ellipsis
+is a link on both sides of it, and a highlight inside a link is inside a copy
+of the link. Beside an ellipsis an element stays in one piece as far as it
+can, as a highlight does, and a piece of one that goes on past an ellipsis
+says so with `data-fp-open` (`start`, `end`), as [highlights](#highlights) do.
+
+The copies are shallow clones: no `id`, out of the tab order, and without
+the original's listeners, so listen on the element or above it (events
+bubble from the copies). Screen readers get the text with its elements, links
+and all, in the element's screen-reader copy, and keyboard focus goes to
+those: the copies in the line of whatever has focus get `data-fp-focus`, to
+draw a focus ring on. Focus reaching a link the cut hides keeps the link in
+sight while it has focus, as find in page does (see [Find in page](#find-in-page)),
+or expands the text with `find: 'expand'`.
+
+```css
+.post [data-fp-focus] {
+  outline: 2px solid Highlight;
+  outline-offset: 1px;
+}
+```
+
+Elements without text (images, icons) are dropped, `<br>` is a space, and the
+gaps around an ellipsis are planned with the element's own font, as with a
+highlight that changes it.
+
+### Suffixes
+
+```js
+const more = document.createElement('button');
+more.textContent = 'Read more';
+const post = elide(el, { lines: 3, suffix: more, showSuffix: 'truncated', find: 'expand' });
+more.onclick = () => (post.expanded ? post.collapse() : post.expand());
+post.onRender((state) => (more.textContent = state.expanded ? 'Show less' : 'Read more'));
+
+elide(row, { suffix: row.querySelector('.badge') }); // a badge the row already holds
+```
+
+A suffix follows the text on its last line, glued to it, and the text is cut
+to leave it room: a "Read more" button, a badge, an unread count, a time. Its
+own spacing (a margin) is yours. A node is moved into place, from the element
+itself or anywhere else, keeping its listeners, and goes back where it was on
+`destroy()`. When its content changes width (a label or a time that
+changes), the text fits again. With `showSuffix: 'truncated'` it shows only
+while the text is cut short, so a button that reveals the rest needn't show
+when there is no rest.
+
+`expand()` shows all of the text, what the ellipses hide in their place and on
+as many lines as it takes, until `collapse()`. The cut is kept, so collapsing
+is quick, and an expanded instance doesn't re-truncate on resize.
+
+### Find in page
+
+What each ellipsis hides is kept beside it in a `hidden="until-found"` copy,
+so the browser's find in page finds it. What happens then is up to `find`:
+
+- `'keep'` (the default): the word the match starts in is kept visible, as
+  if it were in `keep`, with an ellipsis either side of it if need be, and
+  marked `data-fp-match` to style like the browser's own highlight. Browsers
+  don't tell a page what was searched, but they do say which hidden element
+  a match starts in, so each word of the copy is an element of its own.
+- `'expand'`: the text expands (see `expand()`), the match shows where it
+  is, and the browser highlights it. The element gets `data-fp-expanded`
+  meanwhile, and `state.expanded` says so. For a "Read more" kind of text.
+
+Either lasts until a press outside the text, or a match in another one.
+Browsers without `hidden="until-found"` don't search the copy. `find: false`
+leaves it out of the search.
+
+```css
+[data-fp-match] {
+  background: Mark;
+  color: MarkText;
+}
+```
+
+The screen-reader copy of the full text is generated content (`::before`),
+which screen readers read and find in page doesn't search, so a match in text
+that shows counts once.
+
 ## Instance API
 
-- `state`: `{ text, length, truncated, hidden, kept, lines, gaps, slack }`.
+- `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack }`.
   - `hidden` and `kept` are lists of `{ start, end, text }`, in grapheme indices.
   - `gaps[i]` describes ellipsis `i`: the target, the natural gaps, the final
     gaps (`left`, `inner[]`, `right`) and the `slack` it absorbed.
   - `slack` is the room the lines holding ellipses had before justification:
     small values mean the text is tightly packed.
+  - `expanded`: what the ellipses hide shows in their place (see `expand()`).
 - `truncated`, `graphemes`, `options`, `markStyle` (the marks actually drawn).
 - `ellipsisElement`: the first ellipsis. Stable for the life of the instance,
   so listeners can stay attached. `ellipses`: all showing ellipses.
@@ -240,9 +346,12 @@ already there.
   The event has `shown` / `hidden` grapheme indices, and where things were as
   last painted: `glyphsBefore` and `hiddenGlyphs` (box and ink of each glyph,
   in glyph mode) and `marksBefore`.
+- `expand()`, `collapse()`, `expanded`: show all of the text in place of
+  the ellipses, and put them back. See [Suffixes](#suffixes).
 - `refresh()`, `update(options)`, `destroy()`
 
-The element also gets a `data-truncated` attribute, for CSS.
+The element also gets a `data-truncated` attribute, and `data-fp-expanded`
+while expanded, for CSS.
 
 ## Before scripts run
 
@@ -320,13 +429,14 @@ the `text` option and leave the element empty. A `snap` made inline
 <elide-text position="middle" keep="/\.[^.]+$/" snap="paths">/Users/ada/notes/2026/difference-tables.md</elide-text>
 ```
 
-`<elide-text>` truncates its own text. Its attributes are `lines`, `position`
+`<elide-text>` truncates its own content, links and other inline elements
+kept, and a child with `slot="suffix"` is its suffix. Its attributes are `lines`, `position`
 (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`),
 `keep-class` (a class to highlight what `keep` matches), `max-gap` (`none`
 for no limit),
 `ellipsis`, `gap`, `justify` (`false` turns it off), `trim`, `snap` (`words`,
 `paths`, or separator characters), `glyphs`, `tooltip-title` (the `title`
-option), `copy` and `text`. The `options` property takes anything `elide` does,
+option), `copy`, `show-suffix`, `find` (`keep`, `expand` or `false`) and `text`. The `options` property takes anything `elide` does,
 over the attributes, `instance` is the live instance, and it fires
 `elidechange` with an `ElideChange` as `detail`. It's a block unless styled
 otherwise. `define(name)` registers it under another name.
@@ -569,8 +679,12 @@ line.
 
 ## Accessibility
 
-- Screen readers get the full text from a visually hidden copy; the truncated
-  rendering is `aria-hidden`.
+- Screen readers get the full text, with its links and other elements, from a
+  visually hidden copy; the truncated rendering is `aria-hidden`. The copy's
+  text is generated content, so find in page doesn't find it twice.
+- Links in the text are focused in that copy: their copies in the line get
+  `data-fp-focus` for a focus ring, and one the cut hides is kept in sight
+  while it has focus (or the text expands, with `find: 'expand'`).
 - The visible text stays selectable, and copying across an ellipsis gives the
   hidden text (`copy: 'full'`).
 - `title: true` adds a native tooltip with the full text while truncated.
@@ -582,7 +696,10 @@ line.
 
 ## Limits
 
-- Plain text only. Left-to-right text only.
+- Text and inline elements only: elements are copied without their listeners
+  or ids, and ones without text (images, icons) are dropped. Left-to-right
+  text only.
+- A suffix is a string or a DOM node, so in React it can only be a string.
 - The element's width must not depend on its content. Use a block, or a flex
   or grid item with `min-width: 0`.
 - A line whose leftover room is more than `maxGap` allows (a long word

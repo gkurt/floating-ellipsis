@@ -271,6 +271,57 @@
         </div>
       </section>
 
+      <section class="block" aria-labelledby="rich-title">
+        <div class="block-head">
+          <h2 id="rich-title">Links, suffixes and find in page</h2>
+          <p>
+            Links, <code>code</code> and emphasis in the text show wherever their text does: the cut copies them around whatever part of
+            them is left. A <code>suffix</code> follows the text on its last line and is never cut: a button, a badge, a time. And what an
+            ellipsis hides is still found by find in page. Press <kbd>Ctrl</kbd>&nbsp;<kbd>F</kbd> (<kbd>⌘</kbd>&nbsp;<kbd>F</kbd>) and
+            search for <q>lantern</q>, which none of these show. The issue keeps the word in sight, between two ellipses; the post, with
+            <code>find: 'expand'</code>, opens where it is.
+          </p>
+        </div>
+        <div class="stage">
+          <div class="resizable examples rich" id="richBox" style="width: 66%">
+            <div class="example">
+              <code>lines: 3, suffix: button, showSuffix: 'truncated', find: 'expand'</code>
+              <p id="post" class="post">
+                We moved the <a href="#keep-title">kept parts</a> into their own pass this week, which is why a search hit in the middle of
+                a cell now gets an ellipsis on <em>each</em> side. The tricky bit was <code>lineSpan()</code>: a highlight in a bolder font
+                makes a taller box, and two boxes on one line used to count as two lines. Thanks to everyone who sent traces, and to the
+                person who found that a paper lantern emoji at the very end of a path made the whole row wrap in Safari.
+                <button class="more" type="button">Read more</button>
+              </p>
+            </div>
+            <div class="example">
+              <code>suffix: badge</code>
+              <div class="issues" id="issues">
+                <p>
+                  <a href="#rich-title">Tooltip</a> grows from the wrong line when <code>lines: 2</code> and the text starts with a space
+                  <span class="badge">#512</span>
+                </p>
+                <p>
+                  Ellipsis loses its colour after <em>update()</em> changes the font, and the lantern icon beside it flickers
+                  <span class="badge">#498</span>
+                </p>
+                <p>
+                  Support <code>text-transform: capitalize</code> when measuring glyphs in <a href="#gap-title">balanced gaps</a>
+                  <span class="badge new">new</span>
+                </p>
+              </div>
+            </div>
+            <div class="example">
+              <code>position: 0.6</code>
+              <p id="commit" class="mono">
+                fix(<b>justify</b>): back off by <code>1/16px</code> when <a href="#multi-title">filling a line</a> would wrap it in Firefox
+              </p>
+            </div>
+            <button class="handle" aria-label="Resize the examples (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
       <section class="block" aria-labelledby="table-title">
         <div class="block-head">
           <h2 id="table-title">Crowded tables</h2>

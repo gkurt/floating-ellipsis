@@ -353,4 +353,20 @@ mpos.addEventListener('input', () => {
 segmented('mlines', (v) => article.update({ lines: Number(v) }));
 resizable($('#cardBox'));
 
+// ---------------------------------------------------------------------------
+// Links, suffixes and find in page
+
+// The button is the post's own: it moves to the end of the last line, and
+// shows while there's more to read (or the post is expanded).
+const postEl = $('#post');
+const more = $<HTMLButtonElement>('.more', postEl);
+const post = elide(postEl, { lines: 3, suffix: more, showSuffix: 'truncated', find: 'expand' });
+more.addEventListener('click', () => (post.expanded ? post.collapse() : post.expand()));
+// Find in page expands it too.
+post.onRender((state) => (more.textContent = state.expanded ? 'Show less' : 'Read more'));
+const issues = [...document.querySelectorAll<HTMLElement>('#issues p')].map((p) => elide(p, { suffix: $('.badge', p) }));
+const commit = elide($('#commit'), { position: 0.6 });
+resizable($('#richBox'));
+Object.assign(window, { post, issues, commit });
+
 animate();
