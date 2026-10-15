@@ -45,7 +45,7 @@ function stretches(graphemes: readonly string[], { classes, chains, match }: Mar
 
 const chainIds = new WeakMap<Chain, number>();
 let nextChain = 1;
-const chainId = (chain: Chain | null) => {
+export const chainId = (chain: Chain | null): number => {
   if (!chain) return 0;
   let id = chainIds.get(chain);
   if (id === undefined) chainIds.set(chain, (id = nextChain++));
@@ -85,7 +85,7 @@ export function besideEllipsis(
 }
 
 /** What each piece was last filled with, so filling it again is free. */
-const filled = new WeakMap<HTMLElement, string>();
+export const filled = new WeakMap<HTMLElement, string>();
 
 /**
  * Make `el` hold graphemes `[from, to)`: plain text, or text in spans for
@@ -131,71 +131,4 @@ export function fillPiece(el: HTMLElement, graphemes: readonly string[], marking
   el.replaceChildren(
     ...nest(placed, false, (copy, original, start, end) => open(copy, start, end, (i) => !!chains[i]?.includes(original))),
   );
-}
-
-/** Glyph mode: put the glyph elements of `[from, to)` in `el`, inside copies of their elements. */
-export function fillGlyphs(el: HTMLElement, glyphs: readonly HTMLElement[], chains: readonly (Chain | null)[], [from, to]: Range): void {
-  const want = glyphs.slice(from, to);
-  if (chains.length === 0) {
-    const have = el.childNodes;
-    if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
-    return;
-  }
-  const key = `${from}:${chains.slice(from, to).map(chainId).join(',')}`;
-  if (filled.get(el) === key && want.every((g) => el.contains(g))) return;
-  filled.set(el, key);
-  const placed: Placed[] = [];
-  for (let i = from; i < to; i++) {
-    const chain = chains[i] ?? null;
-    const last = placed.at(-1);
-    if (last && last.chain === chain) {
-      last.nodes.push(glyphs[i]!);
-      last.end = i + 1;
-    } else {
-      placed.push({ chain, nodes: [glyphs[i]!], start: i, end: i + 1 });
-    }
-  }
-  el.replaceChildren(...nest(placed, false));
-}
-
-/** Give the glyph elements of graphemes in `ranges` `attribute`, and take it from the rest. */
-export function markGlyphs(glyphs: readonly HTMLElement[], attribute: string, ranges: readonly Range[]): void {
-  glyphs.forEach((el, i) =>
-    el.toggleAttribute(
-      attribute,
-      ranges.some(([s, e]) => i >= s && i < e),
-    ),
-  );
-}
-
-/** The text node holding code unit `at` of a piece's text, and the offset in it. */
-export function textAt(el: HTMLElement, at: number): [Text, number] | null {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!(node instanceof Text)) continue;
-    if (at < node.data.length) return [node, at];
-    at -= node.data.length;
-  }
-  return null;
-}
-
-/**
- * The graphemes each node in a piece holding `[from, to)` spells: every
- * element and text node in it. `offsets[i]` is where grapheme `i` starts.
- */
-export function childRanges(el: HTMLElement, [from, to]: Range, offsets: readonly number[]): [Node, Range][] {
-  const out: [Node, Range][] = [];
-  let i = from;
-  const visit = (node: Node) => {
-    const start = i;
-    if (node instanceof Text) {
-      const end = offsets[start]! + node.data.length;
-      while (i < to && offsets[i]! < end) i++;
-    } else {
-      for (const child of node.childNodes) visit(child);
-    }
-    out.push([node, [start, i]]);
-  };
-  for (const child of el.childNodes) visit(child);
-  return out;
 }

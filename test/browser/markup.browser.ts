@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { define } from '#src/element.ts';
 import type { Elide } from '#src/elide.ts';
+import { lineRects } from '#src/geometry.ts';
+import { glyphs } from '#src/glyphs.ts';
 import { isVisible } from '#src/options.ts';
+import { suffix } from '#src/suffix.ts';
 import { PROSE, box, content, expectConsistent, expectFits, frames, make, rendered, spoken, sweep, track } from './helpers.ts';
 
 const LINKED =
@@ -31,7 +34,7 @@ function expectSuffixFits(t: Elide) {
   expect(t.state.lines).toBeGreaterThan(0);
   const suffix = t.element.querySelector('[data-fp-suffix]')!.getBoundingClientRect();
   const c = content(t.element);
-  const lines = t.lineRects();
+  const lines = lineRects(t);
   const last = lines.at(-1)!;
   expect(suffix.right).toBeLessThanOrEqual(c.right + 0.5);
   const middle = (suffix.top + suffix.bottom) / 2;
@@ -104,7 +107,7 @@ describe('markup', () => {
   });
 
   it('copies elements around glyphs in glyph mode', () => {
-    const t = make(marked(LINKED), { position: 'middle', glyphs: true });
+    const t = make(marked(LINKED), { position: 'middle', glyphs });
     for (const _w of sweep(t, 80, 600, 41)) {
       expectFits(t);
       expectConsistent(t);
@@ -179,7 +182,7 @@ describe('markup', () => {
 describe('suffix', () => {
   it('follows the text on its last line, inside the box, at every width', () => {
     for (const lines of [1, 2]) {
-      const t = make(box(PROSE), { lines, suffix: 'Read more' });
+      const t = make(box(PROSE), { lines, suffix: suffix('Read more') });
       for (const _w of sweep(t, 120, 700, 23)) {
         expect(t.state.lines).toBeLessThanOrEqual(lines);
         expectConsistent(t);
@@ -189,7 +192,7 @@ describe('suffix', () => {
   });
 
   it('never shows less in a wider box', () => {
-    const t = make(box(PROSE), { suffix: '12 min ago' });
+    const t = make(box(PROSE), { suffix: suffix('12 min ago') });
     let before = -1;
     for (const _w of sweep(t, 120, 900, 17)) {
       const n = t.state.length - t.state.hidden.reduce((sum, p) => sum + p.end - p.start, 0);
@@ -198,20 +201,20 @@ describe('suffix', () => {
     }
   });
 
-  it('shows only while the text is truncated, with showSuffix: truncated', () => {
-    const t = make(box(PROSE, 'width:200px'), { suffix: 'More', showSuffix: 'truncated' });
-    const suffix = () => t.element.querySelector<HTMLElement>('[data-fp-suffix]')!;
+  it("shows only while the text is truncated, with show: 'truncated'", () => {
+    const t = make(box(PROSE, 'width:200px'), { suffix: suffix('More', { show: 'truncated' }) });
+    const suffixEl = () => t.element.querySelector<HTMLElement>('[data-fp-suffix]')!;
     expect(t.truncated).toBe(true);
-    expect(suffix().getClientRects().length).toBeGreaterThan(0);
+    expect(suffixEl().getClientRects().length).toBeGreaterThan(0);
     t.update({ text: 'Short' });
     expect(t.truncated).toBe(false);
-    expect(suffix().getClientRects()).toHaveLength(0);
+    expect(suffixEl().getClientRects()).toHaveLength(0);
   });
 
   it('fits again when the suffix changes width', async () => {
     const button = document.createElement('button');
     button.textContent = 'Less';
-    const t = make(box(PROSE, 'width:260px'), { lines: 3, suffix: button });
+    const t = make(box(PROSE, 'width:260px'), { lines: 3, suffix: suffix(button) });
     expectSuffixFits(t);
     button.textContent = 'Read a lot more';
     await frames();
@@ -225,7 +228,7 @@ describe('suffix', () => {
     badge.textContent = '#482';
     home.append(badge, document.createElement('i'));
     document.body.append(home);
-    const t = make(box(PROSE), { suffix: badge });
+    const t = make(box(PROSE), { suffix: suffix(badge) });
     expect(t.element.contains(badge)).toBe(true);
     expectSuffixFits(t);
     t.destroy();
@@ -235,7 +238,7 @@ describe('suffix', () => {
   it('leaves a suffix that is the element’s own child out of the text, and puts it back', () => {
     const el = marked(`${PROSE} <button>More</button>`);
     const button = el.querySelector('button')!;
-    const t = make(el, { suffix: button });
+    const t = make(el, { suffix: suffix(button) });
     expect(t.state.text).toBe(PROSE);
     t.destroy();
     expect(el.lastElementChild).toBe(button);
@@ -333,8 +336,8 @@ describe('find in page', () => {
     for (const e of line.querySelectorAll('[data-fp-ellipsis]')) e.remove();
     expect(line.textContent).toBe(PROSE);
     const c = content(t.element);
-    expect(t.lineRects().length).toBeGreaterThan(1);
-    for (const r of t.lineRects()) expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
+    expect(lineRects(t).length).toBeGreaterThan(1);
+    for (const r of lineRects(t)) expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     await frames();
@@ -361,7 +364,7 @@ describe('find in page', () => {
     t.element.style.width = '240px';
     await frames();
     expect(t.expanded).toBe(true);
-    for (const r of t.lineRects()) expect(r.right).toBeLessThanOrEqual(content(t.element).right + 0.5);
+    for (const r of lineRects(t)) expect(r.right).toBeLessThanOrEqual(content(t.element).right + 0.5);
     t.collapse();
     expect(t.expanded).toBe(false);
     expectFits(t);

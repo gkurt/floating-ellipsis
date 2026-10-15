@@ -39,26 +39,24 @@ grid item with `min-width: 0`.
 
 ## Options
 
-| Option       | Default         |                                                                                                                                                     |
-| ------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `text`       | element content | A string, or a node whose text and inline elements are shown.                                                                                       |
-| `lines`      | `1`             | Maximum number of lines.                                                                                                                            |
-| `position`   | `'end'`         | `'start'`, `'middle'`, `'end'`, a number from 0 to 1, or an array of them for several ellipses.                                                     |
-| `keep`       | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. `{ match, class }` / `{ start, end, class }` also highlight them.       |
-| `ellipsis`   | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
-| `gap`        | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                            |
-| `justify`    | `'dots'`        | Where leftover room goes so lines end flush: `'dots'` (all gaps equal), `'ellipsis'` (the two outer gaps), `'spread'` (letter-spacing), or `false`. |
-| `maxGap`     | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                            |
-| `trim`       | `true`          | Drop whitespace next to an ellipsis.                                                                                                                |
-| `snap`       | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                        |
-| `observe`    | `true`          | Re-truncate on resize and when web fonts load.                                                                                                      |
-| `glyphs`     | `false`         | Wrap each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.                                                 |
-| `title`      | `false`         | Put the full text in `title` while truncated.                                                                                                       |
-| `copy`       | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                   |
-| `suffix`     | `null`          | A string or node that follows the text on its last line and is never cut.                                                                           |
-| `showSuffix` | `'always'`      | `'always'`, or only while `'truncated'`.                                                                                                            |
-| `find`       | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).     |
-| `onChange`   | —               | Same as `instance.onChange(fn)`.                                                                                                                    |
+| Option     | Default         |                                                                                                                                                     |
+| ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`     | element content | A string, or a node whose text and inline elements are shown.                                                                                       |
+| `lines`    | `1`             | Maximum number of lines.                                                                                                                            |
+| `position` | `'end'`         | `'start'`, `'middle'`, `'end'`, a number from 0 to 1, or an array of them for several ellipses.                                                     |
+| `keep`     | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. `{ match, class }` / `{ start, end, class }` also highlight them.       |
+| `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
+| `gap`      | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                            |
+| `justify`  | `'dots'`        | Where leftover room goes so lines end flush: `'dots'` (all gaps equal), `'ellipsis'` (the two outer gaps), `'spread'` (letter-spacing), or `false`. |
+| `maxGap`   | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                            |
+| `trim`     | `true`          | Drop whitespace next to an ellipsis.                                                                                                                |
+| `snap`     | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                        |
+| `observe`  | `true`          | Re-truncate on resize and when web fonts load.                                                                                                      |
+| `glyphs`   | `null`          | `glyphs` from `floating-ellipsis/glyphs`: each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.            |
+| `title`    | `false`         | Put the full text in `title` while truncated.                                                                                                       |
+| `copy`     | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                   |
+| `suffix`   | `null`          | `suffix(content)` from `floating-ellipsis/suffix`. See [Suffixes](#suffixes).                                                                       |
+| `find`     | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).     |
 
 `instance.update(options)` changes any option, including `text`.
 
@@ -120,14 +118,18 @@ focus ring. Images and icons are dropped.
 ### Suffixes
 
 ```js
+import { suffix } from 'floating-ellipsis/suffix';
+
 const more = document.createElement('button');
 more.textContent = 'Read more';
-const post = elide(el, { lines: 3, suffix: more, showSuffix: 'truncated' });
+const post = elide(el, { lines: 3, suffix: suffix(more, { show: 'truncated' }) });
 more.onclick = () => (post.expanded ? post.collapse() : post.expand());
 ```
 
-A node suffix is moved into place, keeping its listeners, and goes back on
-`destroy()`. `expand()` shows all of the text until `collapse()`.
+The content is a string or a node, which follows the text on its last line and
+is never cut. A node is moved into place, keeping its listeners, and goes back
+on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
+shows all of the text until `collapse()`.
 
 ### Find in page
 
@@ -147,21 +149,34 @@ Either lasts until a press outside the text or a match elsewhere.
 
 - `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack }`.
   `hidden` and `kept` are `{ start, end, text }` lists in grapheme indices.
-- `truncated`, `expanded`, `graphemes`, `options`, `markStyle`.
-- `ellipsisElement` (the first, stable for the instance's life), `ellipses`,
-  `ellipsisIndex(node)`, `ellipsisAt(x, y, slop?)`.
-- `ellipsisRect(i)`, `ellipsisInk(i)`, `ellipsisArea(i)`, `marks(i)`,
-  `markElements(i)`: boxes of an ellipsis and its marks.
-- `graphemeRect(i)`, `graphemeAt(node, offset, side?)`, `classOf(i)`,
-  `lineRects()`, and in glyph mode `glyph(i)`, `glyphInk(i)`.
-- `onRender(fn)`: after every layout pass. `onChange(fn)`: when the visible
-  text changes, with `shown`/`hidden` indices and previous boxes. Both return
-  an unsubscribe function.
+- `truncated`, `expanded`, `graphemes`, `options`, `markStyle`, `classOf(i)`.
+- `ellipsisElement` (the first, stable for the instance's life), `ellipses`.
+- `onRender(fn)`: after every layout pass. Returns an unsubscribe function.
 - `expand()`, `collapse()`, `refresh()`, `update(options)`, `destroy()`.
 
 The element gets `data-truncated`, and `data-fp-expanded` while expanded.
 Passes are batched in a microtask; reading anything from an instance flushes
 its pending pass first.
+
+Separate entries, so pages that don't use them don't ship them:
+
+```js
+import { onChange } from 'floating-ellipsis/changes';
+import { ellipsisRect, graphemeAt } from 'floating-ellipsis/geometry';
+import { glyph, glyphInk } from 'floating-ellipsis/glyphs';
+
+ellipsisRect(t, 0); // a DOMRect, in viewport coordinates
+const stop = onChange(t, ({ shown, hidden }) => {}); // when the visible text changes
+```
+
+- `floating-ellipsis/geometry`: `ellipsisRect(t, i)`, `ellipsisInk(t, i)`,
+  `ellipsisArea(t, i)`, `markInks(t, i)`, `markElements(t, i)`: boxes of an
+  ellipsis and its marks. `graphemeRect(t, i)`, `graphemeAt(t, node, offset, side?)`,
+  `lineRects(t)`, `ellipsisIndex(t, node)`, `ellipsisAt(t, x, y, slop?)`.
+- `floating-ellipsis/changes`: `onChange(t, fn)`, with `shown`/`hidden`
+  indices and where glyphs and marks were painted before. Bindings take it as
+  the `onChange` option.
+- `floating-ellipsis/glyphs`: in glyph mode, `glyph(t, i)` and `glyphInk(t, i)`.
 
 ## Before scripts run
 
@@ -240,9 +255,10 @@ instances with `update({ text })` or mount one per row; both cost the same.
 ## Transitions
 
 ```js
+import { glyphs } from 'floating-ellipsis/glyphs';
 import { transitions } from 'floating-ellipsis/transitions';
 
-const t = elide(el, { position: 0.5, glyphs: true });
+const t = elide(el, { position: 0.5, glyphs });
 const stop = transitions(t, { effect: 'merge' });
 ```
 

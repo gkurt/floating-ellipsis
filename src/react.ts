@@ -14,9 +14,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Binding } from './bind.ts';
+import { type BindingOptions, Binding } from './bind.ts';
 import type { Elide } from './elide.ts';
-import { type ElideOptions, DEFAULTS } from './options.ts';
+import { DEFAULTS } from './options.ts';
 
 /**
  * Truncate the element the returned ref is put on, with `options`, kept up to
@@ -32,7 +32,7 @@ import { type ElideOptions, DEFAULTS } from './options.ts';
  * `snap` made inline (`separators()`) is new on every render and re-truncates,
  * so make it once, outside the component.
  */
-export function useElide<T extends HTMLElement = HTMLElement>(options: ElideOptions = {}): [ref: RefCallback<T>, instance: Elide | null] {
+export function useElide<T extends HTMLElement = HTMLElement>(options: BindingOptions = {}): [ref: RefCallback<T>, instance: Elide | null] {
   const binding = useRef<Binding | null>(null);
   // The options as last committed, for an element attached later.
   const latest = useRef(options);
@@ -54,12 +54,12 @@ export function useElide<T extends HTMLElement = HTMLElement>(options: ElideOpti
 
 const OPTIONS = new Set<string>(['text', 'onChange', ...Object.keys(DEFAULTS)]);
 
-export type ElidedProps<T extends ElementType = 'div'> = ElideOptions & {
+export type ElidedProps<T extends ElementType = 'div'> = BindingOptions & {
   /** The full text. */
   text: string;
   /** The element to render. Default 'div'. */
   as?: T;
-} & Omit<ComponentPropsWithoutRef<T>, keyof ElideOptions | 'children' | 'as'>;
+} & Omit<ComponentPropsWithoutRef<T>, keyof BindingOptions | 'children' | 'as'>;
 
 /**
  * An element (a `div` unless `as` says otherwise) showing `text`, truncated

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { commands } from 'vitest/browser';
+import { onChange } from '#src/changes.ts';
 import type { Elide } from '#src/elide.ts';
+import { markElements, markInks } from '#src/geometry.ts';
+import { glyph, glyphInk, glyphs } from '#src/glyphs.ts';
 import { isVisible } from '#src/options.ts';
 import { type TransitionOptions, transitions } from '#src/transitions.ts';
 import { PROSE, box, frame, frames, make } from './helpers.ts';
@@ -14,7 +17,7 @@ afterEach(async () => {
 
 /** PROSE cut in the middle, glyph by glyph, with transitions, as painted. */
 async function animated(options: TransitionOptions = {}, width = 360): Promise<Elide> {
-  const t = make(box(PROSE, `width:${width}px`), { position: 'middle', glyphs: true });
+  const t = make(box(PROSE, `width:${width}px`), { position: 'middle', glyphs });
   // Attached before the first pass, so leaving glyphs know where they were painted.
   stops.push(transitions(t, { pace: 'fixed', ...options }));
   expect(t.truncated).toBe(true);
@@ -38,16 +41,16 @@ const finishAll = (t: Elide) => t.element.getAnimations({ subtree: true }).forEa
 function glyphBoxes(t: Elide): Map<number, DOMRect> {
   const state = t.state;
   const boxes = new Map<number, DOMRect>();
-  for (let i = 0; i < state.length; i++) if (isVisible(state, i)) boxes.set(i, t.glyph(i)!.getBoundingClientRect());
+  for (let i = 0; i < state.length; i++) if (isVisible(state, i)) boxes.set(i, glyph(t, i)!.getBoundingClientRect());
   return boxes;
 }
 
 /** The marks of every ellipsis lie between the ink of the glyphs either side, and apart. */
 function expectMarksBetween(t: Elide) {
   t.state.hidden.forEach((part, j) => {
-    const marks = t.marks(j);
-    const before = part.start > 0 ? t.glyphInk(part.start - 1) : null;
-    const after = part.end < t.state.length ? t.glyphInk(part.end) : null;
+    const marks = markInks(t, j);
+    const before = part.start > 0 ? glyphInk(t, part.start - 1) : null;
+    const after = part.end < t.state.length ? glyphInk(t, part.end) : null;
     for (const [k, m] of marks.entries()) {
       if (before) expect(m.left).toBeGreaterThanOrEqual(before.right - 0.1);
       if (after) expect(m.right).toBeLessThanOrEqual(after.left + 0.1);
@@ -70,7 +73,7 @@ describe('transitions', () => {
   });
 
   it('animates the first change after being attached late', async () => {
-    const t = make(box(PROSE, 'width:360px'), { position: 'middle', glyphs: true });
+    const t = make(box(PROSE, 'width:360px'), { position: 'middle', glyphs });
     expect(t.truncated).toBe(true);
     await frames();
     stops.push(transitions(t, { pace: 'fixed' }));
@@ -81,17 +84,17 @@ describe('transitions', () => {
   it('merge: arriving glyphs grow out of the ellipsis, and are drawn once they land', async () => {
     const t = await animated({ effect: 'merge' }, 240);
     const shown: number[] = [];
-    t.onChange((change) => shown.push(...change.shown));
+    onChange(t, (change) => shown.push(...change.shown));
     t.element.style.width = '360px';
     t.refresh();
     expect(t.truncated).toBe(true);
     expect(shown.length).toBeGreaterThan(0);
     expect(ghosts(t)).toBeGreaterThan(0);
-    for (const i of shown) expect(t.glyph(i)!.style.color).toBe('transparent');
+    for (const i of shown) expect(glyph(t, i)!.style.color).toBe('transparent');
     finishAll(t);
     await frames(1);
     expect(ghosts(t)).toBe(0);
-    for (const i of shown) expect(t.glyph(i)!.style.color).toBe('');
+    for (const i of shown) expect(glyph(t, i)!.style.color).toBe('');
   });
 
   it('none: glyphs come and go at once, but the dots still glide', async () => {
@@ -99,7 +102,7 @@ describe('transitions', () => {
     narrow(t, 240);
     expect(ghosts(t)).toBe(0);
     await frame();
-    const shifted = t.markElements(0).some((m) => m.style.transform !== '');
+    const shifted = markElements(t, 0).some((m) => m.style.transform !== '');
     expect(shifted).toBe(true);
   });
 
@@ -131,7 +134,7 @@ describe('transitions', () => {
   it('settles the dots back onto their layout', async () => {
     const t = await animated({ effect: 'merge', duration: 200 });
     narrow(t, 240);
-    await expect.poll(() => t.markElements(0).every((m) => m.style.transform === ''), { timeout: 2000 }).toBe(true);
+    await expect.poll(() => markElements(t, 0).every((m) => m.style.transform === ''), { timeout: 2000 }).toBe(true);
   });
 
   it('glides without glyph mode too', async () => {
@@ -141,11 +144,11 @@ describe('transitions', () => {
     narrow(t, 240);
     expect(ghosts(t)).toBe(0);
     await frame();
-    expect(t.markElements(0).some((m) => m.style.transform !== '')).toBe(true);
+    expect(markElements(t, 0).some((m) => m.style.transform !== '')).toBe(true);
   });
 
   it('keeps up with changes faster than it can play them', async () => {
-    const t = make(box(PROSE, 'width:420px'), { position: 'middle', glyphs: true });
+    const t = make(box(PROSE, 'width:420px'), { position: 'middle', glyphs });
     stops.push(transitions(t, { effect: 'merge' }));
     await frames();
     let most = 0;
@@ -163,7 +166,7 @@ describe('transitions', () => {
     const t = await animated({ effect: 'merge' });
     narrow(t, 240);
     expect(ghosts(t)).toBe(0);
-    expect(t.markElements(0).every((m) => m.style.transform === '')).toBe(true);
+    expect(markElements(t, 0).every((m) => m.style.transform === '')).toBe(true);
   });
 
   it('cleans up when stopped', async () => {
@@ -171,7 +174,7 @@ describe('transitions', () => {
     narrow(t, 240);
     for (const stop of stops.splice(0)) stop();
     expect(t.element.querySelector('[data-fp-ghosts]')).toBeNull();
-    expect(t.markElements(0).every((m) => m.style.transform === '')).toBe(true);
+    expect(markElements(t, 0).every((m) => m.style.transform === '')).toBe(true);
     narrow(t, 200);
     expect(t.element.querySelector('[data-fp-ghosts]')).toBeNull();
   });

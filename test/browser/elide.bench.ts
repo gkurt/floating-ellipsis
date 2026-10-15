@@ -7,7 +7,9 @@
  */
 import { afterAll, describe, it } from 'vitest';
 import { commands } from 'vitest/browser';
+import { type ElideChange, onChange } from '#src/changes.ts';
 import { type Elide, elide } from '#src/elide.ts';
+import { glyphs } from '#src/glyphs.ts';
 import { separators, words } from '#src/index.ts';
 import type { ElideOptions } from '#src/options.ts';
 import { PROSE, frames } from './helpers.ts';
@@ -126,11 +128,22 @@ function teardown({ host, instances }: Made) {
   host.remove();
 }
 
-/** A grid of `rows` × `cells`, truncated with `options` (or per cell). */
-function made(rows: number, cells: number, text: (i: number) => string, options: (i: number) => ElideOptions, markup: Markup = 'grid') {
+/** A grid of `rows` × `cells`, truncated with `options` (or per cell), listening with `options.onChange`. */
+function made(
+  rows: number,
+  cells: number,
+  text: (i: number) => string,
+  options: (i: number) => ElideOptions & { onChange?: (change: ElideChange) => void },
+  markup: Markup = 'grid',
+) {
   return async (): Promise<Made> => {
     const g = grid(rows, cells, text, '', markup);
-    const instances = g.cells.map((cell, i) => elide(cell, options(i)));
+    const instances = g.cells.map((cell, i) => {
+      const { onChange: listener, ...rest } = options(i);
+      const t = elide(cell, rest);
+      if (listener) onChange(t, listener);
+      return t;
+    });
     void instances[0]!.truncated;
     await frames(2);
     return { ...g, instances };
@@ -318,7 +331,7 @@ describe('bench', () => {
         50,
         2,
         (i) => (i % 2 === 1 ? path() : prose(12)),
-        () => ({ glyphs: true, position: 'middle', onChange: () => {} }),
+        () => ({ glyphs, position: 'middle', onChange: () => {} }),
       ),
       (m) => drag(m),
       teardown,

@@ -1,6 +1,7 @@
-/** An instance's options and their defaults, its state, and its change events. */
+/** An instance's options and their defaults, and its state. */
 import type { Keep, Position, Range, Snap } from './cut.ts';
 import type { EllipsisStyle, Length } from './marks.ts';
+import type { Chain } from './markup.ts';
 import type { Gap, GapPlan } from './metrics.ts';
 
 export interface ElideOptions {
@@ -72,10 +73,12 @@ export interface ElideOptions {
    */
   observe?: boolean;
   /**
-   * Wrap every grapheme in its own element so it can be styled or animated
-   * (see `floating-ellipsis/transitions`). Costs more DOM; meant for short texts.
+   * Glyph mode: `glyphs` from `floating-ellipsis/glyphs` wraps every grapheme
+   * in its own element so it can be styled or animated (see
+   * `floating-ellipsis/transitions`). Costs more DOM; meant for short texts.
+   * Default null.
    */
-  glyphs?: boolean;
+  glyphs?: GlyphMode | null;
   /** Put the full text in the element's `title` while truncated. Default false. */
   title?: boolean;
   /**
@@ -85,12 +88,10 @@ export interface ElideOptions {
   copy?: 'full' | 'visible';
   /**
    * Content that follows the text on its last line and is never cut: a
-   * "Read more" button, a badge, a timestamp. A string, or a node, which is
-   * moved there (and back on `destroy()`). Default null.
+   * "Read more" button, a badge, a timestamp. Made by `suffix()` from
+   * `floating-ellipsis/suffix`. Default null.
    */
-  suffix?: string | Node | null;
-  /** When the suffix shows: 'always' (default) or only while the text is 'truncated'. */
-  showSuffix?: 'always' | 'truncated';
+  suffix?: Suffix | null;
   /**
    * What find in page does with text an ellipsis hides. 'keep' (default):
    * finds it, and keeps the word the match starts in visible, like `keep`,
@@ -99,11 +100,9 @@ export interface ElideOptions {
    * until then. false: doesn't find it.
    */
   find?: 'keep' | 'expand' | false;
-  /** Shorthand for `instance.onChange(fn)`. */
-  onChange?: (change: ElideChange) => void;
 }
 
-export type Settings = Required<Omit<ElideOptions, 'text' | 'onChange'>>;
+export type Settings = Required<Omit<ElideOptions, 'text'>>;
 
 export const DEFAULTS: Settings = {
   lines: 1,
@@ -116,13 +115,43 @@ export const DEFAULTS: Settings = {
   trim: true,
   snap: null,
   observe: true,
-  glyphs: false,
+  glyphs: null,
   title: false,
   copy: 'full',
   suffix: null,
-  showSuffix: 'always',
   find: 'keep',
 };
+
+/** What the `glyphs` option takes: glyph mode, from `floating-ellipsis/glyphs`. */
+export interface GlyphMode {
+  /** One element per grapheme. */
+  create(graphemes: readonly string[]): HTMLSpanElement[];
+  /** Put the glyph elements of `range` in `el`, inside copies of their elements. */
+  fill(el: HTMLElement, glyphs: readonly HTMLElement[], chains: readonly (Chain | null)[], range: Range): void;
+  /** Give the glyph elements of graphemes in `ranges` `attribute`, and take it from the rest. */
+  mark(glyphs: readonly HTMLElement[], attribute: string, ranges: readonly Range[]): void;
+}
+
+/** What the `suffix` option takes: made by `suffix()` from `floating-ellipsis/suffix`. */
+export interface Suffix {
+  /** A string, or a node, which is moved into place (and back on `destroy()`). */
+  content: string | Node;
+  /** When it shows: 'always', or only while the text is 'truncated'. */
+  show: 'always' | 'truncated';
+  /** Puts it after `host`'s line; `resized` is called when its content changes width. */
+  place(host: HTMLElement, resized: () => void): SuffixSlot;
+}
+
+/** A suffix in place after the line. */
+export interface SuffixSlot {
+  readonly el: HTMLElement;
+  fill(content: string | Node): void;
+  /** Its width now, for fitting. Reads layout. */
+  measure(): number;
+  show(on: boolean): void;
+  /** Put a node back where it came from; one of the host's own comes back with its content on `destroy` (`destroying`). */
+  giveBack(destroying: boolean): void;
+}
 
 /** `o` without the keys set to undefined, so they don't override defaults. */
 export function defined<T extends object>(o: T): Partial<T> {
@@ -172,57 +201,6 @@ export interface ElideState {
 
 export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
 
-export interface ElideChange {
-  reason: ChangeReason;
-  state: ElideState;
-  previous: ElideState | null;
-  /** The text (or glyph mode) changed, so indices in `previous` don't map onto `state`. */
-  reset: boolean;
-  /** Grapheme indices that became visible. */
-  shown: number[];
-  /** Grapheme indices that became hidden. */
-  hidden: number[];
-  /** Glyph mode only: box and ink box of each newly hidden glyph as last painted. */
-  hiddenGlyphs: Map<number, { box: DOMRect; ink: DOMRect }>;
-  /** Glyph mode only: box and ink box of every glyph that was showing, as last painted. */
-  glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>;
-  /** Mark boxes of each ellipsis just before the update. */
-  marksBefore: DOMRect[][];
-}
-
-/**
- * What a pass changed, for `onChange`: null when there's nothing to tell (a
- * resize or refresh that left the cut as it was).
- */
-export function changeOf(
-  reason: ChangeReason,
-  previous: ElideState | null,
-  state: ElideState,
-  reset: boolean,
-  glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>,
-  marksBefore: DOMRect[][],
-): ElideChange | null {
-  const same = previous && !reset && sameParts(previous.hidden, state.hidden);
-  if (same && (reason === 'resize' || reason === 'refresh')) return null;
-  const shown: number[] = [];
-  const hidden: number[] = [];
-  const hiddenGlyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
-  if (!reset && previous) {
-    for (let i = 0; i < state.length; i++) {
-      const was = isVisible(previous, i);
-      const is = isVisible(state, i);
-      if (is && !was) {
-        shown.push(i);
-      } else if (was && !is) {
-        hidden.push(i);
-        const before = glyphsBefore.get(i);
-        if (before) hiddenGlyphs.set(i, before);
-      }
-    }
-  }
-  return { reason, state, previous: reset ? null : previous, reset, shown, hidden, hiddenGlyphs, glyphsBefore, marksBefore };
-}
-
 /**
  * The state of `text` (whose grapheme `i` starts at `offsets[i]`) with
  * `hidden` cut and `pins` kept.
@@ -245,11 +223,6 @@ export function stateOf(
     gaps,
     slack,
   };
-}
-
-/** Whether two lists of parts cover the same graphemes. */
-export function sameParts(a: readonly Part[], b: readonly Part[]): boolean {
-  return a.length === b.length && a.every((p, i) => p.start === b[i]!.start && p.end === b[i]!.end);
 }
 
 /** Whether grapheme `i` is showing in `state`. */

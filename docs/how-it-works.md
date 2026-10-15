@@ -40,7 +40,7 @@ Implementation details behind the behaviour described in the
    are computed with kerning ignored, and margins on the ellipsis make both
    gaps equal the target. The ellipsis is drawn on a canvas and scanned for
    the empty columns between its dots, which gives the dot rhythm and the
-   position of each dot (so `marks(i)` works for a single `…` glyph too).
+   position of each dot (so `markInks(t, i)` works for a single `…` glyph too).
 4. **Justify.** The space left on each line holding an ellipsis goes into its
    gaps (or letter-spacing), line by line from the top, backing off by a
    fraction of a pixel if rounding would make the line wrap. Filling a line
@@ -91,6 +91,18 @@ justifies it in one write, and one read checks them all. The fastest setup for l
 grid rows with `content-visibility: auto`, which the browser doesn't lay out
 off screen, whereas a `<table>` lays out every row whenever one changes. The
 demo's table page shows both.
+
+## Entry points
+
+What only some pages use lives in its own entry, so the rest don't ship it:
+geometry, glyph mode, suffixes and `onChange`. Their code isn't reachable
+from the `Elide` class, so bundlers leave it out. The `glyphs` and `suffix`
+options take an object that brings the code with it, as `snap` does.
+Geometry and `onChange` take the instance. They reach its internals through
+`inside.ts`, which the class fills in when it loads, so an add-on doesn't
+import the class. A pass calls the hook `onChange` installs. It records where
+glyphs and marks were painted in the pass's own last read, which other
+passes share, so it costs no layout of its own.
 
 ## Drawn marks
 

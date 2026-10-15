@@ -2,6 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { server } from 'vitest/browser';
 import { type Elide, elide } from '#src/elide.ts';
+import { ellipsisRect, graphemeRect, lineRects, markInks } from '#src/geometry.ts';
 import { fontOf, measure } from '#src/metrics.ts';
 import { type ElideOptions, isVisible } from '#src/options.ts';
 
@@ -123,7 +124,7 @@ export const shown = (t: Elide): number => t.state.length - t.state.hidden.reduc
 
 /** Horizontal ink extent of visible grapheme `i`: its laid-out box plus the font's ink metrics. */
 export function inkX(t: Elide, i: number): { left: number; right: number } {
-  const box = t.graphemeRect(i)!;
+  const box = graphemeRect(t, i)!;
   const m = measure(fontOf(getComputedStyle(t.element)), t.graphemes[i]!);
   return { left: box.left - m.left, right: box.left + m.right };
 }
@@ -131,7 +132,7 @@ export function inkX(t: Elide, i: number): { left: number; right: number } {
 /** Ink-to-ink gaps around ellipsis `j` and between its marks, as laid out. */
 export function inkGaps(t: Elide, j: number): { left: number | null; right: number | null; inner: number[] } {
   const part = t.state.hidden[j]!;
-  const marks = t.marks(j);
+  const marks = markInks(t, j);
   const first = marks[0]!;
   const last = marks[marks.length - 1]!;
   const before = part.start > 0 ? inkX(t, part.start - 1) : null;
@@ -159,7 +160,7 @@ export function errors(): { stop: () => string[] } {
 /** Lines stay inside the content box, and there are no more of them than allowed. */
 export function expectFits(t: Elide, lines = t.options.lines) {
   const c = content(t.element);
-  const rects = t.lineRects();
+  const rects = lineRects(t);
   expect(rects.length).toBeGreaterThan(0);
   expect(rects.length).toBeLessThanOrEqual(lines);
   expect(t.state.lines).toBe(rects.length);
@@ -172,9 +173,9 @@ export function expectFits(t: Elide, lines = t.options.lines) {
 /** Every line holding an ellipsis ends at the content box's right edge. */
 export function expectFlush(t: Elide) {
   const right = content(t.element).right;
-  const rects = t.lineRects();
+  const rects = lineRects(t);
   t.ellipses.forEach((_, j) => {
-    const e = t.ellipsisRect(j)!;
+    const e = ellipsisRect(t, j)!;
     const middle = e.top + e.height / 2;
     const line = rects.find((r) => middle >= r.top && middle <= r.bottom)!;
     expect(line.right).toBeCloseTo(right, 0);

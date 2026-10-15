@@ -48,6 +48,34 @@
       },
       "source": "./src/index.ts"
     },
+    "./geometry": {
+      "import": {
+        "types": "./dist/geometry.d.ts",
+        "default": "./dist/geometry.js"
+      },
+      "source": "./src/geometry.ts"
+    },
+    "./glyphs": {
+      "import": {
+        "types": "./dist/glyphs.d.ts",
+        "default": "./dist/glyphs.js"
+      },
+      "source": "./src/glyphs.ts"
+    },
+    "./changes": {
+      "import": {
+        "types": "./dist/changes.d.ts",
+        "default": "./dist/changes.js"
+      },
+      "source": "./src/changes.ts"
+    },
+    "./suffix": {
+      "import": {
+        "types": "./dist/suffix.d.ts",
+        "default": "./dist/suffix.js"
+      },
+      "source": "./src/suffix.ts"
+    },
     "./transitions": {
       "import": {
         "types": "./dist/transitions.d.ts",

@@ -3,8 +3,14 @@
  * again, as frameworks do: only what changed is updated, a key left out goes
  * back to its default, and `onChange` is a subscription, not a pile of them.
  */
+import { type ElideChange, onChange } from './changes.ts';
 import { type Elide, elide } from './elide.ts';
-import { type ElideChange, type ElideOptions, DEFAULTS } from './options.ts';
+import { type ElideOptions, DEFAULTS } from './options.ts';
+
+/** What bindings take: `elide`'s options, and `onChange` (see `floating-ellipsis/changes`). */
+export interface BindingOptions extends ElideOptions {
+  onChange?: (change: ElideChange) => void;
+}
 
 const isPlain = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && Object.getPrototypeOf(v) === Object.prototype;
@@ -25,9 +31,9 @@ export class Binding {
   readonly instance: Elide;
   #applied: ElideOptions;
   #unsubscribe: (() => void) | null = null;
-  #listener: ElideOptions['onChange'];
+  #listener: BindingOptions['onChange'];
 
-  constructor(element: HTMLElement, options: ElideOptions = {}) {
+  constructor(element: HTMLElement, options: BindingOptions = {}) {
     const { onChange, ...rest } = options;
     this.instance = elide(element, rest);
     this.#applied = rest;
@@ -35,7 +41,7 @@ export class Binding {
   }
 
   /** Make the instance match `options`, as if it had been created with them. */
-  set(options: ElideOptions = {}): void {
+  set(options: BindingOptions = {}): void {
     const { onChange, ...rest } = options;
     this.#listen(onChange);
     const before = new Map<string, unknown>(Object.entries(this.#applied));
@@ -60,6 +66,6 @@ export class Binding {
     if (fn === this.#listener) return;
     this.#unsubscribe?.();
     this.#listener = fn;
-    this.#unsubscribe = fn ? this.instance.onChange(fn) : null;
+    this.#unsubscribe = fn ? onChange(this.instance, fn) : null;
   }
 }

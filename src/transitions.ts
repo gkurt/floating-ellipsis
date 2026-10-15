@@ -1,6 +1,9 @@
+import { type ElideChange, onChange } from './changes.ts';
 import type { Elide } from './elide.ts';
+import { ellipsisRect, markElements, markInks } from './geometry.ts';
+import { glyph, glyphInk } from './glyphs.ts';
 import { isWhitespace } from './graphemes.ts';
-import type { ElideChange, Part } from './options.ts';
+import type { Part } from './options.ts';
 
 export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 
@@ -122,7 +125,7 @@ const INSTANT = 60;
 
 /**
  * Animate truncation changes: glyphs that appear and disappear (with an
- * instance created with `glyphs: true`) and the ellipsis' spacing, which
+ * instance in glyph mode: `elide(el, { glyphs })`) and the ellipsis' spacing, which
  * glides (any instance). Returns a function that stops it all.
  *
  * Nothing here moves the text itself: glyphs keep their layout positions, so
@@ -178,8 +181,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const { hidden, gaps } = instance.state;
     return hidden.flatMap((_, j) => {
       const ellipsis = instance.ellipses[j];
-      const els = instance.markElements(j);
-      const boxes = instance.marks(j);
+      const els = markElements(instance, j);
+      const boxes = markInks(instance, j);
       const gap = gaps[j];
       if (!ellipsis || els.length === 0 || boxes.length === 0 || !gap) return [];
       // One element may draw several dots (a single '…'): they share its shift.
@@ -229,7 +232,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     // An edge may only reach past where layout puts it while the glyph there
     // is still on its way in (hidden, its ghost growing).
     const arriving = (i: number) => {
-      const el = instance.glyph(i);
+      const el = glyph(instance, i);
       return !!el && entering.has(el);
     };
     const n = instance.state.length;
@@ -437,7 +440,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
 
   /** An ellipsis with no marks is a gap: things merge into its middle. */
   function gapPoint(j: number): DOMRect | undefined {
-    const r = instance.ellipsisRect(j);
+    const r = ellipsisRect(instance, j);
     return r ? new DOMRect(r.left + r.width / 2, r.top + r.height / 2, 0, 0) : undefined;
   }
 
@@ -458,8 +461,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
 
   /** Marks of ellipsis `j` where they will come to rest. */
   function restingMarks(j: number): DOMRect[] {
-    const els = instance.markElements(j);
-    const boxes = instance.marks(j);
+    const els = markElements(instance, j);
+    const boxes = markInks(instance, j);
     // One element may draw several dots (a single '…'): they share its shift.
     return boxes.map((r, k) => {
       const x = shiftOf(els[els.length === boxes.length ? k : 0] ?? els[0]!);
@@ -473,8 +476,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   ];
 
   function enter(i: number, change: ElideChange, ms: number) {
-    const el = instance.glyph(i);
-    const ink = instance.glyphInk(i);
+    const el = glyph(instance, i);
+    const ink = glyphInk(instance, i);
     if (!el || !ink) return;
     entering.get(el)?.anims.forEach((a) => a.cancel());
     const box = el.getBoundingClientRect();
@@ -512,7 +515,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const j = change.state.hidden.findIndex((p) => i >= p.start && i < p.end);
     const part = change.state.hidden[j];
     const follow = instance.ellipses[j];
-    const anchor = instance.ellipsisRect(j);
+    const anchor = ellipsisRect(instance, j);
     if (!part || !follow || !anchor) return;
     const { box, ink } = before;
     // The glyph is gone from the DOM; its join carries the same text style.
@@ -539,7 +542,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
    */
   function appear(j: number) {
     const real = instance.ellipses[j];
-    const rect = instance.ellipsisRect(j);
+    const rect = ellipsisRect(instance, j);
     if (!real || !rect) return;
     const style = getComputedStyle(real);
     const ghost = ghostOf('', rect, style, style.color);
@@ -588,10 +591,10 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return duration / longest;
   }
 
-  const offChange = instance.onChange((change: ElideChange) => {
+  const offChange = onChange(instance, (change: ElideChange) => {
     // Glyphs hidden mid-entrance stop entering.
     for (const i of change.hidden) {
-      const el = instance.glyph(i);
+      const el = glyph(instance, i);
       if (el) entering.get(el)?.anims.forEach((a) => a.cancel());
     }
     if (change.reset || !change.previous || reduced()) return;
@@ -645,7 +648,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     for (const g of Array.from(ghosts)) g.anims.forEach((a) => a.cancel());
     regions.clear();
     instance.state.hidden.forEach((_, j) => {
-      for (const el of instance.markElements(j)) {
+      for (const el of markElements(instance, j)) {
         el.style.transform = '';
         applied.delete(el);
       }

@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { commands, server, userEvent } from 'vitest/browser';
 import type { Elide } from '#src/elide.ts';
+import { ellipsisArea, ellipsisInk, graphemeRect } from '#src/geometry.ts';
 import { type Tooltip, type TooltipOptions, tooltip } from '#src/tooltip.ts';
 import { PATH, PROSE, box, frames, make, spacer } from './helpers.ts';
 
@@ -56,7 +57,7 @@ function expectOnLine(tip: Tooltip, t: Elide) {
   for (let i = 0; i < part.start; i++) {
     const r = spans[i]!.getBoundingClientRect();
     if (Math.abs(r.top - top) > 1) break;
-    const original = t.graphemeRect(i)!;
+    const original = graphemeRect(t, i)!;
     expectNear(r.left, original.left, `grapheme ${i} '${t.graphemes[i]}'`);
     expectNear(r.top, original.top, `grapheme ${i} '${t.graphemes[i]}'`);
   }
@@ -105,7 +106,7 @@ describe('tooltip', () => {
       // Hidden graphemes start in their ellipsis, and a space has no ink to place.
       if ((i >= part.start && i < part.end) || t.graphemes[i] === ' ') continue;
       const r = spans[i]!.getBoundingClientRect();
-      const original = t.graphemeRect(i)!;
+      const original = graphemeRect(t, i)!;
       expectNear(r.left, original.left, `grapheme ${i} '${t.graphemes[i]}'`);
       expectNear(r.top, original.top, `grapheme ${i} '${t.graphemes[i]}'`);
     }
@@ -151,7 +152,7 @@ describe('tooltip', () => {
       expect(tip.show(t, j)).toBe(true);
       expect(tip.element.textContent).toBe(t.state.hidden[j]!.text);
       expect(tip.element.dataset.side).toBe('top');
-      const ink = t.ellipsisInk(j)!;
+      const ink = ellipsisInk(t, j)!;
       const r = tip.element.getBoundingClientRect();
       expect(r.bottom).toBeCloseTo(ink.top - 8, 0);
       const anchor = parseFloat(tip.element.style.getPropertyValue('--fp-tip-anchor'));
@@ -166,7 +167,7 @@ describe('tooltip', () => {
     tip.attach(t);
     tip.show(t);
     expect(tip.element.dataset.side).toBe('bottom');
-    expect(tip.element.getBoundingClientRect().top).toBeCloseTo(t.ellipsisInk(0)!.bottom + 8, 0);
+    expect(tip.element.getBoundingClientRect().top).toBeCloseTo(ellipsisInk(t, 0)!.bottom + 8, 0);
   });
 
   it('has nothing to show for text that fits', () => {
@@ -198,10 +199,10 @@ describe('tooltip', () => {
     const t = make(box(PATH, 'width:220px;margin-top:100px'), { position: 'middle' });
     const tip = make_tip({ reveal: 'peek', delay: 0 });
     tip.attach(t);
-    const area = t.ellipsisArea(0)!;
+    const area = ellipsisArea(t, 0)!;
     await commands.mouse('move', area.left + 1, area.top + area.height / 2);
     await expect.poll(() => tip.target?.ellipsis).toBe(0);
-    const text = t.graphemeRect(0)!;
+    const text = graphemeRect(t, 0)!;
     await commands.mouse('move', ...center(text));
     await expect.poll(() => tip.target).toBeNull();
   });

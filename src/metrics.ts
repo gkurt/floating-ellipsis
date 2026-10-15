@@ -76,7 +76,7 @@ export function kerning(run: Typeset, a: string, b: string): number {
 }
 
 /** The ink box of grapheme `g`, laid out in `box` by `run`: the box itself for whitespace (it has no ink). */
-export function glyphInk(run: Typeset, g: string | undefined, box: DOMRect): DOMRect {
+export function inkOf(run: Typeset, g: string | undefined, box: DOMRect): DOMRect {
   if (g === undefined || isWhitespace(g)) return box;
   return inkBox(glyphIn(run, g), box.left, box.top + fontAscent(run.font));
 }

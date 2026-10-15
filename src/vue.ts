@@ -11,15 +11,14 @@
  *
  * Register it globally with `app.directive('elide', vElide)`.
  */
-import { Binding } from './bind.ts';
+import { type BindingOptions, Binding } from './bind.ts';
 import type { Elide } from './elide.ts';
-import type { ElideOptions } from './options.ts';
 
 const bindings = new WeakMap<HTMLElement, Binding>();
 
 /** What the directive is given; a structural match for Vue's `DirectiveBinding`. */
 interface Given {
-  value: ElideOptions | undefined;
+  value: BindingOptions | undefined;
 }
 
 export const vElide: {

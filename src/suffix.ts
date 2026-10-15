@@ -1,7 +1,23 @@
-/** The `suffix` option: content after the line, on its last line, never cut. */
+/**
+ * Suffixes (`floating-ellipsis/suffix`): content after the text, on its last
+ * line, never cut.
+ */
 import { WORD_JOINER } from './join.ts';
+import type { Suffix, SuffixSlot } from './options.ts';
 
-export class Suffix {
+/**
+ * Content to follow the text on its last line, never cut, for the `suffix`
+ * option: a "Read more" button, a badge, a timestamp. A string, or a node,
+ * which is moved there (and back on `destroy()`). `show`: 'always'
+ * (default), or only while the text is 'truncated'.
+ */
+export function suffix(content: string | Node, { show = 'always' }: { show?: Suffix['show'] } = {}): Suffix {
+  return { content, show, place };
+}
+
+const place = (host: HTMLElement, resized: () => void): SuffixSlot => new Slot(host, resized);
+
+class Slot implements SuffixSlot {
   readonly el: HTMLSpanElement = document.createElement('span');
   /** Its width when last measured for fitting. */
   width = 0;

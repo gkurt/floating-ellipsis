@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { words } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
+import { graphemeRect } from '#src/geometry.ts';
+import { glyphs } from '#src/glyphs.ts';
 import { graphemes } from '#src/graphemes.ts';
 import { type ElideOptions, isVisible } from '#src/options.ts';
 import { box, expectConsistent, expectFits, make, sweep, visible } from './helpers.ts';
@@ -27,7 +29,7 @@ const COMBOS: [string, (text: string) => ElideOptions][] = [
   ['middle', () => ({ position: 'middle' })],
   ['start, two lines', () => ({ position: 'start', lines: 2 })],
   ["two ellipses, '...'", () => ({ position: [0.3, 0.7], ellipsis: '...' })],
-  ['end, glyph mode', () => ({ position: 'end', glyphs: true })],
+  ['end, glyph mode', () => ({ position: 'end', glyphs })],
   ['bullets, justify ellipsis', () => ({ position: 'middle', ellipsis: { shape: 'bullet' }, justify: 'ellipsis' })],
   ['a highlighted keep', (text) => ({ position: 'middle', keep: { match: middleOf(text), class: 'hit' } })],
   ['words', () => ({ position: 'middle', snap: words() })],
@@ -53,7 +55,7 @@ function expectWholeGraphemes(t: Elide) {
 /** Every grapheme showing has a box. */
 function expectBoxes(t: Elide) {
   const state = t.state;
-  for (let i = 0; i < state.length; i++) if (isVisible(state, i)) expect(t.graphemeRect(i), `grapheme ${i}`).not.toBeNull();
+  for (let i = 0; i < state.length; i++) if (isVisible(state, i)) expect(graphemeRect(t, i), `grapheme ${i}`).not.toBeNull();
 }
 
 describe.each(Object.entries(SAMPLES))('%s', (_, text) => {

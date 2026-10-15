@@ -21,31 +21,30 @@ import {
 } from './cut.ts';
 import { byId, forgetFound, hookDocument, instances } from './document.ts';
 import { graphemes, isWhitespace } from './graphemes.ts';
-import { type Marking, besideEllipsis, childRanges, fillGlyphs, fillPiece, markGlyphs, textAt } from './highlight.ts';
+import { type Marking, besideEllipsis, fillPiece } from './highlight.ts';
+import { openUp } from './inside.ts';
 import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space } from './join.ts';
 import { type Justified, justify } from './justify.ts';
-import { type LineBox, areaOf, boundsOf, contentEdges, contentHeight, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
+import { type LineBox, contentEdges, contentHeight, holdStyle, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
-import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markInk, markStyleFor, styleMarks, toPx } from './marks.ts';
+import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markStyleFor, styleMarks, toPx } from './marks.ts';
 import { type Chain, extentOf, markCopies, originals, readMarkup, speak } from './markup.ts';
-import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, glyphInk, planGap, resolveGap, typesetOf } from './metrics.ts';
+import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
   type ChangeReason,
-  type ElideChange,
   type ElideOptions,
   type ElideState,
   type GapInfo,
   type Settings,
+  type SuffixSlot,
   DEFAULTS,
-  changeOf,
   defined,
-  isVisible,
   stateOf,
 } from './options.ts';
 import { Predictor, advanceSums, kerningOf, marginFor } from './predict.ts';
-import { Suffix } from './suffix.ts';
 
-interface Run extends Typeset {
+/** What a pass knows about the element and how its text is set. */
+export interface Run extends Typeset {
   /** The element's border box. */
   box: DOMRect;
   /** Content box edges and width. */
@@ -79,9 +78,51 @@ interface Painted {
   previous: ElideState | null;
   state: ElideState;
   reset: boolean;
-  tracking: boolean;
-  glyphsBefore: Map<number, { box: DOMRect; ink: DOMRect }>;
-  marksBefore: DOMRect[][];
+  tracker: Tracker | null;
+}
+
+/**
+ * What `onChange` (`floating-ellipsis/changes`) hooks into an instance's
+ * passes, to tell what each changed and where things were before.
+ */
+export interface Tracker {
+  /**
+   * A pass is about to be painted: remember where things are, in a read
+   * phase shared with other passes. `since`: the last painting is what this
+   * one changed (not the first, or new text), and the host's box was `box`
+   * when the pass started.
+   */
+  painted(run: Run, since: DOMRect | null): void;
+  /** The pass is done and painted. */
+  done(reason: ChangeReason, previous: ElideState | null, state: ElideState, reset: boolean): void;
+}
+
+/** A piece of the rendered text: see `layoutOf`. */
+export interface Piece {
+  el: HTMLSpanElement;
+  range: Range;
+  shown: Range;
+}
+
+/**
+ * What the package's add-ons (geometry, glyph mode, `onChange`) reach inside
+ * an instance for. Not part of the public API.
+ */
+export interface Inside {
+  /** Run a pending pass now. */
+  sync(): void;
+  readonly settings: Readonly<Settings>;
+  readonly current: ElideState | null;
+  readonly run: Run | null;
+  readonly joins: readonly Join[];
+  readonly line: HTMLSpanElement;
+  readonly offsets: readonly number[];
+  /** Glyph mode's elements, one per grapheme; empty otherwise. */
+  readonly glyphs: readonly HTMLSpanElement[];
+  /** Where the graphemes showing now are rendered. */
+  pieces(): Piece[];
+  /** Hook `tracker` into every pass, or stop (null). */
+  track(tracker: Tracker | null): void;
 }
 
 /** What expanded an instance: find in page, focus on a link it hid, or `expand()`. */
@@ -145,7 +186,7 @@ export class Elide {
   /** The screen-reader copy was made while the element was out of the document, so as plain text (see `speak`). */
   #unsaid = false;
   /** Holds `suffix`, after the line, while there is one. */
-  #suffix: Suffix | null = null;
+  #suffix: SuffixSlot | null = null;
   /** What wants the hidden parts shown in place, if anything; and whether they are. */
   #opener: Opener | null = null;
   /** What to keep in sight for now, as if kept: what find in page found, or a focused link the cut hid. */
@@ -159,7 +200,7 @@ export class Elide {
   readonly #lineEl: HTMLSpanElement;
   readonly #runs: HTMLSpanElement[] = [];
   readonly #joins: Join[] = [];
-  readonly #listeners = new Set<(change: ElideChange) => void>();
+  #tracker: Tracker | null = null;
   readonly #renderListeners = new Set<(state: ElideState) => void>();
   #lastWidth = -1;
   /** Far from the screen, as far as the IntersectionObserver knows (null until it has said). */
@@ -178,7 +219,6 @@ export class Elide {
   #titled = false;
   #destroyed = false;
   #style: EllipsisStyle = '…';
-  #painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
   /** Gives the element its own inline height back, while we hold it. */
   #heightLock: (() => void) | null = null;
   /** How many lines the text was on when its height was held. */
@@ -189,7 +229,7 @@ export class Elide {
   #ungreedy: (() => void) | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
-    const { text, onChange, ...rest } = options;
+    const { text, ...rest } = options;
     this.element = element;
     this.#settings = { ...DEFAULTS, ...defined(rest) };
     this.#original = Array.from(element.childNodes);
@@ -217,7 +257,6 @@ export class Elide {
     if (WRAP_MODE) this.#steadyLines('');
     this.#clip(true);
 
-    if (onChange) this.#listeners.add(onChange);
     instances.add(this);
     // Turns off fallback.css's plain truncation.
     element.setAttribute('data-elide', '');
@@ -267,107 +306,6 @@ export class Elide {
     return this.#joins.slice(0, this.#current?.hidden.length ?? 0).map((j) => j.ellipsis);
   }
 
-  /** Index of the ellipsis containing `node` (e.g. an event target), or -1. */
-  ellipsisIndex(node: Node | null): number {
-    return node ? this.ellipses.findIndex((e) => e.contains(node)) : -1;
-  }
-
-  /** Box of ellipsis `index` in viewport coordinates, or null. */
-  ellipsisRect(index = 0): DOMRect | null {
-    const e = this.ellipses[index];
-    return e ? e.getBoundingClientRect() : null;
-  }
-
-  /** Tight box around the ink of ellipsis `index`, or null. */
-  ellipsisInk(index = 0): DOMRect | null {
-    return boundsOf(this.marks(index));
-  }
-
-  /**
-   * The space ellipsis `index` takes up between the text before and after
-   * it (its box plus the gaps either side, over the height of its line), in
-   * viewport coordinates, or null. Where the hidden text would go, and a
-   * generous hover target: see `ellipsisAt`.
-   */
-  ellipsisArea(index = 0): DOMRect | null {
-    const e = this.ellipses[index];
-    return e ? areaOf(e, this.lineRects()) : null;
-  }
-
-  /**
-   * Index of the ellipsis whose area (see `ellipsisArea`) contains the point,
-   * in client coordinates (e.g. a pointer event's), or -1. Unlike the
-   * ellipsis element, which only spans its marks, this covers the gaps too.
-   * `slop` widens every area by that many pixels on each side.
-   */
-  ellipsisAt(x: number, y: number, slop = 0): number {
-    return indexAt(
-      this.ellipses.map((_, i) => this.ellipsisArea(i)),
-      x,
-      y,
-      slop,
-    );
-  }
-
-  /**
-   * Ink box of each mark of ellipsis `index`: each dot, bullet or character.
-   * For a single glyph like '…' the dots are found in the glyph itself.
-   */
-  marks(index = 0): DOMRect[] {
-    this.#sync();
-    const join = this.#joins[index];
-    const layout = this.#lastRun?.marks;
-    if (!join || !layout || index >= (this.#current?.hidden.length ?? 0)) return [];
-    return layout.metrics.length === join.marks.length ? markInk(layout, join.marks, join.ellipsis) : [];
-  }
-
-  /**
-   * The elements drawing the marks of ellipsis `index`. A single glyph like
-   * '…' is one element even though `marks()` reports its dots separately.
-   */
-  markElements(index = 0): HTMLElement[] {
-    this.#sync();
-    return index < (this.#current?.hidden.length ?? 0) ? [...(this.#joins[index]?.marks ?? [])] : [];
-  }
-
-  /** One box per rendered line of visible text, in viewport coordinates. */
-  lineRects(): DOMRect[] {
-    this.#sync();
-    return lineBoxes(this.#lineEl).map((l) => new DOMRect(l.left, l.top, l.right - l.left, l.bottom - l.top));
-  }
-
-  /** Element of grapheme `index` in glyph mode (null otherwise or when out of range). */
-  glyph(index: number): HTMLSpanElement | null {
-    return this.#glyphEls[index] ?? null;
-  }
-
-  /**
-   * Grapheme index (in the full text) of a DOM position in the element's
-   * text, such as either end of a selection, or null when it isn't in the
-   * visible text. A position inside an ellipsis stands for the start of what
-   * it hides when `side` is 'start', for its end when 'end': a range that
-   * touches an ellipsis covers all it hides, as copying it does.
-   */
-  graphemeAt(node: Node, offset: number, side: 'start' | 'end' = 'start'): number | null {
-    this.#sync();
-    if (!this.#current || !this.#lineEl.contains(node)) return null;
-    const j = this.ellipsisIndex(node);
-    if (j >= 0) return side === 'start' ? this.#current.hidden[j]!.start : this.#current.hidden[j]!.end;
-    const pieces = this.#pieces();
-    if (node instanceof Text) {
-      const range = pieces.get(node) ?? (node.parentElement ? pieces.get(node.parentElement) : undefined);
-      if (!range) return null;
-      const at = this.#offsets[range[0]]! + offset;
-      let i = range[0];
-      while (i < range[1] && this.#offsets[i]! < at) i++;
-      return i;
-    }
-    // An element: the boundary before its child at `offset`, or its end.
-    const child = node.childNodes[offset];
-    if (!child) return pieces.get(node)?.[1] ?? null;
-    return (child instanceof Text ? pieces.get(node) : pieces.get(child))?.[0] ?? null;
-  }
-
   /**
    * Where `render` puts the graphemes with `hidden` cut: visible run r lies
    * between ellipsis r - 1 and ellipsis r. Its first grapheme sits in the join
@@ -375,10 +313,10 @@ export class Elide {
    * an ellipsis from its neighbours (see `beside`). `shown` is the visible run
    * of each piece.
    */
-  #layoutOf(hidden: readonly Range[]): { el: HTMLSpanElement; range: Range; shown: Range }[] {
+  #layoutOf(hidden: readonly Range[]): Piece[] {
     const n = this.#g.length;
     const m = hidden.length;
-    const out: { el: HTMLSpanElement; range: Range; shown: Range }[] = [];
+    const out: Piece[] = [];
     const marking = this.#marking;
     const words = () => wordsOf(this.#g);
     const wraps = this.#settings.lines > 1;
@@ -404,58 +342,6 @@ export class Elide {
   /** The cut showing now. */
   get #cut(): Range[] {
     return (this.#current?.hidden ?? []).map((p): Range => [p.start, p.end]);
-  }
-
-  /** The graphemes each element of the visible text holds, as rendered now. */
-  #pieces(): Map<Node, Range> {
-    const hidden = this.#current?.hidden ?? [];
-    const map = new Map<Node, Range>([[this.#lineEl, [0, this.#g.length]]]);
-    // An element holding text, and in text mode each text node and highlight in it.
-    const hold = (el: HTMLElement, range: Range, glyphs = this.#settings.glyphs) => {
-      map.set(el, range);
-      if (!glyphs) for (const [node, r] of childRanges(el, range, this.#offsets)) map.set(node, r);
-    };
-    for (const { el, range } of this.#layoutOf(this.#cut)) hold(el, range);
-    hidden.forEach((part, j) => {
-      const join = this.#joins[j]!;
-      map.set(join.ellipsis, [part.start, part.end]);
-      hold(join.found, [part.start, part.end], false);
-      map.set(join.el, [map.get(join.before)![0], map.get(join.after)![1]]);
-    });
-    if (this.#settings.glyphs) this.#glyphEls.forEach((el, i) => map.set(el, [i, i + 1]));
-    return map;
-  }
-
-  /**
-   * Box of grapheme `index` as laid out, in viewport coordinates, or null
-   * when it is hidden. Works in text mode too (measured with a Range), so a
-   * tooltip can line its own copy of the text up with the original glyph by
-   * glyph.
-   */
-  graphemeRect(index: number): DOMRect | null {
-    this.#sync();
-    const n = this.#g.length;
-    if (index < 0 || index >= n || !this.#current || !isVisible(this.#current, index)) return null;
-    if (this.#settings.glyphs) {
-      const el = this.#glyphEls[index];
-      return el?.isConnected ? el.getBoundingClientRect() : null;
-    }
-    const piece = this.#layoutOf(this.#cut).find(({ range: [a, b] }) => index >= a && index < b);
-    const found = piece && textAt(piece.el, this.#offsets[index]! - this.#offsets[piece.range[0]]!);
-    if (!found) return null;
-    const [node, at] = found;
-    const range = document.createRange();
-    range.setStart(node, at);
-    range.setEnd(node, at + (this.#offsets[index + 1]! - this.#offsets[index]!));
-    return range.getBoundingClientRect();
-  }
-
-  /** Ink box of grapheme `index` in glyph mode, or null when it isn't showing. */
-  glyphInk(index: number): DOMRect | null {
-    this.#sync();
-    const el = this.#glyphEls[index];
-    if (!el?.isConnected || !this.#lastRun) return null;
-    return glyphInk(this.#lastRun, this.#g[index], el.getBoundingClientRect());
   }
 
   /** The classes `keep` gives grapheme `index` (space-separated), or null. */
@@ -536,7 +422,7 @@ export class Elide {
     if (this.#destroyed) return;
     this.#sought = range ? { range, by } : null;
     const match = this.#marking.match;
-    markGlyphs(this.#glyphEls, 'data-fp-match', match ? [match] : []);
+    this.#settings.glyphs?.mark(this.#glyphEls, 'data-fp-match', match ? [match] : []);
     this.#bias = null;
     this.#schedule('refresh');
   }
@@ -547,15 +433,6 @@ export class Elide {
    */
   #markFocus(): boolean {
     return markCopies(this.#lineEl, this.#focused, 'data-fp-focus').some((el) => this.#revealed || !el.closest('[data-fp-found]'));
-  }
-
-  /** Subscribe to visible-text changes. Returns an unsubscribe function. */
-  onChange(fn: (change: ElideChange) => void): () => void {
-    const first = this.#listeners.size === 0;
-    this.#listeners.add(fn);
-    // Passes record what they paint only for listeners; the next change animates from here.
-    if (first && this.#current && this.#lastRun) this.#recordPainted(this.#lastRun);
-    return () => this.#listeners.delete(fn);
   }
 
   /**
@@ -569,8 +446,7 @@ export class Elide {
 
   /** Change text and/or options and re-truncate. */
   update(options: ElideOptions): void {
-    const { text, onChange, ...rest } = options;
-    if (onChange) this.#listeners.add(onChange);
+    const { text, ...rest } = options;
     const before = this.#settings;
     this.#settings = { ...before, ...defined(rest) };
     const s = this.#settings;
@@ -582,14 +458,13 @@ export class Elide {
     }
     if (s.observe !== before.observe) this.#observe(s.observe);
     if (s.lines !== before.lines) this.#bias = null;
-    if (s.suffix !== before.suffix) this.#setSuffix();
+    if (s.suffix?.content !== before.suffix?.content) this.#setSuffix();
     if ((text !== undefined && text !== this.#source) || s.glyphs !== before.glyphs) {
       this.#sought = null;
       this.#setText(text ?? this.#source);
       this.#showAll();
       this.#fresh = true;
       this.#pendingReset = true;
-      this.#painted = null;
     } else {
       if (s.keep !== before.keep) this.#setPins();
       if (s.position !== before.position) this.#setLayout();
@@ -615,7 +490,7 @@ export class Elide {
     unfound.delete(this);
     instances.delete(this);
     byId.delete(this.#id);
-    this.#listeners.clear();
+    this.#tracker = null;
     this.#renderListeners.clear();
     forgetFound(this);
     this.#unlockHeight();
@@ -659,7 +534,7 @@ export class Elide {
   /** Read the text, and its elements, from `source`: a string, a node, or (undefined) the element's own content. */
   #setText(source: string | Node | undefined) {
     this.#source = source;
-    const suffix = this.#settings.suffix;
+    const suffix = this.#settings.suffix?.content;
     const { text, chains } =
       typeof source === 'string'
         ? { text: source, chains: null }
@@ -671,14 +546,7 @@ export class Elide {
     this.#offsets = [0];
     for (const s of this.#g) this.#offsets.push(this.#offsets[this.#offsets.length - 1]! + s.length);
     this.#chains = chains ? this.#g.map((_, i) => chains[this.#offsets[i]!] ?? null) : [];
-    this.#glyphEls = this.#settings.glyphs
-      ? this.#g.map((s, i) => {
-          const el = document.createElement('span');
-          el.setAttribute('data-fp-glyph', String(i));
-          el.textContent = s;
-          return el;
-        })
-      : [];
+    this.#glyphEls = this.#settings.glyphs?.create(this.#g) ?? [];
     this.#unsaid = !speak(this.#srEl, this.element, this.#g, this.#chains) && !this.element.isConnected;
     this.#setPins();
     this.#setLayout();
@@ -686,9 +554,9 @@ export class Elide {
 
   /** Put `suffix` after the line (see `Suffix`). */
   #setSuffix() {
-    const content = this.#settings.suffix;
-    if (content !== null && content !== '') {
-      (this.#suffix ??= new Suffix(this.element, () => this.refresh())).fill(content);
+    const suffix = this.#settings.suffix;
+    if (suffix && suffix.content !== '') {
+      (this.#suffix ??= suffix.place(this.element, () => this.refresh())).fill(suffix.content);
       return;
     }
     this.#suffix?.giveBack(false);
@@ -702,7 +570,7 @@ export class Elide {
     const classes = keepClasses(this.#text, keep);
     this.#classes = classes.length > 0 ? graphemeClasses(classes, this.#offsets) : [];
     this.#plain = this.#chains.length === 0 && this.#classes.every((c) => c === null);
-    markGlyphs(this.#glyphEls, 'data-fp-kept', this.#pins);
+    this.#settings.glyphs?.mark(this.#glyphEls, 'data-fp-kept', this.#pins);
     this.#glyphEls.forEach((el, i) => (el.className = this.#classes[i] ?? ''));
     this.#bias = null;
   }
@@ -910,7 +778,8 @@ export class Elide {
   /** Show graphemes [from, to) in `el`, touching the DOM as little as possible. */
   /** `shown`: the visible run it's part of, which a highlight may go on into. */
   #fill(el: HTMLElement, from: number, to: number, shown: Range = [0, this.#g.length]) {
-    if (this.#settings.glyphs) fillGlyphs(el, this.#glyphEls, this.#chains, [from, to]);
+    const glyphs = this.#settings.glyphs;
+    if (glyphs) glyphs.fill(el, this.#glyphEls, this.#chains, [from, to]);
     else fillPiece(el, this.#g, this.#marking, [from, to], shown);
   }
 
@@ -938,7 +807,7 @@ export class Elide {
 
   /** Show the suffix as the text is (or isn't) truncated. */
   #suffixFor(truncated: boolean) {
-    this.#suffix?.show(truncated || this.#settings.showSuffix === 'always');
+    this.#suffix?.show(truncated || this.#settings.suffix?.show !== 'truncated');
   }
 
   /**
@@ -1314,16 +1183,7 @@ export class Elide {
       this.#unsaid = false;
     }
 
-    // Where things were when last painted, for listeners that animate the
-    // change. (Measuring now would see the old text reflowed at the new size.)
-    const tracking = this.#listeners.size > 0;
-    const moved = (r: DOMRect) => new DOMRect(r.x + run.box.x, r.y + run.box.y, r.width, r.height);
-    const glyphsBefore = new Map<number, { box: DOMRect; ink: DOMRect }>();
-    let marksBefore: DOMRect[][] = [];
-    if (tracking && previous && !reset && this.#painted) {
-      marksBefore = this.#painted.marks.map((marks) => marks.map(moved));
-      for (const [i, g] of this.#painted.glyphs) glyphsBefore.set(i, { box: moved(g.box), ink: moved(g.ink) });
-    }
+    const tracker = this.#tracker;
     this.#lastRun = run;
 
     const n = this.#g.length;
@@ -1491,38 +1351,48 @@ export class Elide {
     }
     if (this.#focused) this.#markFocus();
 
-    if (tracking) {
+    if (tracker) {
       yield* phase.read();
-      this.#recordPainted(run);
+      tracker.painted(run, previous && !reset ? run.box : null);
     }
-    return { reason, previous, state, reset, tracking, glyphsBefore, marksBefore };
+    return { reason, previous, state, reset, tracker };
   }
 
   /** Tell listeners about a finished pass. */
-  #finish({ reason, previous, state, reset, tracking, glyphsBefore, marksBefore }: Painted) {
-    const change = tracking ? changeOf(reason, previous, state, reset, glyphsBefore, marksBefore) : null;
-    if (change) for (const fn of this.#listeners) fn(change);
+  #finish({ reason, previous, state, reset, tracker }: Painted) {
+    tracker?.done(reason, previous, state, reset);
     for (const fn of this.#renderListeners) fn(state);
-  }
-
-  /** Remember glyph and mark positions, relative to the host, as they are about to be painted. */
-  #recordPainted(run: Run) {
-    const origin = this.element.getBoundingClientRect();
-    const local = (r: DOMRect) => new DOMRect(r.x - origin.x, r.y - origin.y, r.width, r.height);
-    const glyphs = new Map<number, { box: DOMRect; ink: DOMRect }>();
-    if (this.#settings.glyphs) {
-      this.#glyphEls.forEach((el, i) => {
-        if (!el.isConnected) return;
-        const box = el.getBoundingClientRect();
-        glyphs.set(i, { box: local(box), ink: local(glyphInk(run, this.#g[i], box)) });
-      });
-    }
-    const marks = (this.#current?.hidden ?? []).map((_, j) => this.marks(j).map(local));
-    this.#painted = { glyphs, marks };
   }
 
   #makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.#pins, slack = 0): ElideState {
     return stateOf(this.#text, this.#offsets, { hidden, pins, lines, gaps, slack, expanded: this.#revealed });
+  }
+
+  static {
+    openUp((e) => ({
+      sync: () => e.#sync(),
+      get settings() {
+        return e.#settings;
+      },
+      get current() {
+        return e.#current;
+      },
+      get run() {
+        return e.#lastRun;
+      },
+      joins: e.#joins,
+      line: e.#lineEl,
+      get offsets() {
+        return e.#offsets;
+      },
+      get glyphs() {
+        return e.#glyphEls;
+      },
+      pieces: () => e.#layoutOf(e.#cut),
+      track: (tracker) => {
+        e.#tracker = tracker;
+      },
+    }));
   }
 }
 

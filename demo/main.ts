@@ -1,4 +1,7 @@
+import { ellipsisInk, markInks } from '#src/geometry.ts';
+import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type EllipsisStyle, type Gap, elide, separators, words } from '#src/index.ts';
+import { suffix } from '#src/suffix.ts';
 import { type Reveal, tooltip } from '#src/tooltip.ts';
 import { type Effect, transitions } from '#src/transitions.ts';
 import { $, resizable, segmented } from './ui.ts';
@@ -12,8 +15,8 @@ function drawGuides(instance: Elide, layer: HTMLElement) {
   const parts: HTMLElement[] = [];
   const base = layer.getBoundingClientRect();
   gaps.forEach((gap, j) => {
-    const marks = instance.marks(j);
-    const ink = instance.ellipsisInk(j);
+    const marks = markInks(instance, j);
+    const ink = ellipsisInk(instance, j);
     if (!ink || marks.length === 0) return;
     const pad = Math.max(4, ink.height * 0.8);
     const top = ink.top - base.top - pad;
@@ -38,7 +41,7 @@ function drawGuides(instance: Elide, layer: HTMLElement) {
 
 const heroBox = $('#heroBox');
 const heroGuides = $('.guides', heroBox);
-const hero = elide($('#hero'), { position: 0.5, lines: 1, glyphs: true });
+const hero = elide($('#hero'), { position: 0.5, lines: 1, glyphs });
 // Handy for poking at the API from the console.
 Object.assign(window, { hero });
 
@@ -230,10 +233,10 @@ for (const sample of samples) {
 // Keep parts, many ellipses
 
 const keepExamples: Elide[] = [
-  elide($('#exFile'), { keep: /\.[^.]+$/, glyphs: true }),
-  elide($('#exFox'), { keep: 'fox', position: 'middle', glyphs: true }),
-  elide($('#exHash'), { position: [0.25, 0.75], glyphs: true }),
-  elide($('#exLog'), { keep: [/^\S+ \S+/, /ERR_\w+/], position: 'middle', glyphs: true }),
+  elide($('#exFile'), { keep: /\.[^.]+$/, glyphs }),
+  elide($('#exFox'), { keep: 'fox', position: 'middle', glyphs }),
+  elide($('#exHash'), { position: [0.25, 0.75], glyphs }),
+  elide($('#exLog'), { keep: [/^\S+ \S+/, /ERR_\w+/], position: 'middle', glyphs }),
 ];
 for (const instance of keepExamples) transitions(instance, { effect: 'merge' });
 resizable($('#keepBox'));
@@ -360,11 +363,11 @@ resizable($('#cardBox'));
 // shows while there's more to read (or the post is expanded).
 const postEl = $('#post');
 const more = $<HTMLButtonElement>('.more', postEl);
-const post = elide(postEl, { lines: 3, suffix: more, showSuffix: 'truncated', find: 'expand' });
+const post = elide(postEl, { lines: 3, suffix: suffix(more, { show: 'truncated' }), find: 'expand' });
 more.addEventListener('click', () => (post.expanded ? post.collapse() : post.expand()));
 // Find in page expands it too.
 post.onRender((state) => (more.textContent = state.expanded ? 'Show less' : 'Read more'));
-const issues = [...document.querySelectorAll<HTMLElement>('#issues p')].map((p) => elide(p, { suffix: $('.badge', p) }));
+const issues = [...document.querySelectorAll<HTMLElement>('#issues p')].map((p) => elide(p, { suffix: suffix($('.badge', p)) }));
 const commit = elide($('#commit'), { position: 0.6 });
 resizable($('#richBox'));
 Object.assign(window, { post, issues, commit });

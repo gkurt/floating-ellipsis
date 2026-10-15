@@ -1,4 +1,5 @@
 import type { Elide } from './elide.ts';
+import { ellipsisArea, ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements } from './geometry.ts';
 import { isWhitespace } from './graphemes.ts';
 
 /**
@@ -322,7 +323,7 @@ export class Tooltip {
     if (!found) return this.#close();
     let ellipsis: number | null = null;
     if (this.#settings.reveal === 'peek') {
-      ellipsis = found.instance.ellipsisAt(e.clientX, e.clientY, this.#settings.slop);
+      ellipsis = ellipsisAt(found.instance, e.clientX, e.clientY, this.#settings.slop);
       if (ellipsis < 0) return this.#close();
     }
     const target = { ...found, ellipsis };
@@ -393,7 +394,7 @@ export class Tooltip {
    */
   #full(target: TooltipTarget, grow: boolean): boolean {
     const t = target.instance;
-    const lines = t.lineRects();
+    const lines = lineRects(t);
     const first = lines[0];
     if (!first || t.graphemes.length === 0) return false;
     const origin = grow ? this.#origin(t) : null;
@@ -488,18 +489,18 @@ export class Tooltip {
    * every ellipsis, as drawn.
    */
   #origin(t: Elide): Origin {
-    const from = t.graphemes.map((_, i) => t.graphemeRect(i));
+    const from = t.graphemes.map((_, i) => graphemeRect(t, i));
     const part = t.graphemes.map(() => -1);
-    const line = t.lineRects()[0]!;
+    const line = lineRects(t)[0]!;
     t.state.hidden.forEach(({ start, end }, j) => {
-      const area = t.ellipsisArea(j) ?? line;
+      const area = ellipsisArea(t, j) ?? line;
       const count = end - start;
       for (let k = 0; k < count; k++) {
         from[start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
         part[start + k] = j;
       }
     });
-    const dots = t.state.hidden.flatMap((_, j) => t.markElements(j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
+    const dots = t.state.hidden.flatMap((_, j) => markElements(t, j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
     return { from: from.map((r) => r ?? line), part, dots };
   }
 
@@ -646,7 +647,7 @@ export class Tooltip {
    */
   #peek(target: TooltipTarget): boolean {
     const index = target.ellipsis ?? 0;
-    const ink = target.instance.ellipsisInk(index);
+    const ink = ellipsisInk(target.instance, index);
     const part = target.instance.state.hidden[index];
     if (!ink || !part) return false;
     const tip = this.element;
@@ -815,8 +816,8 @@ export class Tooltip {
     if (!s || s.isCollapsed || s.rangeCount === 0) return;
     const range = s.getRangeAt(0);
     if (!t.element.contains(range.startContainer) || !t.element.contains(range.endContainer)) return;
-    const from = t.graphemeAt(range.startContainer, range.startOffset, 'start');
-    const to = t.graphemeAt(range.endContainer, range.endOffset, 'end');
+    const from = graphemeAt(t, range.startContainer, range.startOffset, 'start');
+    const to = graphemeAt(t, range.endContainer, range.endOffset, 'end');
     if (from === null || to === null || to <= from) return;
     const original = range.cloneRange();
     this.#select(from, to);

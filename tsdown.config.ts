@@ -3,6 +3,10 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: [
     'src/index.ts',
+    'src/geometry.ts',
+    'src/glyphs.ts',
+    'src/changes.ts',
+    'src/suffix.ts',
     'src/transitions.ts',
     'src/tooltip.ts',
     'src/text.ts',

@@ -2,12 +2,14 @@
  * `<elide-text>`: a custom element that truncates its own text, configured by
  * attributes, for any framework or none.
  */
-import { Binding } from './bind.ts';
+import { type BindingOptions, Binding } from './bind.ts';
+import type { ElideChange } from './changes.ts';
 import { type Position, type Snap, separators, words } from './cut.ts';
 import type { Elide } from './elide.ts';
+import { glyphs } from './glyphs.ts';
 import type { Length } from './marks.ts';
 import type { Gap } from './metrics.ts';
-import type { ElideChange, ElideOptions } from './options.ts';
+import { suffix } from './suffix.ts';
 
 const ATTRIBUTES = [
   'lines',
@@ -72,7 +74,7 @@ export class ElideElement extends HTMLElement {
   static readonly observedAttributes: readonly string[] = ATTRIBUTES;
 
   #binding: Binding | null = null;
-  #extra: ElideOptions = {};
+  #extra: BindingOptions = {};
   /** A copy of its content as first connected, without the suffix. */
   #initial: Node = document.createDocumentFragment();
   #suffix: Element | null = null;
@@ -90,11 +92,11 @@ export class ElideElement extends HTMLElement {
   }
 
   /** Options on top of the attributes. */
-  get options(): ElideOptions {
+  get options(): BindingOptions {
     return this.#extra;
   }
 
-  set options(options: ElideOptions) {
+  set options(options: BindingOptions) {
     this.#extra = options;
     this.#binding?.set(this.#resolved());
   }
@@ -132,19 +134,17 @@ export class ElideElement extends HTMLElement {
     this.#binding?.set(this.#resolved());
   }
 
-  #resolved(): ElideOptions {
+  #resolved(): BindingOptions {
     const attr = (name: (typeof ATTRIBUTES)[number]) => this.getAttribute(name);
     const flag = (name: (typeof ATTRIBUTES)[number]) => {
       const v = attr(name);
       return v === null ? undefined : v !== 'false';
     };
-    const options: ElideOptions = {
+    const options: BindingOptions = {
       text: attr('text') ?? this.#initial,
       onChange: this.#emit,
     };
-    if (this.#suffix) options.suffix = this.#suffix;
-    const showSuffix = attr('show-suffix');
-    if (showSuffix === 'always' || showSuffix === 'truncated') options.showSuffix = showSuffix;
+    if (this.#suffix) options.suffix = suffix(this.#suffix, { show: attr('show-suffix') === 'truncated' ? 'truncated' : 'always' });
     const find = attr('find');
     if (find === 'keep' || find === 'expand') options.find = find;
     else if (find === 'false') options.find = false;
@@ -171,7 +171,8 @@ export class ElideElement extends HTMLElement {
     const copy = attr('copy');
     if (copy === 'full' || copy === 'visible') options.copy = copy;
     options.trim = flag('trim');
-    options.glyphs = flag('glyphs');
+    const glyphMode = flag('glyphs');
+    if (glyphMode !== undefined) options.glyphs = glyphMode ? glyphs : null;
     options.title = flag('tooltip-title');
     const { onChange: _, ...extra } = this.#extra;
     return Object.fromEntries(Object.entries({ ...options, ...extra }).filter(([, v]) => v !== undefined));

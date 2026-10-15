@@ -9,10 +9,9 @@
  * <div use:elide={{ text: path, position: 'middle' }}></div>
  * ```
  */
-import { Binding } from './bind.ts';
-import type { ElideOptions } from './options.ts';
+import { type BindingOptions, Binding } from './bind.ts';
 
-export function elide(node: HTMLElement, options?: ElideOptions): { update: (options?: ElideOptions) => void; destroy: () => void } {
+export function elide(node: HTMLElement, options?: BindingOptions): { update: (options?: BindingOptions) => void; destroy: () => void } {
   const binding = new Binding(node, options);
   return {
     update: (next) => binding.set(next),

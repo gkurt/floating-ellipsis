@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { onChange } from '#src/changes.ts';
 import { type Position, separators, words } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
+import { ellipsisArea, ellipsisAt, ellipsisInk, ellipsisRect, graphemeAt, graphemeRect, markInks } from '#src/geometry.ts';
 import {
   FONTS,
   PATH,
@@ -219,7 +221,7 @@ describe.each(FONTS)('elide in %s', (font) => {
     for (const shape of ['dot', 'bullet', 'ring', 'square'] as const) {
       const t = make(box(PROSE, `font:${font}`), { position: 'middle', ellipsis: { shape, count: 4 }, justify: 'ellipsis' });
       expectFits(t);
-      const marks = t.marks(0);
+      const marks = markInks(t, 0);
       expect(marks).toHaveLength(4);
       const { inner } = inkGaps(t, 0);
       for (const g of inner) expect(g).toBeCloseTo(inner[0]!, 0);
@@ -321,7 +323,8 @@ describe('elide', () => {
 
   it('updates text and options, and reports what changed', () => {
     const changes: { shown: number[]; hidden: number[]; reset: boolean }[] = [];
-    const t = make(box(PROSE), { onChange: ({ shown, hidden, reset }) => changes.push({ shown, hidden, reset }) });
+    const t = make(box(PROSE));
+    onChange(t, ({ shown, hidden, reset }) => changes.push({ shown, hidden, reset }));
     const before = visible(t);
     t.update({ position: 'start' });
     expectConsistent(t);
@@ -393,10 +396,10 @@ describe('elide', () => {
   it('maps between graphemes and their boxes', () => {
     const t = make(box(PROSE, 'width:240px'), { position: 'middle' });
     const part = t.state.hidden[0]!;
-    const e = t.ellipsisRect(0)!;
+    const e = ellipsisRect(t, 0)!;
     let left = -Infinity;
     for (let i = 0; i < t.state.length; i++) {
-      const r = t.graphemeRect(i);
+      const r = graphemeRect(t, i);
       if (i >= part.start && i < part.end) {
         expect(r).toBeNull();
         continue;
@@ -407,8 +410,8 @@ describe('elide', () => {
       else expect(r!.left).toBeGreaterThanOrEqual(e.right - 0.5);
     }
     const mark = t.ellipses[0]!.firstChild!;
-    expect(t.graphemeAt(mark, 0, 'start')).toBe(part.start);
-    expect(t.graphemeAt(mark, 0, 'end')).toBe(part.end);
+    expect(graphemeAt(t, mark, 0, 'start')).toBe(part.start);
+    expect(graphemeAt(t, mark, 0, 'end')).toBe(part.end);
   });
 
   it.each([1, 2])('maps any position in an ellipsis to what it hides, on %i line(s)', (lines) => {
@@ -417,21 +420,21 @@ describe('elide', () => {
     const nodes = [...t.ellipses[0]!.childNodes];
     expect(nodes.length).toBeGreaterThan(0);
     for (const node of nodes) {
-      expect(t.graphemeAt(node, 0, 'start')).toBe(part.start);
-      expect(t.graphemeAt(node, 0, 'end')).toBe(part.end);
+      expect(graphemeAt(t, node, 0, 'start')).toBe(part.start);
+      expect(graphemeAt(t, node, 0, 'end')).toBe(part.end);
     }
   });
 
   it('finds the ellipsis under a point, gaps included', () => {
     const t = make(box(PROSE, 'width:240px'), { position: 'middle' });
-    const area = t.ellipsisArea(0)!;
-    const ink = t.ellipsisInk(0)!;
+    const area = ellipsisArea(t, 0)!;
+    const ink = ellipsisInk(t, 0)!;
     expect(area.left).toBeLessThanOrEqual(ink.left);
     expect(area.right).toBeGreaterThanOrEqual(ink.right);
-    expect(t.ellipsisAt(area.left + 0.5, area.top + area.height / 2)).toBe(0);
-    expect(t.ellipsisAt(area.right - 0.5, area.top + area.height / 2)).toBe(0);
-    expect(t.ellipsisAt(area.left - 3, area.top + area.height / 2)).toBe(-1);
-    expect(t.ellipsisAt(area.left - 3, area.top + area.height / 2, 4)).toBe(0);
+    expect(ellipsisAt(t, area.left + 0.5, area.top + area.height / 2)).toBe(0);
+    expect(ellipsisAt(t, area.right - 0.5, area.top + area.height / 2)).toBe(0);
+    expect(ellipsisAt(t, area.left - 3, area.top + area.height / 2)).toBe(-1);
+    expect(ellipsisAt(t, area.left - 3, area.top + area.height / 2, 4)).toBe(0);
   });
 
   it('truncates a crowded table in one batch, and again when it resizes', async () => {

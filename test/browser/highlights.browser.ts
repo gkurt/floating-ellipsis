@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { graphemeAt, graphemeRect } from '#src/geometry.ts';
+import { glyph, glyphs } from '#src/glyphs.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { PATH, PROSE, box, expectConsistent, expectFits, expectFlush, make, rendered, sweep, track } from './helpers.ts';
 
@@ -64,7 +66,7 @@ describe('highlights (classes on keep)', () => {
     // Every visible grapheme has a box, left to right on the line.
     let left = -Infinity;
     for (let i = 0; i < t.state.length; i++) {
-      const r = t.graphemeRect(i);
+      const r = graphemeRect(t, i);
       if (t.state.hidden.some((p) => i >= p.start && i < p.end)) continue;
       expect(r).not.toBeNull();
       expect(r!.left).toBeGreaterThanOrEqual(left - 0.01);
@@ -74,16 +76,16 @@ describe('highlights (classes on keep)', () => {
     const pieces = [...t.element.querySelectorAll<HTMLElement>('[data-fp-text] .hit')];
     const span = pieces.reduce((a, b) => (b.textContent.length > a.textContent.length ? b : a));
     const first = PATH.indexOf('analytical-engine') + 'analytical-engine'.indexOf(span.textContent);
-    expect(t.graphemeAt(span.firstChild!, 2)).toBe(first + 2);
-    expect(t.graphemeAt(span, 0)).toBe(first);
+    expect(graphemeAt(t, span.firstChild!, 2)).toBe(first + 2);
+    expect(graphemeAt(t, span, 0)).toBe(first);
   });
 
   it('puts the class on glyphs in glyph mode', () => {
-    const t = make(box(PROSE, 'width:220px'), { position: 'middle', glyphs: true, keep: { match: 'fox', class: 'hit' } });
+    const t = make(box(PROSE, 'width:220px'), { position: 'middle', glyphs, keep: { match: 'fox', class: 'hit' } });
     expect(t.truncated).toBe(true);
     const at = PROSE.indexOf('fox');
-    for (let i = at; i < at + 3; i++) expect(t.glyph(i)!.className).toBe('hit');
-    expect(t.glyph(0)!.className).toBe('');
+    for (let i = at; i < at + 3; i++) expect(glyph(t, i)!.className).toBe('hit');
+    expect(glyph(t, 0)!.className).toBe('');
   });
 
   it('drops the class when keep changes', () => {
