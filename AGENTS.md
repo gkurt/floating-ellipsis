@@ -89,4 +89,9 @@ changes don't. Never edit `version` or `CHANGELOG.md` by hand: the release PR do
 ## Documentation
 
 When changing user-facing APIs, update all relevant docs in the same change:
-docs pages, README.md, AGENTS.md. Documentation must not go stale.
+README.md, docs/how-it-works.md, CONTRIBUTING.md, AGENTS.md. Documentation must not go stale.
+
+Keep README.md short: what each feature does and how to use it, with options in
+one-line table rows. Algorithms, edge cases, known gaps and the reasons behind
+behaviour go in `docs/how-it-works.md`; development and releasing in
+`CONTRIBUTING.md`.
