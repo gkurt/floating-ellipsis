@@ -1,0 +1,55 @@
+core:changelogs:
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Drawn marks and gaps sized right in WebKit on Linux and Windows\n\nWhere the canvas doesn't report glyph ink, it is read off a drawing, so bullets and rings are no longer twice their size there.\n\n### Lines end flush where cuts judged without rendering are a little off\n\nA judged cut is checked when the font's judgements have been off by more than a tenth of a pixel.\n"
+    filename: webkit-ink.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: major\n---\n\n### First stable release\n\nFluid, balanced truncation for one line or many: the ellipsis anywhere, kept and highlighted parts, word and path snapping, a capped justification gap (`maxGap`), a headless tooltip, transitions, `elideText` without the DOM, a CSS fallback for before scripts run, and bindings for custom elements, React, Vue and Svelte.\n"
+    filename: first-release.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: major\n---\n\n### Geometry, glyph mode, suffixes and `onChange` move to their own entries\n\nThe core is about 2 kB smaller gzipped. Pages that use them import them: `floating-ellipsis/geometry` (`ellipsisRect(t, i)`, `graphemeAt(t, …)` and the other box methods, as functions; `marks(i)` is now `markInks(t, i)`), `floating-ellipsis/changes` (`onChange(t, fn)`, replacing the method and option; bindings keep `onChange`), `floating-ellipsis/glyphs` (`glyphs: glyphs` in place of `glyphs: true`, and `glyph(t, i)`, `glyphInk(t, i)`) and `floating-ellipsis/suffix` (`suffix: suffix(content, { show })`, replacing `suffix` and `showSuffix`).\n"
+    filename: opt-in-entries.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Find in page finds the new text after `update({ text })` hides the same range as before\n"
+    filename: find-new-text.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Several lines fit and end flush with `text-wrap: balance` or `pretty`\n\nTruncated text breaks its lines one after another (the element's `text-wrap-style` is held at `auto` while truncated), so the ellipsis line reaches the edge and the text no longer runs a line over. Text that fits still wraps as the page says.\n"
+    filename: text-wrap-balance.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: minor\n---\n\n### Find in page finds what an ellipsis hides\n\nBy default the word a match starts in stays in sight, marked `data-fp-match`; `find: 'expand'` expands the text instead, and `find: false` turns it off. A match in text that shows no longer counts twice.\n"
+    filename: find-in-page.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Smaller bundles\n\nInternal members are now `#private`, so minifiers shorten their names: the core entry and the framework bindings are about 0.45 kB smaller gzipped, and the tooltip about 0.17 kB.\n"
+    filename: smaller-bundle.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Crowded tables and several lines truncate with fewer layouts\n\nResizing a table of one-line cells takes one layout per frame besides the browser's own, text on several lines about half the layouts it did, and highlighted text is judged without rendering when the highlights only colour it. `find: false` now keeps what an ellipsis hides out of the document, which makes every layout a little cheaper.\n"
+    filename: crowded-tables.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: minor\n---\n\n### `suffix`, `showSuffix`, `expand()` and `collapse()`\n\nA \"Read more\" button, badge or time follows the text on its last line and is never cut, fitting again when it changes width, and `expand()` shows all of the text in place.\n"
+    filename: suffix.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Truncating is faster, with fewer layouts\n\nSingle-line cuts are judged from glyph widths and kerning without rendering them, and less work is redone on every pass: refreshing a crowded table takes about half the time and layouts, and resizing one or setting new text about a fifth less. Long text and several lines gain the most.\n"
+    filename: faster-passes.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: minor\n---\n\n### Links and other inline elements survive the cut\n\nThe text is read with its inline elements, and every part of the line that shows sits inside copies of them; `text` also takes a node.\n"
+    filename: inline-markup.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### `words()` keeps a cut at the end of the text there\n\nA cut at the end (or start) of text ending in punctuation no longer moves inward and leaves the last word showing.\n"
+    filename: words-end-cut.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - webkit-ink.md
+      - first-release.md
+      - opt-in-entries.md
+      - find-new-text.md
+      - text-wrap-balance.md
+      - find-in-page.md
+      - smaller-bundle.md
+      - crowded-tables.md
+      - suffix.md
+      - faster-passes.md
+      - inline-markup.md
+      - words-end-cut.md
+    id: npm:floating-ellipsis
+    updated: true
+npm:packages:
+  - id: npm:floating-ellipsis
