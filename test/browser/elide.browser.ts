@@ -89,8 +89,13 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
-  it.each([2, 3])('fits %i lines at every width', (lines) => {
-    const t = make(box(PROSE, `font:${font}`), { lines, position: 'middle' });
+  it.each([
+    [2, 'wrap'],
+    [3, 'wrap'],
+    [3, 'balance'],
+    [3, 'pretty'],
+  ])('fits %i lines at every width, text-wrap %s', (lines, wrap) => {
+    const t = make(box(PROSE, `font:${font};text-wrap:${wrap}`), { lines, position: 'middle' });
     let before = -1;
     for (const _w of sweep(t, 60, 420, 23)) {
       expectFits(t, lines);
@@ -272,6 +277,28 @@ describe('elide', () => {
     await frames();
     observer.disconnect();
     expect(new Set(heights)).toEqual(new Set([40]));
+  });
+
+  it('breaks truncated lines one after another, and text that fits as text-wrap says', () => {
+    const el = box(PROSE, 'width:250px;text-wrap:balance');
+    const own = el.getAttribute('style');
+    const t = make(el, { lines: 2 });
+    const style = () => getComputedStyle(el).getPropertyValue('text-wrap-style') || getComputedStyle(el).getPropertyValue('text-wrap');
+    expect(t.truncated).toBe(true);
+    expect(style()).not.toMatch(/balance/);
+    t.element.style.width = '2000px';
+    t.refresh();
+    expect(t.truncated).toBe(false);
+    expect(style()).toMatch(/balance/);
+    t.element.style.width = '250px';
+    t.refresh();
+    expect(t.truncated).toBe(true);
+    t.expand();
+    expect(style()).toMatch(/balance/);
+    t.collapse();
+    expect(t.truncated).toBe(true);
+    t.destroy();
+    expect(el.getAttribute('style')).toBe(own);
   });
 
   it('puts off resizes far off screen until they come near', async () => {

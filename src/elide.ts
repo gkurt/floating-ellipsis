@@ -185,6 +185,8 @@ export class Elide {
   private lockedLines = 0;
   /** Gives the element its own inline overflow back, while a put-off pass has it clipped. */
   private clipped: (() => void) | null = null;
+  /** Gives the element its own `text-wrap` back, while truncated text breaks its lines greedily (see `greedy`). */
+  private ungreedy: (() => void) | null = null;
 
   constructor(element: HTMLElement, options: ElideOptions = {}) {
     const { text, onChange, ...rest } = options;
@@ -618,6 +620,7 @@ export class Elide {
     forgetFound(this);
     this.unlockHeight();
     this.clip(false);
+    this.greedy(false);
     this.element.removeAttribute('data-truncated');
     this.element.removeAttribute('data-elide');
     this.element.removeAttribute('data-fp-expanded');
@@ -779,6 +782,22 @@ export class Elide {
     if (on === (this.clipped !== null)) return;
     this.clipped?.();
     this.clipped = on ? holdStyle(this.element, 'overflow', 'clip') : null;
+  }
+
+  /**
+   * Break the lines of truncated text one after another (`on`), whatever
+   * `text-wrap` says, or as it says again. `balance` and `pretty` break
+   * them with the whole paragraph in view, evening them out: truncated text
+   * fills every line to the edge, so there's nothing to even out, and they
+   * would only move the breaks once the cut is fitted, leaving the ellipsis
+   * line short of the edge (or the text a line too long). Text that fits
+   * wraps as the page says. `text-wrap-style` applies to the element, a
+   * block, so it's set there.
+   */
+  private greedy(on: boolean) {
+    if (on === (this.ungreedy !== null)) return;
+    this.ungreedy?.();
+    this.ungreedy = on ? holdStyle(this.element, WRAP_MODE ? 'text-wrap-style' : 'text-wrap', WRAP_MODE ? 'auto' : 'wrap') : null;
   }
 
   /** What a pass needs to know about the element. Reads layout. */
@@ -958,6 +977,7 @@ export class Elide {
     // A path or a URL has nowhere to wrap: it breaks where it must.
     this.lineEl.style.overflowWrap = on ? 'break-word' : '';
     if (on) {
+      this.greedy(false);
       this.lineEl.style.letterSpacing = '';
       if (WRAP_MODE) this.lineEl.style.setProperty('text-wrap-mode', '');
       else this.lineEl.style.whiteSpace = '';
@@ -979,6 +999,7 @@ export class Elide {
     this.fill(first.before, 0, 0);
     this.fill(first.after, 0, 0);
     this.suffixFor(false);
+    this.greedy(false);
   }
 
   /**
@@ -1001,6 +1022,7 @@ export class Elide {
     this.fill(first.after, n, n);
     first.el.style.position = 'absolute';
     this.suffixFor(false);
+    this.greedy(false);
   }
 
   /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
@@ -1017,6 +1039,8 @@ export class Elide {
     this.joins[0]!.el.style.position = '';
     reconcile(this.lineEl, want);
     this.suffixFor(true);
+    // (Once on, it hides what the page says: it stays on while truncated.)
+    if (run.rebreaks || this.ungreedy !== null) this.greedy(true);
     for (const { el, range, shown } of this.layoutOf(hidden)) this.fill(el, range[0], range[1], shown);
 
     const layout = this.markLayout(run);
@@ -1045,7 +1069,8 @@ export class Elide {
       mode: this.settings.justify,
       maxGap: this.settings.maxGap === null ? null : toPx(this.settings.maxGap, run.marks!.fontSize),
       lines,
-      sure: (this.settings.lines <= 1 && WRAP_MODE) || !run.rebreaks,
+      // Truncated, lines break one after another (see `greedy`).
+      sure: (this.settings.lines <= 1 && WRAP_MODE) || !run.rebreaks || this.ungreedy !== null,
       right: run.right,
       layout: run.marks!,
       plans,

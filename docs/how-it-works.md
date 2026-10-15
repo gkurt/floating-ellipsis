@@ -44,10 +44,14 @@ Implementation details behind the behaviour described in the
 4. **Justify.** The space left on each line holding an ellipsis goes into its
    gaps (or letter-spacing), line by line from the top, backing off by a
    fraction of a pixel if rounding would make the line wrap. Filling a line
-   exactly to the edge keeps its line break where it was. Lines usually break
-   one after another, and then a line filled to a quarter pixel inside the
-   edge can't move any break, so it isn't checked; `text-wrap: balance` and
-   `pretty` break them with the paragraph in view, so there it is. A cut
+   exactly to the edge keeps its line break where it was. Truncated text breaks
+   its lines one after another, and then a line filled to a quarter pixel
+   inside the edge can't move any break, so it isn't checked. (`text-wrap:
+   balance` and `pretty` break them with the paragraph in view, evening them
+   out; truncated text fills every line to the edge, so there's nothing to
+   even out, and they would only move the breaks after the cut is fitted. So
+   while truncated, the element's `text-wrap-style` is held at `auto`; text
+   that fits wraps as the page says.) A cut
    judged on one line is justified from where it is expected to end, in the
    same write as rendering it, so the layout that checks the judgement checks
    the justified line too (and if it ends more than a tenth of a pixel off the
