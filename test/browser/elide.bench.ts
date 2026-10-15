@@ -87,6 +87,8 @@ async function bench<T>(name: string, setup: () => T | Promise<T>, run: (ctx: T)
     await run(ctx);
     const wall = performance.now() - start;
     await frames(2);
+    // Work put off until passes pause (filling what find in page searches) counts too.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const top = PROFILE && rep === 0 ? await commands.profile('stop', `.vitest/profiles/${name.replace(/\W+/g, '-')}.cpuprofile`) : [];
     const after = await commands.metrics();
     const ms = (key: string) => (after[key]! - before[key]!) * 1000;
@@ -184,6 +186,12 @@ describe('bench', () => {
     await bench(
       'table: drag 900 in a <table>',
       made(300, 3, mixed, () => ({ position: 'middle' }), 'table'),
+      (m) => drag(m),
+      teardown,
+    );
+    await bench(
+      'table: drag 900, find: false',
+      made(300, 3, mixed, () => ({ position: 'middle', find: false })),
       (m) => drag(m),
       teardown,
     );

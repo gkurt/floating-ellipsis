@@ -13,7 +13,11 @@ export interface Justified {
   mode: ElideOptions['justify'];
   /** How many lines the text is on. Filling a line mustn't change it. */
   lines: number;
-  /** One line that can't wrap: filling it needs no checking. */
+  /**
+   * Filling a line short of the edge can't change where lines break: one
+   * line that can't wrap, or lines broken one after another, the way text
+   * usually is. It needs no checking then.
+   */
   sure: boolean;
   /** The widest a gap may get, in px, or null. */
   maxGap: number | null;
@@ -24,6 +28,11 @@ export interface Justified {
   plans: GapPlan[];
   /** Characters on the line, for a first guess at letter-spacing. */
   characters: number;
+  /**
+   * Where the line ends is known without reading layout (one line that can't
+   * wrap, judged rather than measured): `boxes` and `lineOf` don't read.
+   */
+  known: boolean;
   /** Reads layout: the lines, the line ellipsis `j` is on, and whether the text fits. */
   boxes: () => LineBox[];
   lineOf: (j: number, boxes: LineBox[]) => number;
@@ -52,7 +61,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   const infos = plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, 0, 0));
 
   // Group the ellipses by line, and total the room they could take in.
-  yield* phase.read();
+  if (!t.known) yield* phase.read();
   const boxes = t.boxes();
   const byLine = new Map<number, number[]>();
   plans.forEach((_, j) => {
@@ -72,8 +81,8 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   };
   // Layout snaps each inline piece to 1/64 px, so filling a line exactly
   // can tip it over and wrap. Stay a hair inside, backing off if needed.
-  // A line that can't wrap stays a quarter pixel inside, more than the
-  // rounding adds up to, and needn't be checked.
+  // A sure line stays a quarter pixel inside, more than the rounding adds
+  // up to, and needn't be checked.
   const insets = t.sure ? [0.25] : [1 / 16, 0.25, 1];
 
   if (mode === 'spread' && t.lines === 1) {
@@ -135,7 +144,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
 
   for (const line of [...byLine.keys()].sort((a, b) => a - b)) {
     const ellipses = byLine.get(line)!;
-    yield* phase.read();
+    if (!t.known) yield* phase.read();
     const lineRoom = edge - (t.boxes()[line]?.right ?? edge);
     const total = ellipses.reduce((sum, j) => sum + gapsOf(plans[j]!), 0);
     if (lineRoom <= 0 || total === 0) continue;

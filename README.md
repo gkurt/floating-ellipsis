@@ -57,7 +57,7 @@ grid item with `min-width: 0`.
 | `copy`       | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                   |
 | `suffix`     | `null`          | A string or node that follows the text on its last line and is never cut.                                                                           |
 | `showSuffix` | `'always'`      | `'always'`, or only while `'truncated'`.                                                                                                            |
-| `find`       | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out.                                 |
+| `find`       | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).     |
 | `onChange`   | —               | Same as `instance.onChange(fn)`.                                                                                                                    |
 
 `instance.update(options)` changes any option, including `text`.

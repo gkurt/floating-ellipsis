@@ -1,15 +1,17 @@
 import {
   type Layout,
   type Range,
+  type Tried,
   asArray,
   estimateKept,
   hiddenRanges,
   graphemeClasses,
   keepClasses,
   keepRanges,
+  keptWidth,
   layoutFor,
   sameRanges,
-  searchSteps,
+  steeredSteps,
   shownLength,
   giveWay,
   toGraphemeRanges,
@@ -22,7 +24,7 @@ import { graphemes, isWhitespace } from './graphemes.ts';
 import { type Marking, besideEllipsis, childRanges, fillGlyphs, fillPiece, markGlyphs, textAt } from './highlight.ts';
 import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space } from './join.ts';
 import { type Justified, justify } from './justify.ts';
-import { areaOf, boundsOf, contentEdges, contentHeight, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
+import { type LineBox, areaOf, boundsOf, contentEdges, contentHeight, holdStyle, indexAt, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
 import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markInk, markStyleFor, styleMarks, toPx } from './marks.ts';
 import { type Chain, extentOf, markCopies, originals, readMarkup, speak } from './markup.ts';
@@ -40,7 +42,7 @@ import {
   isVisible,
   stateOf,
 } from './options.ts';
-import { Predictor, advanceSums, kerningOf } from './predict.ts';
+import { Predictor, advanceSums, kerningOf, marginFor } from './predict.ts';
 import { Suffix } from './suffix.ts';
 
 interface Run extends Typeset {
@@ -55,6 +57,8 @@ interface Run extends Typeset {
   sums: Float64Array;
   /** The width of the suffix, as it shows when the pass starts. */
   suffix: number;
+  /** Lines break with the whole paragraph in view (`text-wrap: balance` or `pretty`), not one after another. */
+  rebreaks: boolean;
 }
 
 /** How the rendered text lies: whether it fits, on how many lines, and where it ends. */
@@ -62,6 +66,11 @@ interface Fit {
   ok: boolean;
   lines: number;
   end: number;
+  /**
+   * Roughly how much more text would fit, in px: the room left on the
+   * lines, or (negative) what overflows them.
+   */
+  room: number;
 }
 
 /** A finished pass, for its listeners. */
@@ -92,6 +101,18 @@ const queued = new Map<Elide, ChangeReason>();
 let flushing = false;
 
 /**
+ * Instances whose hidden text has yet to be put where find in page finds it
+ * (see `fillFound`). Nobody searches in the middle of a resize: that waits
+ * until passes stop for a moment, and then each is filled once.
+ */
+const unfound = new Set<Elide>();
+let finding: ReturnType<typeof setTimeout> | null = null;
+const FIND_DELAY = 200;
+
+/** How far off the edge a line justified as judged may end, in px, before it is justified again. */
+const SLIP = 0.1;
+
+/**
  * One ResizeObserver for every instance, so a resize re-truncates them all in
  * one batch, and one IntersectionObserver telling which are near the screen.
  */
@@ -111,7 +132,7 @@ export class Elide {
   private offsets: number[] = [0];
   private glyphEls: HTMLSpanElement[] = [];
   private pins: Range[] = [];
-  /** The classes `keep` gives each grapheme, or null. */
+  /** The classes `keep` gives each grapheme, or null; empty when none has any. */
   private classes: (string | null)[] = [];
   /** The elements around each grapheme, or null; empty for plain text. */
   private chains: (Chain | null)[] = [];
@@ -160,6 +181,8 @@ export class Elide {
   private painted: { glyphs: Map<number, { box: DOMRect; ink: DOMRect }>; marks: DOMRect[][] } | null = null;
   /** Gives the element its own inline height back, while we hold it. */
   private heightLock: (() => void) | null = null;
+  /** How many lines the text was on when its height was held. */
+  private lockedLines = 0;
   /** Gives the element its own inline overflow back, while a put-off pass has it clipped. */
   private clipped: (() => void) | null = null;
 
@@ -587,6 +610,7 @@ export class Elide {
     this.destroyed = true;
     this.observe(false);
     queued.delete(this);
+    unfound.delete(this);
     instances.delete(this);
     byId.delete(this.id);
     this.listeners.clear();
@@ -672,7 +696,8 @@ export class Elide {
   private setPins() {
     const keep = asArray(this.settings.keep);
     this.pins = toGraphemeRanges(keepRanges(this.text, keep), this.offsets);
-    this.classes = graphemeClasses(keepClasses(this.text, keep), this.offsets);
+    const classes = keepClasses(this.text, keep);
+    this.classes = classes.length > 0 ? graphemeClasses(classes, this.offsets) : [];
     this.plain = this.chains.length === 0 && this.classes.every((c) => c === null);
     markGlyphs(this.glyphEls, 'data-fp-kept', this.pins);
     this.glyphEls.forEach((el, i) => (el.className = this.classes[i] ?? ''));
@@ -757,8 +782,7 @@ export class Elide {
   }
 
   /** What a pass needs to know about the element. Reads layout. */
-  private prepare(cs: CSSStyleDeclaration): Run {
-    const box = this.element.getBoundingClientRect();
+  private prepare(cs: CSSStyleDeclaration, box: DOMRect): Run {
     const { left, right } = contentEdges(this.element, cs, box);
     const typeset = typesetOf(cs);
     return {
@@ -771,6 +795,7 @@ export class Elide {
       marks: null,
       sums: advanceSums(this.g, typeset),
       suffix: this.suffix?.measure() ?? 0,
+      rebreaks: /balance|pretty/.test(cs.getPropertyValue('text-wrap-style') || cs.getPropertyValue('text-wrap')),
     };
   }
 
@@ -805,6 +830,26 @@ export class Elide {
     return g !== undefined && !isWhitespace(g) ? glyphIn(run, g) : null;
   }
 
+  /**
+   * Whether the highlights and elements in the line set text as the element
+   * does (the same font, spacing and case, and nothing beside them taking
+   * room), so the glyph widths hold there too. Every kind of them has to be
+   * showing to tell. Reads style.
+   */
+  private uniform(run: Run): boolean {
+    const kinds = new Set<string | Element>();
+    for (const cls of this.classes) if (cls !== null) kinds.add(cls);
+    for (const chain of this.chains) for (const el of chain ?? []) kinds.add(el);
+    const flat = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth', 'marginLeft', 'marginRight'] as const;
+    for (const el of this.lineEl.querySelectorAll('[data-fp-run] *, [data-fp-before] *, [data-fp-after] *')) {
+      const kind = originals.get(el) ?? (el.hasAttribute('data-fp-kept') ? el.className : 'match');
+      if (!kinds.delete(kind) && kind !== 'match') continue;
+      const cs = getComputedStyle(el);
+      if (cs.display !== 'inline' || typesetOf(cs).glyphs !== run.glyphs || flat.some((p) => parseFloat(cs[p]) !== 0)) return false;
+    }
+    return kinds.size === 0;
+  }
+
   /** The line and the suffix after it: what has to fit. */
   private lineParts(): HTMLElement[] {
     return this.suffix ? [this.lineEl, this.suffix.el] : [this.lineEl];
@@ -812,8 +857,21 @@ export class Elide {
 
   /** Does the rendered text fit? Reads layout. */
   private measure(run: Run): Fit {
-    const { lines, inside, end } = lineSpan(this.lineParts(), run.left, run.right);
-    return { ok: inside && lines <= this.settings.lines, lines, end };
+    const boxes = lineBoxes(...this.lineParts());
+    const max = this.settings.lines;
+    const width = run.right - run.left;
+    const inside = boxes.every((l) => l.right <= run.right + 0.05 && l.left >= run.left - 0.05);
+    const end = boxes.reduce((end, l) => Math.max(end, l.right), -Infinity);
+    const ok = inside && boxes.length <= max;
+    const used = (l: LineBox) => l.right - l.left;
+    // The room on the last line and on the lines not yet used; or what spills
+    // past the last line, less the room left on it (what spilled wrapped
+    // whole), or past the edge.
+    const spill = boxes.slice(max).reduce((sum, l) => sum + used(l), 0) - (boxes.length > max ? width - used(boxes[max - 1]!) : 0);
+    const room = ok
+      ? (max - boxes.length) * width + width - (boxes.length > 0 ? used(boxes.at(-1)!) : 0)
+      : -Math.max(0.01, spill, ...boxes.map((l) => used(l) - width));
+    return { ok, lines: boxes.length, end, room };
   }
 
   /** Index of the line ellipsis `index` is on, or -1. */
@@ -845,6 +903,16 @@ export class Elide {
     };
   }
 
+  /** Mark the element truncated (or not) for CSS, and give it the full text as its title when asked to. */
+  private label(truncated: boolean) {
+    const host = this.element;
+    host.toggleAttribute('data-truncated', truncated);
+    if (!this.settings.title || truncated === this.titled) return;
+    if (truncated) host.title = this.text;
+    else host.removeAttribute('title');
+    this.titled = truncated;
+  }
+
   /** Show the suffix as the text is (or isn't) truncated. */
   private suffixFor(truncated: boolean) {
     this.suffix?.show(truncated || this.settings.showSuffix === 'always');
@@ -865,11 +933,17 @@ export class Elide {
     });
   }
 
+  /** Fill what the ellipses hide, if a pass left that for later (see `unfound`). */
+  private catchUp() {
+    if (unfound.delete(this)) this.fillFound(this.cut);
+  }
+
   /**
    * Show what the first `count` ellipses hide in their place, the text
    * wrapping onto as many lines as it takes (`on`), or put the ellipses back.
    */
   private reveal(on: boolean, hidden: readonly Range[] = this.cut) {
+    if (on) this.catchUp();
     this.revealed = on;
     this.joins.forEach((join, j) => {
       const part = hidden[j];
@@ -947,28 +1021,38 @@ export class Elide {
 
     const layout = this.markLayout(run);
     if (layout.css !== null) for (let j = 0; j < m; j++) styleMarks(this.joins[j]!.marks, layout.css);
-    const target = resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm);
-    const group = groupMetrics(layout, layout.inner);
-    return hidden.map(([s, e], j) => {
-      const plan = planGap(this.neighbour(run, s - 1), group, this.neighbour(run, e), target);
-      space(this.joins[j]!, plan.marginLeft, plan.marginRight, layout.inner);
-      return plan;
-    });
+    const plans = this.plan(run, hidden);
+    plans.forEach((plan, j) => space(this.joins[j]!, plan.marginLeft, plan.marginRight, layout.inner));
+    return plans;
   }
 
-  /** The rendered text, for `justify` to fill its lines. */
-  private justified(run: Run, plans: GapPlan[], lines: number, hidden: readonly Range[]): Justified {
+  /** The gaps `render` plans around each ellipsis for `hidden`. */
+  private plan(run: Run, hidden: readonly Range[]): GapPlan[] {
+    if (hidden.length === 0) return [];
+    const layout = this.markLayout(run);
+    const target = resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm);
+    const group = groupMetrics(layout, layout.inner);
+    return hidden.map(([s, e]) => planGap(this.neighbour(run, s - 1), group, this.neighbour(run, e), target));
+  }
+
+  /**
+   * The rendered text, for `justify` to fill its lines. With `end`, where a
+   * single line is expected to end, that stands in for reading it.
+   */
+  private justified(run: Run, plans: GapPlan[], lines: number, hidden: readonly Range[], end: number | null = null): Justified {
+    const boxes = (): LineBox[] => (end === null ? lineBoxes(...this.lineParts()) : [{ top: 0, bottom: 0, left: run.left, right: end }]);
     return {
       mode: this.settings.justify,
       maxGap: this.settings.maxGap === null ? null : toPx(this.settings.maxGap, run.marks!.fontSize),
       lines,
-      sure: this.settings.lines <= 1 && WRAP_MODE,
+      sure: (this.settings.lines <= 1 && WRAP_MODE) || !run.rebreaks,
       right: run.right,
       layout: run.marks!,
       plans,
       characters: shownLength(this.offsets, hidden, this.joins[0]?.marks.length ?? 0),
-      boxes: () => lineBoxes(...this.lineParts()),
-      lineOf: (j, boxes) => this.lineOf(j, boxes),
+      known: end !== null,
+      boxes,
+      lineOf: (j, boxes) => (end === null ? this.lineOf(j, boxes) : 0),
       fits: () => this.measure(run),
       space: (j, left, right, inner) => space(this.joins[j]!, left, right, inner),
       spread: (ls) => (this.lineEl.style.letterSpacing = ls !== 0 ? `${run.letterSpacing + ls}px` : ''),
@@ -996,13 +1080,15 @@ export class Elide {
   /** Bring a scheduled pass forward: anything read from the instance is up to date. */
   private sync() {
     if (this.owed && !queued.has(this)) queued.set(this, this.owed);
-    if (!queued.has(this)) return;
-    this.reading = true;
-    try {
-      Elide.flush();
-    } finally {
-      this.reading = false;
+    if (queued.has(this)) {
+      this.reading = true;
+      try {
+        Elide.flush();
+      } finally {
+        this.reading = false;
+      }
     }
+    this.catchUp();
   }
 
   /**
@@ -1055,13 +1141,21 @@ export class Elide {
   private static runAll(batch: [Elide, ChangeReason][]) {
     if (batch.length === 0) return;
     const { results, failed } = lockstep(batch.map(([instance, reason]) => instance.pass(reason)));
+    if (unfound.size > 0) {
+      if (finding !== null) clearTimeout(finding);
+      finding = setTimeout(() => {
+        finding = null;
+        for (const instance of unfound) instance.catchUp();
+      }, FIND_DELAY);
+    }
     results.forEach((result, i) => result && batch[i]![0].finish(result));
     if (failed) throw failed.error;
   }
 
   /** The shared ResizeObserver: re-truncates every resized instance in one batch. */
   private static resized(entries: ResizeObserverEntry[]) {
-    const heights = new Map<Elide, number>();
+    // The height reported, and whether the text was truncated then.
+    const heights = new Map<Elide, { height: number; truncated: boolean | undefined }>();
     for (const entry of entries) {
       const instance = observed.get(entry.target);
       if (!instance) continue;
@@ -1072,21 +1166,27 @@ export class Elide {
         instance.clip(true);
         continue;
       }
-      heights.set(instance, entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+      heights.set(instance, {
+        height: entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height,
+        truncated: instance.current?.truncated,
+      });
     }
     if (heights.size === 0) return;
     const batch = [...queued];
     queued.clear();
-    for (const instance of heights.keys()) if (!batch.some(([i]) => i === instance)) batch.push([instance, instance.owed ?? 'resize']);
+    const batched = new Set(batch.map(([instance]) => instance));
+    for (const instance of heights.keys()) if (!batched.has(instance)) batch.push([instance, instance.owed ?? 'resize']);
     Elide.runAll(batch);
     // Truncating usually changes the height the observer just reported (the
     // old text was reflowed at the new width first). Left alone, that is an
     // undelivered notification, which browsers report as an error. Look away
     // until the next frame instead; picking up again reports the same width,
-    // which is a no-op.
-    for (const [instance, height] of heights) {
+    // which is a no-op. (One line that can't wrap keeps its height, unless
+    // an ellipsis came or went.)
+    for (const [instance, { height, truncated }] of heights) {
       const host = instance.element;
       if (observed.get(host) !== instance) continue;
+      if (WRAP_MODE && instance.settings.lines <= 1 && instance.current?.truncated === truncated) continue;
       if (Math.abs(contentHeight(host) - height) <= 0.5) continue;
       sharedObserver?.unobserve(host);
       requestAnimationFrame(() => {
@@ -1118,13 +1218,10 @@ export class Elide {
     }
     if (host.getClientRects().length === 0) return null;
 
-    const cs = getComputedStyle(host);
-    const run = this.prepare(cs);
-    this.lastWidth = run.width;
     // Once the IntersectionObserver has had its say, it decides: going by
     // the box instead can disagree right at the edge, and then nothing would
     // run the pass when it comes near (the observer has nothing new to say).
-    const box = run.box;
+    const box = host.getBoundingClientRect();
     const far =
       this.far ?? (box.bottom < -innerHeight || box.top > 2 * innerHeight || box.right < -innerWidth || box.left > 2 * innerWidth);
     if (this.putOff(reason, far)) {
@@ -1132,6 +1229,9 @@ export class Elide {
       this.clip(true);
       return null;
     }
+    const cs = getComputedStyle(host);
+    const run = this.prepare(cs, box);
+    this.lastWidth = run.width;
     const previous = this.current;
     const reset = this.pendingReset || !previous;
     const first = this.joins[0]!;
@@ -1146,12 +1246,11 @@ export class Elide {
       this.settings.justify !== 'spread' &&
       cs.direction === 'ltr' &&
       /^(start|left|justify)$/.test(cs.textAlign) &&
-      // A highlight or an element may change the font, which the glyph widths don't know.
-      this.plain &&
       this.even &&
       this.suffix === null &&
       !this.revealed &&
-      this.misjudged !== run.glyphs;
+      this.misjudged !== run.glyphs &&
+      (this.plain || this.uniform(run));
     let base: { cut: Range[]; end: number } | null = null;
     // (Or the full text, when it has just been set and shows in full.)
     const fresh = this.fresh;
@@ -1203,14 +1302,18 @@ export class Elide {
     const n = this.g.length;
     const { snap, trim } = this.settings;
     let hidden: Range[] = [];
-    let fit: Fit = { ok: false, lines: 0, end: 0 };
+    let fit: Fit = { ok: false, lines: 0, end: 0, room: 0 };
     const pinned = () => (this.sought ? union([this.sought.range, ...this.pins]) : this.pins);
     let pins = pinned();
     let gaps: GapInfo[] = [];
     let slack = 0;
     let plans: GapPlan[] = [];
 
-    const held = hold ? [holdStyle(host, 'height', height), holdStyle(host, 'overflow', 'clip')] : [];
+    // Only while trying a cut that may not fit: one judged to fit needs neither.
+    const held: (() => void)[] = [];
+    const holdStill = () => {
+      if (hold && held.length === 0) held.push(holdStyle(host, 'height', height), holdStyle(host, 'overflow', 'clip'));
+    };
     try {
       const layout = run.marks;
       let predictor: Predictor | null = null;
@@ -1222,36 +1325,45 @@ export class Elide {
           group: groupMetrics(layout, layout.inner),
           target: resolveGap(this.settings.gap, layout.fontSize, () => layout.rhythm),
         };
-        predictor = new Predictor(model, n, run.right, 0.05 * layout.fontSize + 0.1);
+        predictor = new Predictor(model, n, run.right, marginFor(run, layout.fontSize));
         predictor.saw(base.cut, base.end);
       }
       // Whether a cut was judged without being rendered, and so has yet to
       // be checked; and the cut last rendered and measured.
       let judged = false;
       let tried: Range[] | null = null;
+      // The cut was justified where it was known to end (see below).
+      let ahead = false;
+      // The predictor has measured a cut of this pass: it judges the ones
+      // around it as well as rendering them would.
+      let probed = false;
       const at = (k: number) => this.worthCutting(run, hiddenRanges(this.g, this.layout, k, pins, snap, trim));
       // What each cut tried so far did: different probes can come to the same cut.
-      const outcomes = new Map<string, boolean>();
-      const attempt = function* (this: Elide, cut: Range[]): Generator<void, boolean, void> {
+      const outcomes = new Map<string, Tried>();
+      const attempt = function* (this: Elide, cut: Range[]): Generator<void, Tried, void> {
         const key = cut.join();
-        let ok = outcomes.get(key);
-        if (ok === undefined) outcomes.set(key, (ok = yield* probe.call(this, cut)));
-        return ok;
+        let tried = outcomes.get(key);
+        if (tried === undefined) outcomes.set(key, (tried = yield* probe.call(this, cut)));
+        return tried;
       };
-      const probe = function* (this: Elide, cut: Range[]): Generator<void, boolean, void> {
+      const probe = function* (this: Elide, cut: Range[]): Generator<void, Tried, void> {
         const sure = predictor?.fits(cut) ?? null;
         if (sure !== null) {
           judged = true;
-          return sure;
+          return { fits: sure, room: null };
         }
         yield* phase.write();
+        holdStill();
         tried = cut;
         if (cut.length === 0) this.renderFull(run);
         else this.render(run, cut);
         yield* phase.read();
         fit = this.measure(run);
-        predictor?.saw(cut, fit.end);
-        return fit.ok;
+        if (predictor) {
+          predictor.saw(cut, fit.end);
+          probed = true;
+        }
+        return { fits: fit.ok, room: fit.room };
       };
       // A judgement shouldn't be wrong, but if the final measurement says
       // the model was off, the cut is found again without judging (and this
@@ -1263,22 +1375,23 @@ export class Elide {
         // when the text might fit: its glyph widths summed can't exceed the
         // room on all lines (with some leeway for kerning and collapsed spaces).
         const room = (run.right - run.left) * this.settings.lines - run.suffix;
-        const full = run.sums[n]! <= room * 1.1 + 1 && (yield* attempt.call(this, []));
+        const full = run.sums[n]! <= room * 1.1 + 1 && (yield* attempt.call(this, [])).fits;
         if (!full && n > 0) {
           // Kept parts that can't all fit give way, last first.
-          while (pins.length > 0 && !(yield* attempt.call(this, at(0)))) pins = giveWay(pins, this.sought?.range ?? null);
+          while (pins.length > 0 && !(yield* attempt.call(this, at(0))).fits) pins = giveWay(pins, this.sought?.range ?? null);
           yield* phase.write();
           // Where the search starts: what the canvas widths say fits. Kerning,
           // wrapping and rounding make that a guess, but a steady one, so it
-          // is shifted by how far off it was last time. (Until there is a last
-          // time, a guess at several lines ignores the room wrapping wastes,
-          // which is too far off to start from.)
+          // is shifted by how far off it was last time. From there each probe
+          // aims at what the room it left (or lacked) says fits, by the same
+          // widths: the room wrapping wastes changes little from one to the next.
           const mark = layout ? groupMetrics(layout, layout.inner).advance : 0;
-          const guess = estimateKept(this.g, this.layout, pins, snap, trim, run.sums, mark, room);
-          const bias = this.bias ?? (this.settings.lines > 1 ? null : 0);
+          const kept = (width: number, near?: number) => estimateKept(this.g, this.layout, pins, snap, trim, run.sums, mark, width, near);
+          const guess = kept(room);
           // One past the expected answer first: when the expectation holds,
           // the last probe is the answer, already rendered and measured.
-          const search = searchSteps(0, n - 1, bias === null ? null : Math.max(0, Math.min(n - 1, guess + bias + 1)));
+          const first = Math.max(0, Math.min(n - 1, guess + (this.bias ?? 0) + 1));
+          const search = steeredSteps(0, n - 1, first, (k, left) => kept(keptWidth(run.sums, mark, at(k)) + left, k));
           let step = search.next();
           while (!step.done) step = search.next(yield* attempt.call(this, at(step.value)));
           this.bias = step.value - guess;
@@ -1286,22 +1399,50 @@ export class Elide {
         }
         const measured = fit.ok && tried !== null && sameRanges(tried, hidden);
         const expected = measured ? null : (predictor?.right(hidden) ?? null);
-        yield* phase.write();
-        plans = this.render(run, hidden);
-        if (!measured) {
+        // Judged by what showed before the pass, it's checked once rendered.
+        const checked = expected !== null && !probed;
+        if (measured) {
+          // Showing already, as measured.
+          plans = this.plan(run, hidden);
+        } else {
+          yield* phase.write();
+          if (expected === null) holdStill();
+          plans = this.render(run, hidden);
+          this.label(hidden.length > 0);
+        }
+        // On one line, which can't wrap, a cut measured or judged is justified
+        // from where it ends, in the same write: a check, if any, is then the
+        // one layout that sees it all.
+        const end = measured && predictor ? fit.end : expected;
+        ahead = end !== null && hidden.length > 0;
+        if (ahead) ({ gaps, slack } = yield* justify(this.justified(run, plans, 1, hidden, end), phase));
+        const added = ahead ? gaps.reduce((sum, g) => sum + g.slack, 0) : 0;
+        if (checked || (!measured && expected === null)) {
           yield* phase.read();
           fit = this.measure(run);
+        } else if (!measured) {
+          fit = { ok: true, lines: 1, end: expected! + added, room: 0 };
         }
-        const off = expected !== null && Math.abs(expected - fit.end) > predictor!.margin / 2;
+        const off = checked && predictor!.off(expected + added, fit.end);
         if (off) this.misjudged = run.glyphs;
+        // Not off, the judgement holds (the cut fits by more than the
+        // error), but the line may end a little off the edge: justified
+        // again from where it turned out to end.
+        if (checked && !off && ahead && Math.abs(expected + added - fit.end) > SLIP) {
+          ({ gaps, slack } = yield* justify(this.justified(run, plans, 1, hidden, fit.end - added), phase));
+          fit = { ...fit, ok: true };
+          break;
+        }
         if ((fit.ok && !off) || !judged) break;
         predictor = null;
         judged = false;
         outcomes.clear();
       }
-      if (hidden.length > 0) ({ gaps, slack } = yield* justify(this.justified(run, plans, fit.lines, hidden), phase));
+      if (hidden.length > 0 && !ahead) ({ gaps, slack } = yield* justify(this.justified(run, plans, fit.lines, hidden), phase));
       yield* phase.write();
-      this.fillFound(hidden);
+      this.label(hidden.length > 0);
+      if (this.sought !== null || this.opener !== null) this.fillFound(hidden);
+      else unfound.add(this);
       if (this.opener !== null) this.reveal(true, hidden);
     } finally {
       for (const release of held.reverse()) release();
@@ -1309,18 +1450,18 @@ export class Elide {
 
     const state = this.makeState(hidden, fit.lines, gaps, pins, slack);
     this.current = state;
-    this.unlockHeight();
-    if (hold && state.truncated && this.settings.lines > 1 && !this.revealed) {
-      yield* phase.read();
-      const natural = getComputedStyle(host).height;
-      yield* phase.write();
-      this.lockHeight(natural);
-    }
-    host.toggleAttribute('data-truncated', state.truncated);
-    if (this.settings.title && state.truncated !== this.titled) {
-      if (state.truncated) host.title = this.text;
-      else host.removeAttribute('title');
-      this.titled = state.truncated;
+    const lock = hold && state.truncated && this.settings.lines > 1 && !this.revealed;
+    // A resize that leaves plain text on as many lines leaves its height as held.
+    const same = lock && reason === 'resize' && this.plain && this.heightLock !== null && state.lines === this.lockedLines;
+    if (!same) {
+      this.unlockHeight();
+      if (lock) {
+        yield* phase.read();
+        const natural = getComputedStyle(host).height;
+        yield* phase.write();
+        this.lockHeight(natural);
+        this.lockedLines = state.lines;
+      }
     }
     if (this.focused) this.markFocus();
 

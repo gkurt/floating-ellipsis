@@ -12,7 +12,10 @@ export interface Join {
   ellipsis: HTMLSpanElement;
   after: HTMLSpanElement;
   marks: HTMLSpanElement[];
-  /** What the ellipsis hides, before it. */
+  /**
+   * What the ellipsis hides, before it: in the document while find in page
+   * may look for it or while it shows (it costs every layout something).
+   */
   found: HTMLSpanElement;
   /** What the ellipsis holds: its marks, glued in place. */
   drawn: Node[];
@@ -54,7 +57,8 @@ export function createJoin(id: string, index: number, find: boolean): Join {
   found.style.position = 'absolute';
   found.setAttribute('hidden', hiding(find));
   const join: Join = { el, before: span('data-fp-before'), ellipsis, after: span('data-fp-after'), marks: [], found, drawn: [] };
-  el.append(join.before, found, ellipsis, join.after);
+  el.append(join.before, ellipsis, join.after);
+  place(join, find);
   return join;
 }
 
@@ -82,8 +86,15 @@ export function space(join: Join, left: number, right: number, inner: readonly n
   });
 }
 
+/** Put what the join's ellipsis hides in the document, before the ellipsis, or take it out. */
+function place(join: Join, present: boolean): void {
+  if (present && !join.found.isConnected) join.ellipsis.before(join.found);
+  else if (!present && join.found.isConnected) join.found.remove();
+}
+
 /** Show what the join's ellipsis hides in its place, or hide it again (`find`: from find in page only until found). */
 export function showHidden(join: Join, shown: boolean, find: boolean): void {
+  place(join, shown || find);
   if (shown) join.found.removeAttribute('hidden');
   else join.found.setAttribute('hidden', hiding(find));
   join.found.style.position = shown ? '' : 'absolute';
@@ -95,6 +106,7 @@ export function showHidden(join: Join, shown: boolean, find: boolean): void {
 /** Hide what the join's ellipsis hides from find in page, or only until it's found. */
 export function setFindable(join: Join, find: boolean): void {
   if (join.found.getAttribute('hidden') !== hiding(find)) join.found.setAttribute('hidden', hiding(find));
+  place(join, find || !join.found.hasAttribute('hidden'));
 }
 
 /**

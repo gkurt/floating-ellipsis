@@ -214,7 +214,8 @@ export function hiddenRanges(
  * The most graphemes `hiddenRanges` can keep while their widths (`sums` is
  * their running total: `sums[i]` is the width of graphemes [0, i)), with
  * `mark` for each cut, add up to no more than `room`. Only an estimate of
- * what fits, as layout will tell, but a cheap one.
+ * what fits, as layout will tell, but a cheap one. A `hint` near the
+ * answer makes it cheaper still.
  */
 export function estimateKept(
   graphemes: readonly string[],
@@ -225,14 +226,17 @@ export function estimateKept(
   sums: ArrayLike<number>,
   mark: number,
   room: number,
+  hint?: number,
 ): number {
   const n = graphemes.length;
-  const width = (k: number) => {
-    let w = sums[n]!;
-    for (const [s, e] of hiddenRanges(graphemes, layout, k, pins, snap, trim)) w -= sums[e]! - sums[s]! - mark;
-    return w;
-  };
-  return searchMax(0, n - 1, (k) => width(k) <= room);
+  return searchMax(0, n - 1, (k) => keptWidth(sums, mark, hiddenRanges(graphemes, layout, k, pins, snap, trim)) <= room, hint);
+}
+
+/** The width of the graphemes `hidden` leaves (`sums`: as for `estimateKept`), with `mark` for each cut. */
+export function keptWidth(sums: ArrayLike<number>, mark: number, hidden: readonly Range[]): number {
+  let w = sums[sums.length - 1]!;
+  for (const [s, e] of hidden) w -= sums[e]! - sums[s]! - mark;
+  return w;
 }
 
 /**
@@ -348,6 +352,57 @@ export function* searchSteps(lo: number, hi: number, hint?: number | null): Gene
   }
   return lo;
 }
+
+/** What trying a k told: whether it fits, and how much room it left (negative: lacked), when that's known. */
+export interface Tried {
+  fits: boolean;
+  room: number | null;
+}
+
+/**
+ * `searchSteps` steered by how much room each probe left or lacked: the
+ * next probe goes where `aim(k, room)` (the most that the room `k` left
+ * holds) says the answer is, or rather one past it, so that when the aim is
+ * true the last probe is the answer. Probes either side still pin it down.
+ * Without a room to aim by, and after a few aims, it goes on as
+ * `searchSteps` does: steps doubling away from the last probe until one
+ * turns, then halving. `fits(lo)` is assumed, as for `searchMax`.
+ */
+export function* steeredSteps(
+  lo: number,
+  hi: number,
+  first: number | null,
+  aim: (k: number, room: number) => number,
+): Generator<number, number, Tried> {
+  let next = first ?? (lo + hi + 1) >> 1;
+  let aims = 0;
+  // The way steps go (1 up, -1 down, 0 none yet), how far the next goes, and whether one turned.
+  let way = 0;
+  let stride = 1;
+  let turned = false;
+  while (lo < hi) {
+    const k = Math.min(hi, Math.max(lo + 1, next));
+    const { fits, room } = yield k;
+    if (fits) lo = k;
+    else hi = k - 1;
+    if (room === null || aims >= AIMS) {
+      const going = fits ? 1 : -1;
+      turned ||= way !== 0 && going !== way;
+      way = going;
+      next = turned ? (lo + hi + 1) >> 1 : k + going * stride;
+      stride *= 2;
+      continue;
+    }
+    aims++;
+    next = aim(k, room) + 1;
+    // Past the bracket: its edge is the answer if anything is.
+    if (next > hi) next = hi;
+  }
+  return lo;
+}
+
+/** Aimed probes before `steeredSteps` falls back to halving. */
+const AIMS = 4;
 
 export interface SeparatorOptions {
   /**

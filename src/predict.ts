@@ -76,15 +76,55 @@ export function kerningOf(g: readonly string[], typeset: Typeset): Float64Array 
   return kept.kerns;
 }
 
+/** Checks it takes before a margin narrows to what they found. */
+const CHECKS = 32;
+
+/**
+ * How far a judged cut must stay from the edge, for one way of setting text.
+ * At first a cautious share of the font size. Every judgement that gets
+ * rendered checks the model; once it has been checked often enough, the
+ * margin is a few times the most it was off (seldom a tenth of a pixel,
+ * though engines differ), and fewer cuts need rendering to tell.
+ */
+export class Margin {
+  private most = 0;
+  private checked = 0;
+  private readonly cautious: number;
+
+  constructor(cautious: number) {
+    this.cautious = cautious;
+  }
+
+  get value(): number {
+    return this.checked < CHECKS ? this.cautious : Math.min(this.cautious, Math.max(0.1, 3 * this.most));
+  }
+
+  /** A judgement turned out `error` px off. */
+  check(error: number): void {
+    this.most = Math.max(this.most, Math.abs(error));
+    this.checked++;
+  }
+}
+
+/** The margin for each way of setting text (by its glyph metrics, which go when fonts load). */
+const margins = new WeakMap<Typeset['glyphs'], Margin>();
+
+/** The margin for text set by `typeset` at `fontSize`. */
+export function marginFor(typeset: Typeset, fontSize: number): Margin {
+  let margin = margins.get(typeset.glyphs);
+  if (!margin) margins.set(typeset.glyphs, (margin = new Margin(0.05 * fontSize + 0.1)));
+  return margin;
+}
+
 export class Predictor {
   private readonly model: WidthModel;
   private readonly n: number;
   /** Where the line must end, and how far a judged cut must stay from it. */
   private readonly edge: number;
-  readonly margin: number;
+  private readonly margin: Margin;
   private measured: { right: number; width: number } | null = null;
 
-  constructor(model: WidthModel, n: number, edge: number, margin: number) {
+  constructor(model: WidthModel, n: number, edge: number, margin: Margin) {
     this.model = model;
     this.n = n;
     this.edge = edge;
@@ -93,7 +133,19 @@ export class Predictor {
 
   /** `cut`, rendered, ends at `right`. */
   saw(cut: readonly Range[], right: number): void {
+    const expected = this.right(cut);
+    if (expected !== null) this.margin.check(expected - right);
     this.measured = { right, width: cutWidth(this.model, this.n, cut) };
+  }
+
+  /**
+   * Text expected to end at `expected` ends at `right`: whether the model
+   * was too far off to go on judging this text by it.
+   */
+  off(expected: number, right: number): boolean {
+    const margin = this.margin.value;
+    this.margin.check(expected - right);
+    return Math.abs(expected - right) > margin / 2;
   }
 
   /** Where `cut` would end, rendered; null before a measurement. */
@@ -106,8 +158,9 @@ export class Predictor {
   fits(cut: readonly Range[]): boolean | null {
     const right = this.right(cut);
     if (right === null) return null;
-    if (right <= this.edge - this.margin) return true;
-    if (right >= this.edge + this.margin) return false;
+    const margin = this.margin.value;
+    if (right <= this.edge - margin) return true;
+    if (right >= this.edge + margin) return false;
     return null;
   }
 }

@@ -9,14 +9,24 @@ Implementation details behind the behaviour described in the
    `getClientRects()`, so every CSS property that affects layout is respected.
    A search finds the most graphemes that fit in `lines` lines. It starts from
    what the summed glyph widths say fits, shifted by how far off that was last
-   time, so it usually only has to confirm it. On one line, once one cut has
-   been measured, any other is judged from glyph widths and kerning pairs
-   alone when it clears the edge by a twentieth of an em, so a resize or new
-   text usually needs no layout but the one that checks the answer. If that
-   check finds the widths were off (three-letter ligatures,
-   `font-kerning: none`), the cut is found again by rendering, and that text
-   isn't judged again. The full text is only tried when its summed glyph
-   widths could fit.
+   time, so it usually only has to confirm it. Each cut it renders says how
+   much room it left on the lines, or how much spilled past them, and the
+   next aims where the glyph widths say that room ends, one past it first, so
+   that a true aim ends on the answer already rendered: two or three layouts
+   for several lines, where halving took five or more. On one line, once one
+   cut has been measured, any other is judged from glyph widths and kerning
+   pairs alone when it clears the edge by a margin, so a resize or new text
+   usually needs no layout but the one that checks the answer. The margin
+   starts at a twentieth of an em; every check records how far off the
+   judgement was for that font, and once there are enough, the margin is three
+   times the most it was off (a tenth of a pixel in most engines, a third in
+   one), so fewer cuts need rendering to tell. Text with
+   highlights or inline elements is judged too when each kind showing sets
+   text as the element does: the same font, spacing and case, and no padding,
+   border or margin. If the check finds the widths were off (three-letter
+   ligatures, `font-kerning: none`), the cut is found again by rendering, and
+   that text isn't judged again. The full text is only tried when its summed
+   glyph widths could fit.
 2. **Islands.** With N ellipses, the kept text forms N + 1 islands: the first
    anchored at the start, the last at the end, the ones in between centred
    where they sit. Kept graphemes are handed out one at a time in proportion
@@ -34,7 +44,14 @@ Implementation details behind the behaviour described in the
 4. **Justify.** The space left on each line holding an ellipsis goes into its
    gaps (or letter-spacing), line by line from the top, backing off by a
    fraction of a pixel if rounding would make the line wrap. Filling a line
-   exactly to the edge keeps its line break where it was. No gap grows past
+   exactly to the edge keeps its line break where it was. Lines usually break
+   one after another, and then a line filled to a quarter pixel inside the
+   edge can't move any break, so it isn't checked; `text-wrap: balance` and
+   `pretty` break them with the paragraph in view, so there it is. A cut
+   judged on one line is justified from where it is expected to end, in the
+   same write as rendering it, so the layout that checks the judgement checks
+   the justified line too (and if it ends more than a tenth of a pixel off the
+   edge, it's justified again from where it does). No gap grows past
    `maxGap`: room a long wrapping word leaves behind stays at the line's end.
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
    only its neighbours change, so animations and hover state survive resizes.
@@ -46,7 +63,10 @@ Implementation details behind the behaviour described in the
    scroll anchoring to fire a scroll on every frame. So a single line never
    wraps, truncated multi-line text holds its height between passes (an inline
    `height`, restored on `destroy()`), and probing while fitting happens with
-   the height held and overflow clipped.
+   the height held and overflow clipped. (Holding it also makes those layouts
+   cheaper: a grid sizes a row by an item of fixed height without laying out
+   its text a second time.) A resize that leaves plain text on as many lines
+   keeps the height it holds without measuring it again.
 
 ## Batching
 
@@ -61,7 +81,9 @@ show meanwhile can't change their height. Inside content that
 `content-visibility: auto` skips, an instance waits until it is rendered.
 
 Creating 900 instances, or resizing the grid they're in, takes a handful of
-layouts; the browser tests count them. The fastest setup for long lists is CSS
+layouts; the browser tests count them. A resize of one-line text usually takes
+one layout besides the browser's own: every pass renders what it judged and
+justifies it in one write, and one read checks them all. The fastest setup for long lists is CSS
 grid rows with `content-visibility: auto`, which the browser doesn't lay out
 off screen, whereas a `<table>` lays out every row whenever one changes. The
 demo's table page shows both.
@@ -110,6 +132,11 @@ it was already there.
 ## Find in page
 
 What each ellipsis hides is kept beside it in a `hidden="until-found"` copy.
+Nobody searches in the middle of a resize, so the copies are filled once
+passes pause for a fifth of a second (at once while find in page is keeping a
+match in sight, or when anything is read from the instance). With
+`find: false` the copy is out of the document until `expand()` shows it,
+which saves every layout of a crowded table a little.
 Browsers don't tell a page what was searched, but they do say which hidden
 element a match starts in, so each word of the copy is an element of its own:
 with `find: 'keep'`, that word is kept as if it were in `keep`, with an

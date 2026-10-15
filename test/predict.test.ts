@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { GlyphMetrics } from '#src/metrics.ts';
-import { Predictor, type WidthModel, cutWidth, kerningSums } from '#src/predict.ts';
+import { Margin, Predictor, type WidthModel, cutWidth, kerningSums } from '#src/predict.ts';
 
 const glyph = (advance: number): GlyphMetrics => ({ advance, left: 0, right: advance, ascent: 0, descent: 0 });
 
@@ -70,7 +70,7 @@ describe('Predictor', () => {
   const kerns = kerningSums(n, kern);
 
   it('places other cuts by the one measured, and judges those clear of the edge', () => {
-    const p = new Predictor(model(kerns), n, 80, 0.5);
+    const p = new Predictor(model(kerns), n, 80, new Margin(0.5));
     expect(p.fits([[5, 8]])).toBeNull();
     // Rendered from 3px in, the whole text ends 3px past its width.
     p.saw([], slow([]) + 3);
@@ -80,8 +80,30 @@ describe('Predictor', () => {
   });
 
   it('leaves a cut within the margin of the edge to be rendered', () => {
-    const p = new Predictor(model(kerns), n, slow([[5, 8]]) + 0.2, 0.5);
+    const p = new Predictor(model(kerns), n, slow([[5, 8]]) + 0.2, new Margin(0.5));
     p.saw([], slow([]));
     expect(p.fits([[5, 8]])).toBeNull();
+  });
+});
+
+describe('Margin', () => {
+  it('stays cautious until checked often, then narrows to a few times the most it was off', () => {
+    const margin = new Margin(0.75);
+    for (let i = 0; i < 31; i++) margin.check(i % 2 === 1 ? 0.05 : -0.04);
+    expect(margin.value).toBe(0.75);
+    margin.check(0.01);
+    expect(margin.value).toBeCloseTo(0.15);
+    // Never past the cautious margin, nor under a tenth of a pixel.
+    margin.check(0.4);
+    expect(margin.value).toBe(0.75);
+    const steady = new Margin(0.75);
+    for (let i = 0; i < 40; i++) steady.check(0.001);
+    expect(steady.value).toBe(0.1);
+  });
+
+  it('a check too far off says to stop judging the text', () => {
+    const p = new Predictor(model(kerningSums(n, kern)), n, 80, new Margin(0.5));
+    expect(p.off(70, 70.2)).toBe(false);
+    expect(p.off(70, 70.3)).toBe(true);
   });
 });

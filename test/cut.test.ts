@@ -15,6 +15,7 @@ import {
   sameRanges,
   searchMax,
   searchSteps,
+  steeredSteps,
   separators,
   showSlivers,
   type SeparatorOptions,
@@ -459,6 +460,53 @@ describe('searchSteps', () => {
     const { tried, answer } = probes(41, 42);
     expect(answer).toBe(41);
     expect(tried).toEqual([42, 41]);
+  });
+});
+
+describe('steeredSteps', () => {
+  /**
+   * The values probed, and the answer, for a limit of `max`: each probe
+   * leaves `max - k` units of room, which `aim` turns into an answer
+   * (`null` rooms: none measured).
+   */
+  const probes = (max: number, first: number | null, aim: (k: number, room: number) => number, measured = true) => {
+    const tried: number[] = [];
+    const search = steeredSteps(0, 99, first, aim);
+    let step = search.next();
+    while (!step.done) {
+      tried.push(step.value);
+      step = search.next({ fits: step.value <= max, room: measured ? max - step.value : null });
+    }
+    return { tried, answer: step.value };
+  };
+  const exact = (k: number, room: number) => k + room;
+
+  it('finds the largest fitting value however it aims', () => {
+    const aims = [
+      exact,
+      (k: number, room: number) => k + 2 * room,
+      (k: number, room: number) => k + Math.round(room / 3),
+      () => 0,
+      () => 99,
+    ];
+    for (const aim of aims) {
+      for (const max of [0, 1, 7, 41, 98, 99]) {
+        for (const first of [null, 0, 40, 42, 99]) {
+          expect(probes(max, first, aim).answer).toBe(max);
+          expect(probes(max, first, aim, false).answer).toBe(max);
+        }
+      }
+    }
+  });
+
+  it('a true aim goes one past the answer, then ends on it', () => {
+    expect(probes(41, 10, exact)).toEqual({ tried: [10, 42, 41], answer: 41 });
+    expect(probes(41, 60, exact)).toEqual({ tried: [60, 42, 41], answer: 41 });
+  });
+
+  it('without rooms, steps out from the first probe as searchSteps does', () => {
+    expect(probes(41, 40, exact, false)).toEqual({ tried: [40, 41, 43, 42], answer: 41 });
+    expect(probes(41, 42, exact, false)).toEqual({ tried: [42, 41], answer: 41 });
   });
 });
 

@@ -294,8 +294,14 @@ describe('find in page', () => {
         expect(el.getAttribute('hidden')).toBe('until-found');
       });
     }
+    // Not to be found, it's out of the document (every layout costs less),
+    // until expanding shows it.
     t.update({ find: false });
-    expect(found(t).every((el) => el.getAttribute('hidden') === '')).toBe(true);
+    expect(found(t).every((el) => el === null)).toBe(true);
+    t.expand();
+    expect(t.element.querySelector('[data-fp-text]')!.textContent).toBe(PROSE);
+    t.collapse();
+    expect(found(t).every((el) => el === null)).toBe(true);
   });
 
   it('keeps what each ellipsis hides up to date, word by word, as the cut moves and the text changes', () => {

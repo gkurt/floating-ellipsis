@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tooltip } from '#src/tooltip.ts';
-import { PATH, PROSE, box, expectConsistent, expectFits, make, rendered, sweep } from './helpers.ts';
+import { PATH, PROSE, box, expectConsistent, expectFits, expectFlush, make, rendered, sweep, track } from './helpers.ts';
 
 /**
  * The text highlighted with class `cls` in the element. A highlight beside an
@@ -108,6 +108,27 @@ describe('highlights (classes on keep)', () => {
     document.dispatchEvent(event);
     getSelection()!.removeAllRanges();
     expect(data.get('text/plain')).toBe(PROSE);
+  });
+
+  // Highlights that only colour the text are judged by the glyph widths
+  // like plain text; ones that set it wider mustn't be.
+  it.each([
+    ['colour', 'color: red; background: yellow'],
+    ['bold and padded', 'font-weight: bold; padding: 0 3px'],
+  ])('fits at every width with a highlight that changes %s', (_, css) => {
+    const style = track(document.createElement('style'));
+    style.textContent = `.hit { ${css} }`;
+    document.head.append(style);
+    const t = make(box(PROSE), { position: 'middle', keep: { match: /ow+/g, class: 'hit' } });
+    let shown = 0;
+    for (const _w of sweep(t, 160, 600, 7)) {
+      expectFits(t);
+      expectConsistent(t);
+      if (t.truncated) expectFlush(t);
+      const now = t.state.length - t.state.hidden.reduce((sum, p) => sum + p.end - p.start, 0);
+      expect(now).toBeGreaterThanOrEqual(shown);
+      shown = now;
+    }
   });
 
   it("shows highlights in the tooltip's full text", () => {
