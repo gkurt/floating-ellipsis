@@ -710,3 +710,13 @@ line.
   glyphs, each in an element of its own, can sit up to a pixel off the
   original's kerned text.
 - `elideText` fits one line.
+- Find in page, with `find: 'keep'`: after a match in hidden text is kept,
+  the next Enter in the find bar lands on the kept word again, so moving on
+  past it takes two. The browser searches on from where the match was, in the
+  hidden copy, and the kept word is drawn after that. `find: 'expand'`
+  doesn't have this.
+- Find in page doesn't find a word an ellipsis cuts in two: with `lan…`
+  showing, `lantern` isn't found, because `lan` is in the line and `tern` in
+  the hidden copy beside the ellipsis, and a match can't run from one into the
+  other. Only a match that lies wholly in the hidden part, or wholly in the
+  visible text, is found.
