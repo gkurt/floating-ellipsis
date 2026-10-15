@@ -682,7 +682,9 @@ export class Elide {
       marks: null,
       sums: advanceSums(this.#g, typeset),
       suffix: this.#suffix?.measure() ?? 0,
-      rebreaks: /balance|pretty/.test(cs.getPropertyValue('text-wrap-style') || cs.getPropertyValue('text-wrap')),
+      // While truncated, the style read is `greedy`'s own, not the page's.
+      rebreaks:
+        this.#ungreedy !== null || /balance|pretty/.test(cs.getPropertyValue('text-wrap-style') || cs.getPropertyValue('text-wrap')),
     };
   }
 
@@ -1221,7 +1223,7 @@ export class Elide {
       // The cut was justified where it was known to end (see below).
       let ahead = false;
       // The predictor has measured a cut of this pass: it judges the ones
-      // around it as well as rendering them would.
+      // around it as well as rendering them would, if it is close enough.
       let probed = false;
       const at = (k: number) => this.#worthCutting(run, hiddenRanges(this.#g, this.#layout, k, pins, snap, trim));
       // What each cut tried so far did: different probes can come to the same cut.
@@ -1286,7 +1288,7 @@ export class Elide {
         const measured = fit.ok && tried !== null && sameRanges(tried, hidden);
         const expected = measured ? null : (predictor?.right(hidden) ?? null);
         // Judged by what showed before the pass, it's checked once rendered.
-        const checked = expected !== null && !probed;
+        const checked = expected !== null && !(probed && predictor!.close(SLIP));
         if (measured) {
           // Showing already, as measured.
           plans = this.#plan(run, hidden);

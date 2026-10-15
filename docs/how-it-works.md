@@ -36,11 +36,14 @@ Implementation details behind the behaviour described in the
    taken from the nearest other gap. A gap no wider than the ellipsis that
    would replace it is shown too.
 3. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
-   because browsers round glyph boxes to whole pixels. Gaps between ink edges
-   are computed with kerning ignored, and margins on the ellipsis make both
-   gaps equal the target. The ellipsis is drawn on a canvas and scanned for
-   the empty columns between its dots, which gives the dot rhythm and the
-   position of each dot (so `markInks(t, i)` works for a single `…` glyph too).
+   because browsers round glyph boxes to whole pixels. Where the canvas
+   doesn't say where a glyph's ink is (WebKit on Linux and Windows gives the
+   advance box), the glyph is drawn and scanned for it instead. Gaps
+   between ink edges are computed with kerning ignored, and margins on the
+   ellipsis make both gaps equal the target. The ellipsis is drawn on a
+   canvas and scanned for the empty columns between its dots, which gives the
+   dot rhythm and the position of each dot (so `markInks(t, i)` works for a
+   single `…` glyph too).
 4. **Justify.** The space left on each line holding an ellipsis goes into its
    gaps (or letter-spacing), line by line from the top, backing off by a
    fraction of a pixel if rounding would make the line wrap. Filling a line
@@ -55,8 +58,11 @@ Implementation details behind the behaviour described in the
    judged on one line is justified from where it is expected to end, in the
    same write as rendering it, so the layout that checks the judgement checks
    the justified line too (and if it ends more than a tenth of a pixel off the
-   edge, it's justified again from where it does). No gap grows past
-   `maxGap`: room a long wrapping word leaves behind stays at the line's end.
+   edge, it's justified again from where it does). A cut judged beside one
+   the pass has measured goes unchecked, unless judgements of that font have
+   been off by more than that tenth of a pixel (as in WebKit on Linux). No
+   gap grows past `maxGap`: room a long wrapping word leaves behind stays at
+   the line's end.
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
    only its neighbours change, so animations and hover state survive resizes.
    When truncating changes the element's height inside the resize observer's

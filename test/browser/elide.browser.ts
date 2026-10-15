@@ -156,7 +156,8 @@ describe.each(FONTS)('elide in %s', (font) => {
     ['words', PROSE, words(), /[\s,.]/u, 120],
     ['path segments', PATH, separators('/', { fragment: false }), /\//u, 300],
   ] as const)('snaps to %s at every width', (_, text, snap, boundary, from) => {
-    const t = make(box(text, `font:${font}`), { position: 'middle', snap });
+    // Whole segments can leave more room than `maxGap` takes (tested below): no limit, so lines end flush.
+    const t = make(box(text, `font:${font}`), { position: 'middle', snap, maxGap: null });
     for (const _w of sweep(t, from, 520, 29)) {
       expectFits(t);
       expectConsistent(t);
@@ -256,10 +257,11 @@ describe('elide', () => {
   it('follows its element as it is resized', async () => {
     const t = make(box(PROSE), { position: 'middle' });
     const seen = errors();
-    for (const width of [400, 150, 90, 260, 900]) {
+    // The last width fits the text in any font.
+    for (const width of [400, 150, 90, 260, 1600]) {
       t.element.style.width = `${width}px`;
       await frames();
-      expect(t.element.hasAttribute('data-truncated')).toBe(width < 800);
+      expect(t.element.hasAttribute('data-truncated')).toBe(width < 1600);
       expectFits(t);
       expectConsistent(t);
     }

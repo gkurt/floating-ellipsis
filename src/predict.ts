@@ -99,6 +99,11 @@ export class Margin {
     return this.#checked < CHECKS ? this.#cautious : Math.min(this.#cautious, Math.max(0.1, 3 * this.#most));
   }
 
+  /** The most a judgement has been off, in px. */
+  get most(): number {
+    return this.#most;
+  }
+
   /** A judgement turned out `error` px off. */
   check(error: number): void {
     this.#most = Math.max(this.#most, Math.abs(error));
@@ -152,6 +157,15 @@ export class Predictor {
   right(cut: readonly Range[]): number | null {
     const m = this.#measured;
     return m && m.right + cutWidth(this.#model, this.#n, cut) - m.width;
+  }
+
+  /**
+   * Whether cuts judged near one measured end where judged, give or take
+   * `slip`: no judgement of text set this way has been further off. (WebKit
+   * on Linux is off by up to half a pixel.)
+   */
+  close(slip: number): boolean {
+    return this.#margin.most <= slip;
   }
 
   /** Whether `cut` fits, when that's certain enough; null when it has to be rendered to tell. */

@@ -112,10 +112,12 @@ describe('tooltip', () => {
     }
   });
 
-  it('grows from the line and lands as the full text', () => {
+  it('grows from the line and lands as the full text', async () => {
     const { t, tip } = growing();
     expect(tip.element.querySelector('[data-fp-mark]')).not.toBeNull();
     finish(tip);
+    // It lands, back in the flow, when the animation reports it finished.
+    await frames();
     expect(tipText(tip)).toBe(PROSE);
     expectOnLine(tip, t);
   });

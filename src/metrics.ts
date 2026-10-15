@@ -224,17 +224,59 @@ function measureRaw(font: Font, text: string): GlyphMetrics {
   if (!byFont) glyphCache.set(font.css, (byFont = new Map()));
   let m = byFont.get(text);
   if (!m) {
-    const tm = context(font).measureText(text);
-    m = {
-      advance: tm.width,
-      left: tm.actualBoundingBoxLeft,
-      right: tm.actualBoundingBoxRight,
-      ascent: tm.actualBoundingBoxAscent,
-      descent: tm.actualBoundingBoxDescent,
-    };
+    const c = context(font);
+    const tm = c.measureText(text);
+    // WebKit on Linux and Windows gives the advance box for the ink (from
+    // the origin to the advance, never below the baseline); a period's ink is
+    // narrower than its advance in any font. There the ink is read off a drawing.
+    inkReported ??= ((p) => p.actualBoundingBoxLeft !== 0 || p.actualBoundingBoxRight !== p.width)(c.measureText('.'));
+    m = inkReported
+      ? {
+          advance: tm.width,
+          left: tm.actualBoundingBoxLeft,
+          right: tm.actualBoundingBoxRight,
+          ascent: tm.actualBoundingBoxAscent,
+          descent: tm.actualBoundingBoxDescent,
+        }
+      : { advance: tm.width, ...drawnInk(font, text, tm) };
     byFont.set(text, m);
   }
   return m;
+}
+
+/** Whether `measureText` says where the ink is (see `measureRaw`). */
+let inkReported: boolean | undefined;
+
+/** `text` drawn with its origin at `x`, `y` on a `width` × `height` canvas: the coverage of a pixel, 0 to 255. */
+function drawn(font: Font, text: string, width: number, height: number, x: number, y: number): (px: number, py: number) => number {
+  const c = canvas(width, height);
+  c.font = font.css;
+  c.fillText(text, x, y);
+  const { data } = c.getImageData(0, 0, width, height);
+  return (px, py) => data[(py * width + px) * 4 + 3]!;
+}
+
+/** The ink bounds of `text`, found by drawing it and scanning for inked pixels. */
+function drawnInk(font: Font, text: string, tm: TextMetrics): Omit<GlyphMetrics, 'advance'> {
+  // Room for ink reaching past the advance and the font's own bounds (italics, accents).
+  const pad = REFERENCE_SIZE / 2;
+  const baseline = Math.ceil(tm.fontBoundingBoxAscent) + pad;
+  const width = Math.ceil(tm.width) + pad * 2;
+  const height = baseline + Math.ceil(tm.fontBoundingBoxDescent) + pad;
+  const at = drawn(font, text, width, height, pad, baseline);
+  let [left, right, top, bottom] = [width, 0, height, 0];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (at(x, y) === 0) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x + 1);
+      top = Math.min(top, y);
+      bottom = y + 1;
+    }
+  }
+  return right === 0
+    ? { left: 0, right: 0, ascent: 0, descent: 0 }
+    : { left: pad - left, right: right - pad, ascent: baseline - top, descent: bottom - baseline };
 }
 
 /** Metrics for `text`, without letter-spacing. */
@@ -272,15 +314,12 @@ ${text}`;
     const height = Math.ceil(m.ascent + m.descent) + pad * 2;
     runs = [];
     if (width > pad * 2 && height > pad * 2) {
-      const c = canvas(width, height);
-      c.font = font.css;
-      c.fillText(text, pad + m.left, pad + m.ascent);
-      const { data } = c.getImageData(0, 0, width, height);
+      const at = drawn(font, text, width, height, pad + m.left, pad + m.ascent);
       const inked = Array.from({ length: width }, () => false);
       for (let x = 0; x < width; x++) {
         for (let y = 0; y < height; y++) {
           // Half coverage approximates where the outline is.
-          if (data[(y * width + x) * 4 + 3]! >= 128) {
+          if (at(x, y) >= 128) {
             inked[x] = true;
             break;
           }
