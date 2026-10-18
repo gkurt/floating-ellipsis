@@ -6,6 +6,7 @@
  *
  * Mark an element `data-elide-fallback` for one line, or with a number of
  * lines (`data-elide-fallback="2"`, up to 6). CSS can only cut at the end.
+ * With `fit` the text wraps and what overflows the height is clipped.
  */
 
 [data-elide-fallback]:not([data-elide]),
@@ -23,6 +24,10 @@ elide-text:not(:defined) {
 [data-elide-fallback='6']:not([data-elide]) {
   display: -webkit-box;
   -webkit-box-orient: vertical;
+  white-space: normal;
+}
+
+[data-elide-fallback='fit']:not([data-elide]) {
   white-space: normal;
 }
 

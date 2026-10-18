@@ -132,6 +132,19 @@ and lack the original's listeners; events bubble from them. `<br>` is a space.
 A class or element that changes the font (bold, say) is still measured, but
 the gaps around an ellipsis are planned with the element's own font.
 
+### Units
+
+An image, an icon or an element marked `data-elide-unit` is one grapheme
+whatever its text: its `alt` or `aria-label`, an element's own text, or
+U+FFFC. The text around it is split into graphemes on its own, so nothing
+joins onto it. The line shows a deep copy of it (the drawing of an SVG, the
+markup inside a mention), kept on one line; the screen-reader copy has the
+image itself, read by its alt text, or says a unit's text like the rest.
+Canvas can't measure an image, so each pass reads how wide each unit's copy
+is laid out in the line (one that isn't showing keeps its last width), and an
+ellipsis beside one treats its box as its ink. An image that loads at another
+width fits the text again. Text with units isn't judged without rendering.
+
 ## Snapping
 
 Each side of a cut moves to a boundary, and separators next to the cut stay
@@ -176,6 +189,21 @@ Two known gaps:
 - A word an ellipsis cuts in two isn't found: with `lan…` showing, `lantern`
   isn't, because `lan` is in the line and `tern` in the hidden copy, and a
   match can't span both.
+
+## As many lines as fit
+
+With `lines: 'fit'`, a line fits when its line box ends above the element's
+content box, as laid out with that cut: a line box is the glyphs' box with
+half the leading either side, `line-height` tall (or as tall as the glyphs
+with `normal`). The full text is always tried first, and how many of its
+lines fit the height is the room the search aims for. That only works while
+the height is free to follow the text, so probes hold only the overflow, not
+the height, and truncated text isn't held at its height between passes. A
+height that changes from outside, by a flex or grid track or a style, is a
+resize the ResizeObserver reports; the height the element took after the last
+pass isn't. Room can also grow without the element changing size (a larger
+`max-height` on text that is shorter than it): `refresh()` sees it. Text
+always shows at least one line.
 
 ## Suffixes and expanding
 
@@ -275,6 +303,12 @@ element's content, so text rendered as children would fight it. With
 with `data-elide-fallback`; the instance takes the element over when it mounts
 and marks it `data-elide`, which turns the fallback off. `elideOf(el)` from
 `floating-ellipsis/vue` gives the instance behind a `v-elide`.
+
+A `suffix` given to `<Elided>` as a node is rendered with a portal into a
+span the instance moves after the line; the suffix watches it change size,
+as it does any node. The portal is left out while hydrating, which has none
+to match, so a node suffix shows once the page has hydrated. A string goes in
+as it is.
 
 Every entry imports on a server without a DOM: nothing touches `document` until
 an instance is made, and `ElideElement` extends a stand-in class where

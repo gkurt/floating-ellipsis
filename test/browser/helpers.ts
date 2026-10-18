@@ -99,11 +99,15 @@ export function visible(t: Elide): string {
   return t.graphemes.filter((_, i) => isVisible(state, i)).join('');
 }
 
-/** The text actually rendered, without the ellipses (or the text they hide, for find in page). */
+/**
+ * The text actually rendered, without the ellipses (or the text they hide,
+ * for find in page), each unit's copy (an image, an icon) as its grapheme.
+ */
 export function rendered(t: Elide): string {
   const line = t.element.querySelector('[data-fp-text]')!.cloneNode(true);
   if (!(line instanceof Element)) return '';
   for (const e of line.querySelectorAll('[data-fp-ellipsis], [data-fp-ghosts], [data-fp-found]')) e.remove();
+  for (const e of line.querySelectorAll('[data-fp-unit]')) e.replaceWith(t.graphemes[Number(e.getAttribute('data-fp-unit'))]!);
   return line.textContent ?? '';
 }
 
@@ -157,16 +161,23 @@ export function errors(): { stop: () => string[] } {
   };
 }
 
-/** Lines stay inside the content box, and there are no more of them than allowed. */
+/**
+ * Lines stay inside the content box, and there are no more of them than
+ * allowed. With `lines: 'fit'`, their line boxes end above its bottom.
+ */
 export function expectFits(t: Elide, lines = t.options.lines) {
   const c = content(t.element);
   const rects = lineRects(t);
   expect(rects.length).toBeGreaterThan(0);
-  expect(rects.length).toBeLessThanOrEqual(lines);
+  if (lines !== 'fit') expect(rects.length).toBeLessThanOrEqual(lines);
   expect(t.state.lines).toBe(rects.length);
+  const height = parseFloat(getComputedStyle(t.element).lineHeight);
   for (const r of rects) {
     expect(r.left).toBeGreaterThanOrEqual(c.left - 0.5);
     expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
+    // (With line-height: normal, a line is as tall as its glyphs' box.)
+    if (lines === 'fit')
+      expect((r.top + r.bottom) / 2 + (Number.isNaN(height) ? r.height : height) / 2).toBeLessThanOrEqual(c.bottom + 0.5);
   }
 }
 

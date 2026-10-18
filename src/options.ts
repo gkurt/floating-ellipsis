@@ -12,8 +12,12 @@ export interface ElideOptions {
    * same way. Whitespace in content is collapsed.
    */
   text?: string | Node;
-  /** Maximum number of lines. Default 1. */
-  lines?: number;
+  /**
+   * Maximum number of lines, or 'fit': as many as fit the element's height,
+   * which something has to cap (`height`, `max-height`, a flex or grid track
+   * with `min-height: 0`). Default 1.
+   */
+  lines?: number | 'fit';
   /**
    * Where the ellipsis goes: 'start' | 'middle' | 'end' or 0..1. Default 'end'.
    * An array places several ellipses, e.g. `[0.33, 0.67]`.
@@ -132,8 +136,8 @@ export const DEFAULTS: Settings = {
 
 /** What the `glyphs` option takes: glyph mode, from `floating-ellipsis/glyphs`. */
 export interface GlyphMode {
-  /** One element per grapheme. */
-  create(graphemes: readonly string[]): HTMLSpanElement[];
+  /** One element per grapheme, holding a copy of the unit (an image, an icon) it is, if any. */
+  create(graphemes: readonly string[], units: readonly (Element | null)[]): HTMLSpanElement[];
   /** Put the glyph elements of `range` in `el`, inside copies of their elements. */
   fill(el: HTMLElement, glyphs: readonly HTMLElement[], chains: readonly (Chain | null)[], range: Range): void;
   /** Give the glyph elements of graphemes in `ranges` `attribute`, and take it from the rest. */
@@ -175,6 +179,9 @@ export interface AutoSizeSlot {
   suffix(suffix: Element | null): void;
   remove(): void;
 }
+
+/** Whether text set to `lines` can wrap: more than one line, or as many as fit. */
+export const wraps = (lines: number | 'fit'): boolean => lines === 'fit' || lines > 1;
 
 /** `o` without the keys set to undefined, so they don't override defaults. */
 export function defined<T extends object>(o: T): Partial<T> {

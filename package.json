@@ -179,10 +179,14 @@
     "vue": "^3.5.44"
   },
   "peerDependencies": {
-    "react": ">=18"
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
     "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     }
   },

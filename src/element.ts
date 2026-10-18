@@ -63,7 +63,7 @@ function parseSnap(value: string): Snap | null {
 /**
  * Truncates its content to fit, like `elide(this, options)`: its text, with
  * inline elements (links, code, emphasis) kept. A child with
- * `slot="suffix"` is the `suffix`. Attributes: `lines`, `position`
+ * `slot="suffix"` is the `suffix`. Attributes: `lines` (a number or `fit`), `position`
  * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
  * `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap`
  * (`none` for no limit), `justify` (`false` to turn it off), `trim`
@@ -155,7 +155,7 @@ export class ElideElement extends Base {
     if (find === 'keep' || find === 'expand') options.find = find;
     else if (find === 'false') options.find = false;
     const lines = attr('lines');
-    if (lines !== null) options.lines = Number(lines);
+    if (lines !== null) options.lines = lines === 'fit' ? lines : Number(lines);
     const position = attr('position');
     if (position !== null) options.position = parsePosition(position);
     const keep = attr('keep');

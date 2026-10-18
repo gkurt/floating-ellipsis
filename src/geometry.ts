@@ -8,6 +8,7 @@ import type { Elide, Inside } from './elide.ts';
 import { inside } from './inside.ts';
 import { lineBoxes } from './lines.ts';
 import { markInk } from './marks.ts';
+import { UNIT_COPY } from './markup.ts';
 import { isVisible } from './options.ts';
 
 /** Index of the ellipsis containing `node` (e.g. an event target), or -1. */
@@ -96,7 +97,9 @@ export function graphemeRect(instance: Elide, index: number): DOMRect | null {
     return el?.isConnected ? el.getBoundingClientRect() : null;
   }
   const piece = s.pieces().find(({ range: [a, b] }) => index >= a && index < b);
-  const found = piece && textAt(piece.el, offsets[index]! - offsets[piece.range[0]]!);
+  if (!piece) return null;
+  if (instance.unitOf(index)) return piece.el.querySelector(`[${UNIT_COPY}="${index}"]`)?.getBoundingClientRect() ?? null;
+  const found = textAt(piece.el, offsets[index]! - offsets[piece.range[0]]!, (i) => offsets[i + 1]! - offsets[i]!);
   if (!found) return null;
   const [node, at] = found;
   const range = document.createRange();
@@ -131,7 +134,8 @@ export function graphemeAt(instance: Elide, node: Node, offset: number, side: 's
   // An element: the boundary before its child at `offset`, or its end.
   const child = node.childNodes[offset];
   if (!child) return pieces.get(node)?.[1] ?? null;
-  return (child instanceof Text ? pieces.get(node) : pieces.get(child))?.[0] ?? null;
+  // (In glyph mode a glyph's text isn't mapped: its element is.)
+  return (pieces.get(child) ?? (child instanceof Text ? pieces.get(node) : undefined))?.[0] ?? null;
 }
 
 /** The graphemes each element of the visible text holds, as rendered now. */
@@ -186,27 +190,45 @@ function boundsOf(rects: readonly DOMRect[]): DOMRect | null {
   return new DOMRect(left, top, right - left, bottom - top);
 }
 
-/** The text node holding code unit `at` of a piece's text, and the offset in it. */
-function textAt(el: HTMLElement, at: number): [Text, number] | null {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!(node instanceof Text)) continue;
-    if (at < node.data.length) return [node, at];
-    at -= node.data.length;
-  }
-  return null;
+/**
+ * The text node holding code unit `at` of a piece's text, and the offset in
+ * it. A unit's copy stands for its grapheme's text, `length(i)` long.
+ */
+function textAt(el: Element, at: number, length: (i: number) => number): [Text, number] | null {
+  const find = (node: Node): [Text, number] | null => {
+    if (node instanceof Text) {
+      if (at < node.data.length) return [node, at];
+      at -= node.data.length;
+      return null;
+    }
+    const unit = node instanceof Element ? node.getAttribute(UNIT_COPY) : null;
+    if (unit !== null) {
+      at -= length(Number(unit));
+      return null;
+    }
+    for (const child of node.childNodes) {
+      const found = find(child);
+      if (found || at < 0) return found;
+    }
+    return null;
+  };
+  return find(el);
 }
 
 /**
  * The graphemes each node in a piece holding `[from, to)` spells: every
- * element and text node in it. `offsets[i]` is where grapheme `i` starts.
+ * element and text node in it, and all of a unit's copy its grapheme.
+ * `offsets[i]` is where grapheme `i` starts.
  */
 function childRanges(el: HTMLElement, [from, to]: Range, offsets: readonly number[]): [Node, Range][] {
   const out: [Node, Range][] = [];
   let i = from;
   const visit = (node: Node) => {
     const start = i;
-    if (node instanceof Text) {
+    if (node instanceof Element && node.hasAttribute(UNIT_COPY)) {
+      i++;
+      for (const inner of node.querySelectorAll('*')) out.push([inner, [start, i]]);
+    } else if (node instanceof Text) {
       const end = offsets[start]! + node.data.length;
       while (i < to && offsets[i]! < end) i++;
     } else {

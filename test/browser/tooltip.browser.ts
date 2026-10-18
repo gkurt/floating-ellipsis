@@ -179,6 +179,22 @@ describe('tooltip', () => {
     }
   });
 
+  it('shows images and icons in the text as themselves', () => {
+    spacer(120);
+    const el = box('', 'width:160px;margin-left:200px');
+    el.innerHTML = 'Report for <img alt="Q3" width="20" height="12" class="chart"> the analytical engine, final draft';
+    const t = make(el, { position: 'middle' });
+    expect(t.state.hidden[0]!.text).toContain('Q3');
+    for (const reveal of ['peek', 'expand'] as const) {
+      const tip = make_tip({ reveal });
+      tip.attach(t);
+      expect(tip.show(t, 0)).toBe(true);
+      expect(tip.element.querySelectorAll('img.chart')).toHaveLength(1);
+      expect(tip.element.textContent).not.toContain('Q3');
+      tip.hide();
+    }
+  });
+
   it('peeks below an ellipsis with no room above it', () => {
     const t = make(box(PATH, 'width:220px'), { position: 'middle' });
     const tip = make_tip({ reveal: 'peek' });

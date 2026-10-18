@@ -416,7 +416,9 @@ export class Tooltip {
     });
     const spans = t.graphemes.map((g, i) => {
       const span = document.createElement('span');
-      span.textContent = g;
+      const unit = t.unitOf(i);
+      if (unit) span.append(copyOf(unit));
+      else span.textContent = g;
       // Highlights (classes from `keep`) look the same in the tip.
       const cls = t.classOf(i);
       if (cls) span.className = cls;
@@ -640,7 +642,7 @@ export class Tooltip {
     for (const p of FONT) tip.style.removeProperty(p);
     Object.assign(tip.style, { maxWidth: '', whiteSpace: '', overflowWrap: '', userSelect: '' });
     this.#spans = [];
-    this.#fill('peek', part.text);
+    this.#fill('peek', ...contentOf(target.instance, part.start, part.end));
 
     const { edge, offset } = this.#settings;
     const view = document.documentElement.clientWidth;
@@ -774,7 +776,11 @@ export class Tooltip {
   #select(from: number, to: number) {
     const at = (i: number): [Node, number] => {
       const span = this.#spans[Math.min(i, this.#spans.length - 1)]!;
-      return [span.firstChild!, i < this.#spans.length ? 0 : (span.textContent ?? '').length];
+      const end = i >= this.#spans.length;
+      const text = span.firstChild;
+      // A unit's copy is an element: the boundary goes around it.
+      if (!(text instanceof Text)) return [span, end ? span.childNodes.length : 0];
+      return [text, end ? text.data.length : 0];
     };
     if (this.#spans.length === 0) return;
     document.getSelection()?.setBaseAndExtent(...at(from), ...at(to));
@@ -820,6 +826,26 @@ export class Tooltip {
     s.removeAllRanges();
     if (unchanged) s.addRange(carried.original);
   }
+}
+
+/** A copy of a unit (an image, an icon) for a tip, without its id. */
+function copyOf(unit: Element): Node {
+  const copy = unit.cloneNode(true);
+  if (copy instanceof Element) copy.removeAttribute('id');
+  return copy;
+}
+
+/** Graphemes `[start, end)` of `t` for a tip: their text, with a copy of each unit. */
+function contentOf(t: Elide, start: number, end: number): (Node | string)[] {
+  const out: (Node | string)[] = [];
+  for (let i = start; i < end; i++) {
+    const unit = t.unitOf(i);
+    const last = out.length - 1;
+    if (unit) out.push(copyOf(unit));
+    else if (typeof out[last] === 'string') out[last] += t.graphemes[i]!;
+    else out.push(t.graphemes[i]!);
+  }
+  return out;
 }
 
 /** What a full-text tip takes from the text, so its glyphs land on the original's. */

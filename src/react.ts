@@ -9,18 +9,23 @@ import {
   type ComponentPropsWithoutRef,
   type ElementType,
   type ReactElement,
+  type ReactNode,
   type Ref,
   type RefCallback,
+  Fragment,
   createElement,
   useCallback,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { type BindingOptions, Binding } from './bind.ts';
 import type { Elide } from './elide.ts';
-import { DEFAULTS } from './options.ts';
+import { type Suffix, DEFAULTS } from './options.ts';
+import { suffix as after } from './suffix.ts';
 
 /**
  * Truncate the element the returned ref is put on, with `options`, kept up to
@@ -58,9 +63,18 @@ export function useElide<T extends HTMLElement = HTMLElement>(options: BindingOp
 
 const OPTIONS = new Set<string>(['text', 'onChange', ...Object.keys(DEFAULTS)]);
 
-export type ElidedProps<T extends ElementType = 'div'> = BindingOptions & {
+export type ElidedProps<T extends ElementType = 'div'> = Omit<BindingOptions, 'suffix'> & {
   /** The full text. */
   text: string;
+  /**
+   * Content that follows the text on its last line and is never cut: a
+   * string, any React node (a "Read more" button, a badge), or a `suffix()`
+   * from `floating-ellipsis/suffix`. A node is rendered through a portal, and
+   * shows once the page has hydrated.
+   */
+  suffix?: ReactNode | Suffix;
+  /** When `suffix` shows: 'always' (default), or only while the text is 'truncated'. */
+  showSuffix?: Suffix['show'];
   /** The element to render. Default 'div'. */
   as?: T;
   /** The rendered element, as `asChild` and `render` props pass (Radix, Base UI). React 19. */
@@ -85,8 +99,23 @@ export type ElidedProps<T extends ElementType = 'div'> = BindingOptions & {
  * ```
  */
 export function Elided<T extends ElementType = 'div'>(props: ElidedProps<T>): ReactElement {
-  const { as, ref: forwarded, instanceRef, text, lines = 1, ...rest } = props;
-  const options: Record<string, unknown> = { text, lines };
+  const { as, ref: forwarded, instanceRef, text, lines = 1, suffix, showSuffix: show = 'always', ...rest } = props;
+  // Where a node suffix is rendered: the instance moves it into place.
+  const [slot] = useState(() => (typeof document === 'undefined' ? null : document.createElement('span')));
+  // Not while hydrating, which has no portals to match.
+  const client = useSyncExternalStore(subscribe, isClient, isServer);
+  const node = !isSuffix(suffix) && typeof suffix === 'object' && suffix !== null;
+  const options: Record<string, unknown> = {
+    text,
+    lines,
+    suffix: isSuffix(suffix)
+      ? suffix
+      : typeof suffix === 'string' || typeof suffix === 'number'
+        ? after(String(suffix), { show })
+        : node && slot
+          ? after(slot, { show })
+          : null,
+  };
   const attributes: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rest)) {
     if (OPTIONS.has(key)) options[key] = value;
@@ -99,13 +128,20 @@ export function Elided<T extends ElementType = 'div'>(props: ElidedProps<T>): Re
   // by fallback.css) before hydrating. It never changes after, so React
   // leaves the content to the instance.
   const [initial] = useState(() => escape(text));
-  return createElement(as ?? 'div', {
+  const element = createElement(as ?? 'div', {
     ...attributes,
     ref,
-    'data-elide-fallback': lines > 1 ? String(lines) : '',
+    'data-elide-fallback': lines === 1 ? '' : String(lines),
     dangerouslySetInnerHTML: { __html: initial },
   });
+  if (!node || !slot || !client) return element;
+  return createElement(Fragment, null, element, createPortal(suffix, slot));
 }
+
+const isSuffix = (v: unknown): v is Suffix => typeof v === 'object' && v !== null && 'place' in v && typeof v.place === 'function';
+const subscribe = () => () => {};
+const isClient = () => true;
+const isServer = () => false;
 
 /** `bind` as a ref callback that also hands the element to `forwarded`. */
 function useHandedOn(bind: RefCallback<HTMLElement>, forwarded: Ref<HTMLElement> | undefined): RefCallback<HTMLElement> {

@@ -1,6 +1,7 @@
 import { type Ref, createElement, createRef, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { type Root, createRoot } from 'react-dom/client';
+import { type Root, createRoot, hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, h, nextTick, ref, withDirectives } from 'vue';
 import { ElideElement, define } from '#src/element.ts';
@@ -107,6 +108,61 @@ describe('React', () => {
     );
     await frames(1);
     expect(container.querySelector('span.path')!.textContent).toContain('Short');
+  });
+
+  it('Elided takes any React node as its suffix, events and all', async () => {
+    const { root, container } = mount();
+    let clicks = 0;
+    const render = (label: string, show?: 'always' | 'truncated', text = PROSE) =>
+      flushSync(() =>
+        root.render(
+          createElement(Elided, {
+            text,
+            lines: 2,
+            className: 'post',
+            style: { width: 200 },
+            showSuffix: show,
+            suffix: createElement('button', { onClick: () => clicks++ }, label),
+          }),
+        ),
+      );
+    render('More');
+    await frames();
+    const el = container.querySelector<HTMLElement>('.post')!;
+    const button = () => el.querySelector<HTMLButtonElement>('[data-fp-suffix] button');
+    expect(button()?.textContent).toBe('More');
+    expect(el.hasAttribute('data-truncated')).toBe(true);
+    const box = el.getBoundingClientRect();
+    expect(button()!.getBoundingClientRect().right).toBeLessThanOrEqual(box.right + 0.5);
+    expect(button()!.getBoundingClientRect().bottom).toBeLessThanOrEqual(box.bottom + 0.5);
+    button()!.click();
+    expect(clicks).toBe(1);
+    render('Read the rest');
+    await frames();
+    expect(button()?.textContent).toBe('Read the rest');
+    expect(button()!.getBoundingClientRect().right).toBeLessThanOrEqual(box.right + 0.5);
+    render('More', 'truncated', 'Short');
+    await frames();
+    expect(button()!.getClientRects()).toHaveLength(0);
+  });
+
+  it('Elided takes a string suffix, and hydrates a node suffix without a mismatch', async () => {
+    const { root, container } = mount();
+    flushSync(() => root.render(createElement(Elided, { text: PROSE, className: 'row', style: { width: 200 }, suffix: '12 min' })));
+    await frames(1);
+    expect(container.querySelector('.row [data-fp-suffix]')?.textContent).toContain('12 min');
+
+    const host = box('', 'width:auto');
+    const app = () =>
+      createElement(Elided, { text: PATH, className: 'row', style: { width: 200 }, suffix: createElement('b', null, 'new') });
+    host.innerHTML = renderToString(app());
+    expect(host.querySelector('[data-fp-suffix]')).toBeNull();
+    const errors: unknown[] = [];
+    const hydrated = hydrateRoot(host, app(), { onRecoverableError: (e) => errors.push(e) });
+    cleanups.push(() => hydrated.unmount());
+    await frames();
+    expect(errors).toEqual([]);
+    expect(host.querySelector('[data-fp-suffix] b')?.textContent).toBe('new');
   });
 
   it('Elided hands its element to a ref, as asChild and render props pass', async () => {

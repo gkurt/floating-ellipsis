@@ -2,7 +2,7 @@
 
 Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](https://gkurt.com/floating-ellipsis/)**
 
-- **Anywhere, any length.** Clamp to any number of lines, with the ellipsis at
+- **Anywhere, any length.** Clamp to any number of lines (or as many as fit the height), with the ellipsis at
   the start, middle, end, any position, or several at once.
 - **Balanced and flush.** Even spacing on both sides of the ellipsis, and lines
   that end exactly at the edge, so resizing flows instead of stepping.
@@ -43,7 +43,7 @@ inline-block), see [Sized by content](#sized-by-content).
 | Option     | Default         |                                                                                                                                                     |
 | ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `text`     | element content | A string, or a node whose text and inline elements are shown.                                                                                       |
-| `lines`    | `1`             | Maximum number of lines.                                                                                                                            |
+| `lines`    | `1`             | Maximum number of lines, or `'fit'`: as many as fit the element's height (capped by `height`, `max-height`, or a flex or grid track).               |
 | `position` | `'end'`         | `'start'`, `'middle'`, `'end'`, a number from 0 to 1, or an array of them for several ellipses.                                                     |
 | `keep`     | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. `{ match, class }` / `{ start, end, class }` also highlight them.       |
 | `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
@@ -115,7 +115,18 @@ elide(document.querySelector('.post'), { lines: 3 }); // links, code, emphasis k
 Inline elements are copied around whatever part of them shows. The copies have
 no `id` or listeners, so listen on the element or above it. Keyboard focus goes
 to the full text's links; their copies in the line get `data-fp-focus` for a
-focus ring. Images and icons are dropped.
+focus ring.
+
+Images and icons (`img`, `svg`, `picture`, `canvas`, `video`) show whole or
+not at all, as one grapheme that stands for their `alt` or `aria-label` text
+(U+FFFC without one) in `state`, the title and copied text. `data-elide-unit`
+does the same for any element, such as a mention or a badge. Their copies in
+the line are marked `data-fp-unit`.
+
+```html
+<div class="file"><svg aria-label="PDF">…</svg> Q3 report, final draft.pdf</div>
+<p>Assigned to <span data-elide-unit class="mention">@ada</span> and the team</p>
+```
 
 ### Suffixes
 
@@ -169,7 +180,8 @@ Either lasts until a press outside the text or a match elsewhere.
 
 - `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack }`.
   `hidden` and `kept` are `{ start, end, text }` lists in grapheme indices.
-- `truncated`, `expanded`, `graphemes`, `options`, `markStyle`, `classOf(i)`.
+- `truncated`, `expanded`, `graphemes`, `options`, `markStyle`, `classOf(i)`,
+  `unitOf(i)` (the image or element grapheme `i` stands for, or null).
 - `ellipsisElement` (the first, stable for the instance's life), `ellipses`.
 - `onRender(fn)`: after every layout pass. Returns an unsubscribe function.
 - `expand()`, `collapse()`, `refresh()`, `update(options)`, `destroy()`.
@@ -209,7 +221,7 @@ import 'floating-ellipsis/fallback.css';
 <p data-elide-fallback="2">Clamped to two lines with CSS until an instance takes over.</p>
 ```
 
-CSS can only cut at the end. React's `<Elided>` renders this markup itself, so
+CSS can only cut at the end, and `data-elide-fallback="fit"` only clips. React's `<Elided>` renders this markup itself, so
 server-rendered pages show truncated text before hydration.
 
 ## Text without the DOM
@@ -281,7 +293,15 @@ const attach = (t) => t && (tips ??= tooltip({ breaks: '/' })).attach(t, t.eleme
 <Elided text={path} position="middle" instanceRef={attach} />;
 ```
 
-React (18+) is an optional peer dependency. In virtual lists, either recycle
+`suffix` takes a string or any React node, with `showSuffix` (`'always'` or
+`'truncated'`). A node is rendered through a portal, so its handlers work, and
+shows once the page has hydrated:
+
+```jsx
+<Elided text={post} lines={3} suffix={<button onClick={() => setOpen(true)}>Read more</button>} showSuffix="truncated" />
+```
+
+React and React DOM (18+) are optional peer dependencies. In virtual lists, either recycle
 instances with `update({ text })` or mount one per row; both cost the same.
 
 ### Next.js and shadcn/ui
@@ -290,8 +310,9 @@ instances with `update({ text })` or mount one per row; both cost the same.
 Components render `<Elided>` as is. With `fallback.css` imported in the layout,
 static and server-rendered pages show the text cut at the end until they
 hydrate. Props from a Server Component must serialize: `keep` as a string, not
-a RegExp; set `snap`, `onChange`, `glyphs`, `suffix` and `instanceRef` in a
-Client Component.
+a RegExp; set `snap`, `onChange`, `glyphs` and `instanceRef` in a Client
+Component. A `suffix` can come from the server as a string or an element (a
+Client Component's, for one with handlers).
 
 `<Elided>` passes its `ref` (React 19) and other props to its element, so it can be the
 child of a Radix `asChild` or a Base UI `render` prop:
@@ -395,7 +416,8 @@ and transitions respect reduced motion.
 
 - Left-to-right text and inline elements only.
 - A line whose leftover room exceeds `maxGap` isn't flush.
-- In React, a suffix can only be a string.
+- With `lines: 'fit'`, room that grows without resizing the element (a
+  larger `max-height` on text shorter than it) needs `refresh()`.
 - Find in page can't find a word an ellipsis cuts in two, and with
   `find: 'keep'` moving past a kept match takes a second Enter.
 

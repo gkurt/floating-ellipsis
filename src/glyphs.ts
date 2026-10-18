@@ -6,17 +6,19 @@ import type { Range } from './cut.ts';
 import type { Elide } from './elide.ts';
 import { chainId, filled } from './highlight.ts';
 import { inside } from './inside.ts';
-import { type Chain, type Placed, nest } from './markup.ts';
+import { type Chain, type Placed, nest, unitCopy } from './markup.ts';
 import { inkOf } from './metrics.ts';
 import type { GlyphMode } from './options.ts';
 
 /** Glyph mode, for the `glyphs` option: `elide(el, { glyphs })`. */
 export const glyphs: GlyphMode = {
-  create: (graphemes) =>
+  create: (graphemes, units) =>
     graphemes.map((s, i) => {
       const el = document.createElement('span');
       el.setAttribute('data-fp-glyph', String(i));
-      el.textContent = s;
+      const unit = units[i];
+      if (unit) el.append(unitCopy(unit, i));
+      else el.textContent = s;
       return el;
     }),
   fill: fillGlyphs,

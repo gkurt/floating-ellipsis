@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { define } from '#src/element.ts';
 import type { Elide } from '#src/elide.ts';
-import { lineRects } from '#src/geometry.ts';
+import { graphemeAt, graphemeRect, lineRects } from '#src/geometry.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { isVisible } from '#src/options.ts';
 import { suffix } from '#src/suffix.ts';
@@ -370,5 +370,101 @@ describe('find in page', () => {
     expectFits(t);
     expectConsistent(t);
     expect(rendered(t)).not.toBe(PROSE);
+  });
+});
+
+describe('units', () => {
+  /** An SVG image `width` × `height` px, as a data URL. */
+  const image = (width: number, height: number) =>
+    `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%"/></svg>`)}`;
+  const ICON = `<svg aria-label="folder" width="14" height="14" viewBox="0 0 14 14"><path d="M1 3h5l1 1h6v8H1z"/></svg>`;
+  const FILE = `${ICON} Projects / <img alt="PDF" src="${image(16, 16)}" width="16" height="16"> analytical-engine-notes-2026.pdf`;
+
+  /** The units showing in the line: their graphemes, in order. */
+  const units = (t: Elide) => copies(t, '[data-fp-unit]').map((e) => Number(e.getAttribute('data-fp-unit')));
+
+  it('reads images and icons as one grapheme each, standing as their alt text', () => {
+    const t = make(marked(FILE, 'width:600px'));
+    expect(t.state.text).toBe('folder Projects / PDF analytical-engine-notes-2026.pdf');
+    expect(t.graphemes[0]).toBe('folder');
+    const pdf = t.graphemes.indexOf('PDF');
+    expect(t.unitOf(0)?.tagName.toLowerCase()).toBe('svg');
+    expect(t.unitOf(pdf)?.tagName).toBe('IMG');
+    expect(t.unitOf(1)).toBeNull();
+    expect(units(t)).toEqual([0, pdf]);
+    // Copied whole, the drawing and all, without taking focus or ids.
+    expect(copies(t, 'svg path')).toHaveLength(1);
+    expect(spoken(t.element)).not.toContain('PDF');
+    expect(t.element.querySelector('[data-fp-full] img')?.getAttribute('alt')).toBe('PDF');
+  });
+
+  it('shows a unit whole or not at all, at every width', () => {
+    const t = make(marked(FILE), { position: 'middle' });
+    const pdf = t.graphemes.indexOf('PDF');
+    for (const _w of sweep(t, 40, 520, 13)) {
+      expectFits(t);
+      expectConsistent(t);
+      expect(units(t)).toEqual([0, pdf].filter((i) => isVisible(t.state, i)));
+      for (const i of units(t)) {
+        const r = copies(t, `[data-fp-unit="${i}"]`)[0]!.getBoundingClientRect();
+        expect(r.width).toBeCloseTo(i === 0 ? 14 : 16, 0);
+      }
+    }
+  });
+
+  it('keeps an element marked data-elide-unit whole, with what is inside it', () => {
+    const t = make(
+      marked(
+        'Assigned to <span data-elide-unit class="mention" style="padding:0 4px;background:#eee">@<b>ada</b> lovelace</span> and the rest of the analytical engine team',
+      ),
+      { position: 'middle' },
+    );
+    const at = t.graphemes.indexOf('@ada lovelace');
+    expect(at).toBeGreaterThan(0);
+    for (const _w of sweep(t, 60, 600, 17)) {
+      expectFits(t);
+      expectConsistent(t);
+      const chips = copies(t, '.mention');
+      expect(chips).toHaveLength(isVisible(t.state, at) ? 1 : 0);
+      for (const chip of chips) {
+        expect(chip.textContent).toBe('@ada lovelace');
+        expect(chip.querySelector('b')?.textContent).toBe('ada');
+        expect(chip.getClientRects()).toHaveLength(1);
+      }
+    }
+  });
+
+  it('fits again once an image loads at its own size', async () => {
+    const el = marked('Status: all good <img alt=""> and nothing to report', 'width:380px');
+    const t = make(el);
+    expect(t.truncated).toBe(false);
+    // As if it had been loading all along.
+    const copy = copies(t, 'img')[0];
+    if (!(copy instanceof HTMLImageElement)) throw new Error('No image');
+    copy.src = image(150, 12);
+    await copy.decode();
+    await frames();
+    expect(t.truncated).toBe(true);
+    expectFits(t);
+    expectConsistent(t);
+  });
+
+  it('gives each unit its box in geometry, and its own glyph in glyph mode', () => {
+    const text = make(marked(FILE, 'width:600px'));
+    const after = text.graphemes.indexOf('PDF') + 2;
+    const img = copies(text, 'img')[0]!.getBoundingClientRect();
+    expect(graphemeRect(text, after - 2)?.left).toBeCloseTo(img.left, 1);
+    // The graphemes after it are where their text is.
+    expect(graphemeRect(text, after)!.left).toBeGreaterThan(img.right);
+    const copy = copies(text, 'img')[0]!;
+    const at = [...copy.parentNode!.childNodes].indexOf(copy);
+    expect(graphemeAt(text, copy.parentNode!, at)).toBe(after - 2);
+    expect(graphemeAt(text, copy.parentNode!, at + 1)).toBe(after - 1);
+
+    const t = make(marked(FILE, 'width:600px'), { glyphs });
+    const pdf = t.graphemes.indexOf('PDF');
+    const glyph = t.element.querySelector(`[data-fp-glyph="${pdf}"]`)!;
+    expect(glyph.querySelector('img')).not.toBeNull();
+    expect(glyph.textContent).toBe('');
   });
 });

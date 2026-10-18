@@ -479,3 +479,76 @@ describe('elide', () => {
     }
   });
 });
+
+describe("lines: 'fit'", () => {
+  const LONG = `${PROSE} ${PROSE} ${PROSE}`;
+
+  it.each(FONTS)('fits as many lines as max-height leaves room for, in %s', (font) => {
+    const t = make(box(LONG, `font:${font};max-height:60px`), { lines: 'fit', position: 'middle' });
+    let before = -1;
+    for (const _w of sweep(t, 90, 600, 23)) {
+      expectFits(t);
+      expectConsistent(t);
+      expect(t.state.lines).toBeLessThanOrEqual(3);
+      if (t.truncated) {
+        expect(t.state.lines).toBe(3);
+        expectFlush(t);
+      }
+      expect(shown(t)).toBeGreaterThanOrEqual(before);
+      before = shown(t);
+    }
+  });
+
+  it('fits a fixed height, less padding and borders', () => {
+    const t = make(box(LONG, 'box-sizing:border-box;height:66px;padding:4px 6px;border:3px solid'), { lines: 'fit' });
+    expect(t.truncated).toBe(true);
+    // 66 - 2 × 4 - 2 × 3 = 52px: two lines of 20px.
+    expect(t.state.lines).toBe(2);
+    expectFits(t);
+    expectFlush(t);
+  });
+
+  it('shows all of the text when nothing caps the height', () => {
+    const t = make(box(LONG), { lines: 'fit' });
+    expect(t.truncated).toBe(false);
+    expect(t.state.lines).toBeGreaterThan(3);
+  });
+
+  it('fits a flex item that takes the room left in a card', () => {
+    const card = track(document.createElement('div'));
+    card.style.cssText = `display:flex;flex-direction:column;height:130px;width:200px;font:${FONTS[0]}`;
+    const title = document.createElement('div');
+    title.style.height = '30px';
+    card.append(title);
+    document.body.append(card);
+    const t = make(box(LONG, 'flex:1;min-height:0', card), { lines: 'fit' });
+    expect(t.state.lines).toBe(5);
+    expectFits(t);
+  });
+
+  it('follows its height as it changes', async () => {
+    const t = make(box(LONG, 'height:40px'), { lines: 'fit' });
+    const seen = errors();
+    for (const [height, lines] of [
+      [100, 5],
+      [60, 3],
+      [10, 1],
+      [45, 2],
+    ] as const) {
+      t.element.style.height = `${height}px`;
+      await frames();
+      expect(t.state.lines, `${height}px`).toBe(lines);
+      // Too low for a line, it still shows one.
+      if (height >= 20) expectFits(t);
+      expectConsistent(t);
+    }
+    expect(seen.stop()).toEqual([]);
+  });
+
+  it('fits a height set in em, with line-height normal', () => {
+    const t = make(box(LONG, 'font:16px serif;line-height:normal;max-height:5em'), { lines: 'fit' });
+    expect(t.truncated).toBe(true);
+    expectFits(t);
+    expect(t.element.getBoundingClientRect().height).toBeLessThanOrEqual(80.5);
+  });
+});

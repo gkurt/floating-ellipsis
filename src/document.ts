@@ -77,8 +77,8 @@ function onCopy(event: ClipboardEvent) {
   holder.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:pre-wrap';
   holder.append(fragment);
   document.body.append(holder);
-  // Without the joiners that glue a suffix or marks to the text.
-  event.clipboardData.setData('text/plain', holder.innerText.replaceAll('\u2060', ''));
+  // Without the joiners that glue a suffix or marks to the text, or what stands for an image without alt text.
+  event.clipboardData.setData('text/plain', holder.innerText.replace(/[\u2060\uFFFC]/g, ''));
   event.clipboardData.setData('text/html', holder.innerHTML);
   holder.remove();
   event.preventDefault();
