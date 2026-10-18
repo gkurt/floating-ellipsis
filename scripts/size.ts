@@ -11,7 +11,7 @@ const BUDGETS: Record<string, number> = {
   changes: 2 * 1024,
   suffix: 0.75 * 1024,
   autosize: 0.5 * 1024,
-  transitions: 5.75 * 1024,
+  transitions: 6.5 * 1024,
   tooltip: 7 * 1024,
   text: 4 * 1024,
   element: 21.25 * 1024,

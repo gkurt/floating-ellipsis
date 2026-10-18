@@ -259,23 +259,31 @@ attaching again, so it should be stable.
 
 ## Transitions
 
-With `'merge'`, a leaving glyph shrinks into the nearest mark: glyphs on the
-left into the left dot, on the right into the right one, big jumps spread
-across the middle dots. On the way it takes the ellipsis' colour and
-cross-fades into the mark's shape. Arriving glyphs grow back out the same way.
+With `'merge'`, a leaving glyph shrinks and fades towards the dots' line,
+taking the ellipsis' colour; arriving glyphs grow back the same way. A glyph
+on its way in or out never overlaps the text, the marks or another glyph. It
+stays in its own place (a leaving one moves with the text on its side) and
+every frame gets only what is left of that place between the text and the
+marks as drawn; it shrinks to fit, so the dots spreading into freed room
+squeeze it out as they go, and it is gone once less than a pixel is left.
+Neighbours whose ink overlaps, like an `f` reaching over the next letter,
+split the overlap down the middle. `'fade'` and `'blur'` play in place and
+shrink only when squeezed. A glyph that turns around mid-way (shown again
+while leaving, or hidden while arriving) carries on from where it is.
 
 Nothing moves the text itself: glyphs keep their layout positions, so the line
 always ends at the edge. Ghost glyphs are drawn in an overlay beside the text
-and re-placed after every pass. Dots shift with a transform: each ellipsis
+and re-placed after every pass and on every frame while they play. Dots shift with a transform: each ellipsis
 stays centred where layout puts it, and only the spacing between its dots
 glides, on a critically damped spring (velocity carries over, no overshoot).
+Every gap, outer ones included, takes the same share of the width as drawn,
+so a jump in the cut doesn't bunch the dots together.
 Next to a glyph that's showing, the dots keep at least half the gap layout
 gives them, so they never crowd the text. Only jumps glide; the drift of a
 resize follows layout.
 
 With `pace: 'leeway'`, leaving glyphs take time in proportion to the room
-their removal frees, arriving ones are compressed by how many arrive side by
-side, and every effect is capped at three times the interval since the
+their removal frees, and every effect is capped at three times the interval since the
 previous change, so fast drags are instant and nothing piles up.
 
 `transitions` can be attached at any time; the first change after it animates

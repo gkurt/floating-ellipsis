@@ -10,16 +10,21 @@ export type Effect = 'none' | 'fade' | 'blur' | 'merge';
 export interface TransitionOptions {
   /**
    * What glyphs do as they appear and disappear:
-   * - 'merge' (default): a glyph that leaves shrinks into the nearest mark of
-   *   the ellipsis and turns into it; one that arrives grows out of it
+   * - 'merge' (default): a glyph that leaves shrinks and fades into the
+   *   ellipsis, taking its colour; one that arrives grows back out of it
    * - 'fade': glyphs fade in and out in place
    * - 'blur': glyphs fade through a blur in place
    * - 'none': glyphs come and go at once; the marks still glide
+   *
+   * Whatever the effect, a glyph on its way in or out never overlaps the
+   * text, the marks or another glyph: it stays in its own place and only has
+   * what is left of it, shrinking to fit (so squeezed, it merges faster),
+   * and goes at once when nothing is left.
    */
   effect?: Effect;
   /** Milliseconds for glyph effects, and roughly how long the spacing takes to settle. Default 460. */
   duration?: number;
-  /** For glyphs leaving; arriving glyphs play the same curve backwards. */
+  /** How glyphs shrink and grow, as a CSS keyword or `cubic-bezier()`. */
   easing?: string;
   /** Blur radius in px. Default 4. */
   blur?: number;
@@ -53,16 +58,47 @@ export interface TransitionOptions {
   respectReducedMotion?: boolean;
 }
 
-interface Ghost {
+/** A new ellipsis fading in, drawn over it in the overlay. */
+interface Fade {
   el: HTMLSpanElement;
-  anims: Animation[];
-  /** Element the ghost rides on: the glyph it reveals, or the ellipsis it merges into. */
+  anim: Animation;
+  /** The ellipsis it stands in for. */
   follow: HTMLElement;
-  /** Offset from the followed element's top-left corner. */
-  dx: number;
+}
+
+/**
+ * A glyph on its way out (or in), drawn in the overlay. Every frame it is
+ * given the room between whatever is drawn around it, and shrinks to fit.
+ */
+interface Sprite {
+  i: number;
+  el: HTMLSpanElement;
+  /** Leaving: the ellipsis it merges into, and which side of its marks it is on. */
+  ellipsis: HTMLElement | null;
+  side: 'left' | 'right';
+  /** Arriving: the glyph it stands in for, drawn once it lands. */
+  glyph: HTMLElement | null;
+  /** Width of its ink at full size. */
+  width: number;
+  /** Arriving: its ink's left edge from its glyph box's. */
+  inkDx: number;
+  /**
+   * Leaving: where the centre of its ink belongs, relative to the host, and
+   * its distance from the text on its side, which it moves with. The
+   * distance is taken afresh (`anchored` false) whenever that text changes.
+   */
+  home: number;
+  x: number;
+  anchored: boolean;
+  /** Leaving: the top of its box from the top of the ellipsis' marks. */
   dy: number;
-  /** Runs once the ghost is done, finished or cancelled. */
-  cleanup?: () => void;
+  /** Opacity it started at, and its size and opacity now. */
+  from: number;
+  scale: number;
+  alpha: number;
+  start: number;
+  ms: number;
+  colors: [text: string, ellipsis: string];
 }
 
 /**
@@ -84,7 +120,9 @@ interface Geometry {
   /** The region as laid out: from the ink of the glyph before to the ink of the glyph after. */
   left: number;
   right: number;
+  /** Vertical extent of its marks (of the ellipsis, with none). */
   top: number;
+  bottom: number;
   /** Each mark element with the horizontal extent of its ink, as laid out. */
   marks: { el: HTMLElement; left: number; right: number }[];
   /** Grapheme indices of the neighbouring glyphs (may be out of range). */
@@ -94,15 +132,33 @@ interface Geometry {
 
 type Before = { box: DOMRect; ink: DOMRect };
 
-const center = (r: DOMRect) => [r.left + r.width / 2, r.top + r.height / 2] as const;
+const KEYWORDS: Record<string, [number, number, number, number]> = {
+  linear: [0, 0, 1, 1],
+  ease: [0.25, 0.1, 0.25, 1],
+  'ease-in': [0.42, 0, 1, 1],
+  'ease-out': [0, 0, 0.58, 1],
+  'ease-in-out': [0.42, 0, 0.58, 1],
+};
 
-/** The same curve played backwards: cubic-bezier(a, b, c, d) → (1 - c, 1 - d, 1 - a, 1 - b). */
-function reversed(easing: string): string {
+/** A CSS easing as a function of progress; anything but a keyword or `cubic-bezier()` is linear. */
+function curve(easing: string): (x: number) => number {
   const m = /^cubic-bezier\(([^)]+)\)$/.exec(easing.trim());
-  const v = m?.[1]!.split(',').map(Number);
-  if (!v || v.length !== 4 || v.some((n) => !Number.isFinite(n))) return easing;
-  const [a, b, c, d] = v as [number, number, number, number];
-  return `cubic-bezier(${1 - c},${1 - d},${1 - a},${1 - b})`;
+  const v = m ? m[1]!.split(',').map(Number) : KEYWORDS[easing.trim()];
+  if (!v || v.length !== 4 || v.some((n) => !Number.isFinite(n))) return (x) => x;
+  const [x1, y1, x2, y2] = v as [number, number, number, number];
+  const at = (t: number, a: number, b: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  return (x) => {
+    if (x <= 0 || x >= 1) return Math.min(1, Math.max(0, x));
+    // x(t) only grows, so bisection always finds it.
+    let lo = 0;
+    let hi = 1;
+    for (let k = 0; k < 24; k++) {
+      const t = (lo + hi) / 2;
+      if (at(t, x1, x2) < x) lo = t;
+      else hi = t;
+    }
+    return at((lo + hi) / 2, y1, y2);
+  };
 }
 
 /**
@@ -122,6 +178,8 @@ function settle(x: number, v: number, omega: number, dt: number): [number, numbe
 
 /** Below this, an animation isn't worth showing. */
 const INSTANT = 60;
+/** A merging glyph narrower than this (px) is gone. */
+const SPECK = 0.75;
 
 /**
  * Animate truncation changes: glyphs that appear and disappear (with an
@@ -129,11 +187,11 @@ const INSTANT = 60;
  * glides (any instance). Returns a function that stops it all.
  *
  * Nothing here moves the text itself: glyphs keep their layout positions, so
- * the line always ends exactly at the edge. Ghost glyphs live in an overlay
- * next to the text, never inside it, since anything positioned inside the
- * line would disturb its measurement. Marks are shifted with a transform,
- * which is visual only, and only ever within the space between their
- * neighbouring glyphs.
+ * the line always ends exactly at the edge. Glyphs on their way in or out
+ * are drawn in an overlay next to the text, never inside it, since anything
+ * positioned inside the line would disturb its measurement. Marks are
+ * shifted with a transform, which is visual only, and only ever within the
+ * space between their neighbouring glyphs.
  */
 export function transitions(instance: Elide, options: TransitionOptions = {}): () => void {
   const {
@@ -147,14 +205,16 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     respectReducedMotion = true,
   } = options;
   const host = instance.element;
-  const ghosts = new Set<Ghost>();
-  const entering = new Map<HTMLElement, Ghost>();
+  const ease = curve(easing);
+  const fades = new Set<Fade>();
+  const leaving = new Map<number, Sprite>();
+  const arriving = new Map<HTMLElement, Sprite>();
   const regions = new Map<HTMLElement, Region>();
   // Each ellipsis' region as drawn last, relative to the host.
   let drawn = new Map<HTMLElement, { left: number; right: number; top: number }>();
   // Settles to within 1% in about `duration`.
   const omega = 6.6 / (duration / 1000);
-  let springFrame = 0;
+  let frame = 0;
   let lastTick = 0;
   let lastChange = -Infinity;
 
@@ -179,12 +239,19 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   function geometry(): Geometry[] {
     const origin = host.getBoundingClientRect();
     const { hidden, gaps } = instance.state;
-    return hidden.flatMap((_, j) => {
+    return hidden.flatMap((part, j) => {
       const ellipsis = instance.ellipses[j];
+      if (!ellipsis) return [];
       const els = markElements(instance, j);
       const boxes = markInks(instance, j);
       const gap = gaps[j];
-      if (!ellipsis || els.length === 0 || boxes.length === 0 || !gap) return [];
+      if (els.length === 0 || boxes.length === 0 || !gap) {
+        // No marks: a gap, which glyphs merge into the middle of.
+        const r = ellipsisRect(instance, j);
+        if (!r) return [];
+        const [left, right, top, bottom] = [r.left - origin.left, r.right - origin.left, r.top - origin.top, r.bottom - origin.top];
+        return [{ ellipsis, left, right, top, bottom, marks: [], before: part.start - 1, after: part.end }];
+      }
       // One element may draw several dots (a single '…'): they share its shift.
       const owner = (k: number) => els[els.length === boxes.length ? k : 0]!;
       const ink = boxes.map((r, k) => {
@@ -203,9 +270,10 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
           left: first.left - (gap.left ?? 0),
           right: last.right + (gap.right ?? 0),
           top: boxes[0]!.top - origin.top,
+          bottom: boxes[0]!.bottom - origin.top,
           marks,
-          before: hidden[j]!.start - 1,
-          after: hidden[j]!.end,
+          before: part.start - 1,
+          after: part.end,
         },
       ];
     });
@@ -213,33 +281,53 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
 
   /** The host's content box, relative to the host. */
   function contentBox() {
-    const r = host.getBoundingClientRect();
     const cs = getComputedStyle(host);
     const left = host.clientLeft + parseFloat(cs.paddingLeft);
-    return { left, right: host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight), width: r.width };
+    return { left, right: host.clientLeft + host.clientWidth - parseFloat(cs.paddingRight) };
   }
 
   /**
-   * Draw every ellipsis. Its marks stay centred where layout puts them, and
-   * only the spacing between them animates: the region's width, as its
-   * springs have it, spreads them with every gap scaled alike. Next to a
-   * glyph that is showing they keep at least half the gap layout gives them,
-   * so they can't crowd the text, nor run into each other.
+   * Draw every ellipsis, then the glyphs on their way in or out around it.
+   * Its marks stay centred where layout puts them, and only the spacing
+   * between them animates: the region's width, as its springs have it,
+   * spreads them with every gap scaled alike. Next to a glyph that is
+   * showing they keep at least half the gap layout gives them, so they
+   * can't crowd the text, nor run into each other.
    */
-  function draw() {
+  function draw(now = performance.now()) {
     const bounds = contentBox();
-    const next = new Map<HTMLElement, { left: number; right: number; top: number }>();
+    const geo = geometry();
+    const sprites = leaving.size + arriving.size > 0;
+    // Read everything before writing anything, so layout is computed once.
+    const origin = host.getBoundingClientRect();
+    const at = sprites ? layer.getBoundingClientRect() : origin;
+    const slots = new Map<Sprite, DOMRect>();
+    for (const s of arriving.values()) {
+      if (s.glyph!.isConnected) {
+        const r = s.glyph!.getBoundingClientRect();
+        slots.set(s, new DOMRect(r.left - origin.left, r.top - origin.top, r.width, r.height));
+      }
+    }
+
     // An edge may only reach past where layout puts it while the glyph there
-    // is still on its way in (hidden, its ghost growing).
-    const arriving = (i: number) => {
+    // is still on its way in (hidden, growing in what room the marks leave it).
+    const isArriving = (i: number) => {
       const el = glyph(instance, i);
-      return !!el && entering.has(el);
+      return !!el && arriving.has(el);
     };
     const n = instance.state.length;
-    for (const g of geometry()) {
+    const next = new Map<HTMLElement, { left: number; right: number; top: number }>();
+    // Where each ellipsis' marks are drawn, ink to ink.
+    const spans = new Map<HTMLElement, { left: number; right: number }>();
+    for (const g of geo) {
+      if (g.marks.length === 0) {
+        const middle = (g.left + g.right) / 2;
+        spans.set(g.ellipsis, { left: middle, right: middle });
+        continue;
+      }
       const r = regions.get(g.ellipsis);
-      const showingBefore = g.before >= 0 && !arriving(g.before);
-      const showingAfter = g.after < n && !arriving(g.after);
+      const showingBefore = g.before >= 0 && !isArriving(g.before);
+      const showingAfter = g.after < n && !isArriving(g.after);
       const widths = g.marks.map((m) => m.right - m.left);
       const need = widths.reduce((sum, w) => sum + w, 0);
       const first = g.marks[0]!;
@@ -249,13 +337,16 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       const hardRight = showingAfter ? (g.right + last.right) / 2 : bounds.right;
       const middle = (first.left + last.right) / 2;
       const inner = last.right - first.left - need;
-      const outer = g.right - g.left - (last.right - first.left);
-      const wanted = r ? g.right - g.left + r.right - r.left - outer : last.right - first.left;
+      // Every gap, the outer ones too, takes the same share of the region as drawn.
+      const gaps = g.right - g.left - need;
+      const share = r && gaps > 0.01 ? Math.max(0, gaps + r.right - r.left) / gaps : 1;
+      const wanted = need + inner * share;
       const room = 2 * Math.min(middle - hardLeft, hardRight - middle);
       // (One element drawing every dot can't spread.)
       const span = inner > 0.01 ? Math.max(need, Math.min(wanted, room)) : need;
       const left = middle - span / 2;
       next.set(g.ellipsis, { left: left - (first.left - g.left), right: left + span + (g.right - last.right), top: g.top });
+      spans.set(g.ellipsis, { left, right: left + span });
 
       // Layout's gaps between marks, scaled to the drawn span.
       const scale = inner > 0.01 ? (span - need) / inner : 1;
@@ -269,10 +360,278 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       });
     }
     drawn = next;
+    if (sprites) drawSprites(geo, spans, slots, bounds, at.left - origin.left, at.top - origin.top, now);
   }
 
+  // ---------------------------------------------------------------------------
+  // Glyphs on their way in or out
+
+  const progress = (s: Sprite, now: number) => (s.ms <= 0 ? 1 : Math.min(1, Math.max(0, (now - s.start) / s.ms)));
+
+  function drop(s: Sprite) {
+    s.el.remove();
+    if (s.glyph) {
+      if (arriving.get(s.glyph) === s) arriving.delete(s.glyph);
+      s.glyph.style.color = '';
+    } else if (leaving.get(s.i) === s) {
+      leaving.delete(s.i);
+    }
+  }
+
+  /** Land everything in flight: leaving glyphs are gone, arriving ones drawn. */
+  function land() {
+    for (const s of [...leaving.values(), ...arriving.values()]) drop(s);
+  }
+
+  function paint(s: Sprite, centre: number, top: number, layerX: number, layerY: number) {
+    const style = s.el.style;
+    style.left = `${centre - s.width / 2 - layerX}px`;
+    style.top = `${top - layerY}px`;
+    style.transform = s.scale < 1 ? `scale(${s.scale})` : '';
+    style.opacity = String(s.alpha);
+    if (effect === 'merge') style.color = `color-mix(in srgb, ${s.colors[1]} ${((1 - s.alpha) * 100).toFixed(1)}%, ${s.colors[0]})`;
+    if (effect === 'blur') style.filter = `blur(${blur * 1.5 * (1 - s.alpha)}px)`;
+  }
+
+  /**
+   * Size and opacity for a glyph given `fit`, the share of its width it has
+   * room for, and `timed`, how far its effect has played. Merging, it shrinks
+   * as it fades; fading, it only shrinks when it is squeezed.
+   */
+  function look(s: Sprite, fit: number, timed: number, leaves: boolean) {
+    const scale = effect === 'merge' ? Math.min(fit, timed) : Math.min(1, fit);
+    s.scale = leaves ? Math.min(s.scale, scale) : scale;
+    s.alpha = effect === 'merge' ? s.scale : Math.min(leaves ? s.alpha : 1, timed, s.scale);
+  }
+
+  /**
+   * Draw the glyphs leaving on one side of an ellipsis' marks, between `lo`
+   * and `hi`. Each stays in its own place (moving with the text on its side)
+   * and only has what is left of it there, shrinking to fit.
+   */
+  function squeeze(list: Sprite[], lo: number, hi: number, dir: 1 | -1, top: number, now: number, layerX: number, layerY: number) {
+    const anchor = dir === 1 ? lo : hi;
+    for (const s of list) {
+      if (!s.anchored) {
+        s.x = (s.home - anchor) * dir;
+        s.anchored = true;
+      }
+      s.home = anchor + dir * s.x;
+    }
+    const sorted = list.toSorted((p, q) => p.home - q.home);
+    for (const [k, s] of sorted.entries()) {
+      const left = s.home - s.width / 2;
+      const right = s.home + s.width / 2;
+      let a = Math.max(lo, left);
+      let b = Math.min(hi, right);
+      // Neighbours whose ink overlaps (an `f` reaching over the next letter) split it down the middle.
+      const before = sorted[k - 1];
+      const after = sorted[k + 1];
+      if (before && before.home + before.width / 2 > left) a = Math.max(a, (before.home + before.width / 2 + left) / 2);
+      if (after && after.home - after.width / 2 < right) b = Math.min(b, (after.home - after.width / 2 + right) / 2);
+      look(s, Math.max(0, b - a) / s.width, s.from * (1 - ease(progress(s, now))), true);
+      if (s.width * s.scale < SPECK || s.alpha <= 0.01) {
+        drop(s);
+        continue;
+      }
+      const half = (s.scale * s.width) / 2;
+      paint(s, Math.min(Math.max(s.home, a + half), b - half), top + s.dy, layerX, layerY);
+    }
+  }
+
+  function drawSprites(
+    geo: Geometry[],
+    spans: Map<HTMLElement, { left: number; right: number }>,
+    slots: Map<Sprite, DOMRect>,
+    bounds: { left: number; right: number },
+    layerX: number,
+    layerY: number,
+    now: number,
+  ) {
+    const n = instance.state.length;
+    const groups = new Map<HTMLElement, Sprite[]>();
+    for (const s of leaving.values()) groups.set(s.ellipsis!, [...(groups.get(s.ellipsis!) ?? []), s]);
+    for (const g of geo) {
+      const list = groups.get(g.ellipsis);
+      if (!list) continue;
+      groups.delete(g.ellipsis);
+      const span = spans.get(g.ellipsis)!;
+      const lo = g.before >= 0 ? g.left : bounds.left;
+      const hi = g.after < n ? g.right : bounds.right;
+      const on = (side: Sprite['side']) => list.filter((s) => s.side === side);
+      squeeze(on('left'), lo, span.left, 1, g.top, now, layerX, layerY);
+      squeeze(on('right'), span.right, hi, -1, g.top, now, layerX, layerY);
+    }
+    // Their ellipsis went away with the truncation.
+    for (const list of groups.values()) list.forEach(drop);
+
+    for (const s of arriving.values()) {
+      const box = slots.get(s);
+      if (!box) {
+        drop(s);
+        continue;
+      }
+      // Its own place in the line, less whatever the marks still cover.
+      let a = box.left + s.inkDx;
+      let b = a + s.width;
+      const middle = (a + b) / 2;
+      for (const g of geo) {
+        if (g.bottom <= box.top || g.top >= box.bottom) continue;
+        const span = spans.get(g.ellipsis)!;
+        if (span.right <= a || span.left >= b) continue;
+        if (span.left + span.right >= a + b) b = Math.min(b, span.left);
+        else a = Math.max(a, span.right);
+      }
+      const p = progress(s, now);
+      look(s, Math.max(0, b - a) / s.width, s.from + (1 - s.from) * ease(p), false);
+      if (p >= 1 && s.scale >= 0.999) {
+        drop(s);
+        continue;
+      }
+      const half = (s.scale * s.width) / 2;
+      paint(s, Math.min(Math.max(middle, a + half), b - half), box.top, layerX, layerY);
+    }
+  }
+
+  /** An element drawing a glyph over its ink: the wrapper shrinks around the ink, the text inside sits where it did. */
+  function spriteOf(text: string, box: DOMRect, ink: DOMRect, style: CSSStyleDeclaration): HTMLSpanElement {
+    const el = document.createElement('span');
+    el.style.cssText = `position:absolute;margin:0;width:${ink.width}px;height:${box.height}px;color:${style.color}`;
+    const inner = document.createElement('span');
+    // `font` resets line-height, so it goes first.
+    inner.style.cssText =
+      `display:block;margin-left:${box.left - ink.left}px;white-space:pre;` +
+      `font:${style.font};line-height:${box.height}px;letter-spacing:${style.letterSpacing}`;
+    inner.textContent = text;
+    el.append(inner);
+    layer.append(el);
+    return el;
+  }
+
+  /** The middle of the ellipsis on the same line as `box`: what glyphs merge towards vertically. */
+  function lineMark(box: DOMRect): DOMRect | undefined {
+    for (let j = 0; j < instance.state.hidden.length; j++) {
+      const r = markInks(instance, j)[0] ?? ellipsisRect(instance, j);
+      if (r && r.bottom > box.top && r.top < box.bottom) return r;
+    }
+    return undefined;
+  }
+
+  /** Which side of an ellipsis' marks a glyph that just left it is on. */
+  function sideOf(i: number, part: Part, previous: readonly Part[]): Sprite['side'] {
+    for (const p of previous) {
+      if (p.start >= part.end || p.end <= part.start) continue;
+      if (i < p.start) return 'left';
+      if (i >= p.end) return 'right';
+    }
+    return i < (part.start + part.end) / 2 ? 'left' : 'right';
+  }
+
+  function enter(i: number, ms: number) {
+    const el = glyph(instance, i);
+    const ink = glyphInk(instance, i);
+    // Coming back while still on its way out: it turns around where it is.
+    const back = leaving.get(i);
+    const from = back ? back.alpha : 0;
+    if (back) drop(back);
+    const text = instance.graphemes[i] ?? '';
+    if (!el || !ink || ink.width <= 0 || isWhitespace(text) || arriving.has(el)) return;
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const mark = lineMark(box) ?? ink;
+    const s: Sprite = {
+      i,
+      el: spriteOf(text, box, ink, style),
+      ellipsis: null,
+      side: 'left',
+      glyph: el,
+      width: ink.width,
+      inkDx: ink.left - box.left,
+      home: 0,
+      x: 0,
+      anchored: true,
+      dy: 0,
+      from,
+      scale: effect === 'merge' ? from : 1,
+      alpha: from,
+      start: performance.now(),
+      ms,
+      colors: [style.color, getComputedStyle(instance.ellipsisElement).color],
+    };
+    s.el.style.transformOrigin = `50% ${mark.top + mark.height / 2 - box.top}px`;
+    el.style.color = 'transparent';
+    arriving.set(el, s);
+  }
+
+  function leave(i: number, before: Before, change: ElideChange, ms: number) {
+    // Leaving while still on its way in: it turns around where it is.
+    const back = [...arriving.values()].find((s) => s.i === i);
+    const from = back ? back.alpha : 1;
+    if (back) drop(back);
+    const j = change.state.hidden.findIndex((p) => i >= p.start && i < p.end);
+    const part = change.state.hidden[j];
+    const ellipsis = instance.ellipses[j];
+    const text = instance.graphemes[i] ?? '';
+    const { box, ink } = before;
+    if (!part || !ellipsis || ink.width <= 0 || isWhitespace(text) || from <= 0) return;
+    const mark = markInks(instance, j)[0] ?? ellipsisRect(instance, j);
+    // Off the ellipsis' line (the text reflowed), there is nothing to merge into.
+    if (!mark || mark.bottom <= box.top || mark.top >= box.bottom) return;
+    // The glyph is gone from the DOM; its join carries the same text style.
+    const style = getComputedStyle(ellipsis.parentElement ?? host);
+    const origin = host.getBoundingClientRect();
+    const s: Sprite = {
+      i,
+      el: spriteOf(text, box, ink, style),
+      ellipsis,
+      side: sideOf(i, part, change.previous?.hidden ?? []),
+      glyph: null,
+      width: ink.width,
+      inkDx: 0,
+      home: ink.left + ink.width / 2 - origin.left,
+      x: 0,
+      anchored: false,
+      dy: box.top - mark.top,
+      from,
+      scale: effect === 'merge' ? from : 1,
+      alpha: from,
+      start: performance.now(),
+      ms,
+      colors: [style.color, getComputedStyle(instance.ellipsisElement).color],
+    };
+    s.el.style.transformOrigin = `50% ${mark.top + mark.height / 2 - box.top}px`;
+    leaving.get(i)?.el.remove();
+    leaving.set(i, s);
+  }
+
+  /**
+   * The cut just changed. Every glyph on its way out moves as much as the
+   * text on its side just did, and keeps its distance from whatever is next
+   * to the ellipsis now.
+   */
+  function rebase(change: ElideChange) {
+    for (const s of leaving.values()) {
+      const j = change.state.hidden.findIndex((p) => s.i >= p.start && s.i < p.end);
+      const part = change.state.hidden[j];
+      const ellipsis = instance.ellipses[j];
+      if (!part || !ellipsis) {
+        drop(s);
+        continue;
+      }
+      s.ellipsis = ellipsis;
+      const next = s.side === 'left' ? part.start - 1 : part.end;
+      const was = change.glyphsBefore.get(next)?.ink;
+      const is = glyphInk(instance, next);
+      if (was && is) s.home += is.left - was.left;
+      s.anchored = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Frames
+
   function tick(now: number) {
-    springFrame = 0;
+    frame = 0;
     const dt = Math.min(0.05, lastTick !== 0 ? (now - lastTick) / 1000 : 1 / 60);
     lastTick = now;
     for (const [el, r] of regions) {
@@ -286,9 +645,13 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       const done = (x: number, v: number) => Math.abs(x) < 0.05 && Math.abs(v) < 1;
       if (done(r.left, r.vLeft) && done(r.right, r.vRight)) regions.delete(el);
     }
-    draw();
-    if (regions.size > 0) springFrame = requestAnimationFrame(tick);
-    else lastTick = 0;
+    draw(now);
+    loop();
+  }
+
+  function loop() {
+    if (regions.size + leaving.size + arriving.size > 0) frame ||= requestAnimationFrame(tick);
+    else if (frame === 0) lastTick = 0;
   }
 
   /**
@@ -311,232 +674,26 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       r.hold = Math.max(r.hold, hold);
       regions.set(g.ellipsis, r);
     }
-    draw();
-    if (regions.size > 0) springFrame ||= requestAnimationFrame(tick);
   }
 
   // ---------------------------------------------------------------------------
-  // Ghosts
+  // New ellipses
 
   function place() {
     const origin = layer.getBoundingClientRect();
     // Read everything, then write, so layout is computed once.
-    const boxes = [...ghosts].map((g) => (g.follow.isConnected ? g.follow.getBoundingClientRect() : null));
+    const boxes = [...fades].map((f) => (f.follow.isConnected ? f.follow.getBoundingClientRect() : null));
     let i = 0;
-    for (const g of ghosts) {
+    for (const f of fades) {
       const box = boxes[i++];
       if (!box) continue; // e.g. the ellipsis went away with the truncation; stay put
-      g.el.style.left = `${box.left + g.dx - origin.left}px`;
-      g.el.style.top = `${box.top + g.dy - origin.top}px`;
+      f.el.style.left = `${box.left - origin.left}px`;
+      f.el.style.top = `${box.top - origin.top}px`;
     }
-  }
-
-  function track(ghost: Ghost) {
-    ghosts.add(ghost);
-    let open = ghost.anims.length;
-    let ended = false;
-    const end = () => {
-      if (ended) return;
-      ended = true;
-      ghost.anims.forEach((a) => a.cancel());
-      ghost.el.remove();
-      ghosts.delete(ghost);
-      ghost.cleanup?.();
-    };
-    for (const a of ghost.anims) {
-      a.addEventListener('finish', () => --open <= 0 && end());
-      a.addEventListener('cancel', end);
-    }
-  }
-
-  /** A copy of a glyph over `box`: a wrapper (moves, changes colour) around its text. */
-  function ghostOf(text: string, box: DOMRect, style: CSSStyleDeclaration, color: string) {
-    const el = document.createElement('span');
-    el.style.cssText = `position:absolute;margin:0;width:${box.width}px;height:${box.height}px;color:${color}`;
-    const inner = document.createElement('span');
-    // `font` resets line-height, so it goes first.
-    inner.style.cssText = `display:block;white-space:pre;font:${style.font};line-height:${box.height}px;letter-spacing:${style.letterSpacing}`;
-    inner.textContent = text;
-    el.append(inner);
-    layer.append(el);
-    return { el, inner };
   }
 
   /**
-   * Play a glyph turning into a mark of the ellipsis (or back, when
-   * `backwards`): it shrinks onto the mark, takes the ellipsis' colour and
-   * cross-fades into the mark's shape. Whitespace has no ink to turn into
-   * anything: it only keeps the timing.
-   */
-  function morph(
-    text: string,
-    ghost: { el: HTMLSpanElement; inner: HTMLSpanElement },
-    box: DOMRect,
-    ink: DOMRect,
-    mark: DOMRect,
-    colors: [text: string, mark: string],
-    ms: number,
-    backwards: boolean,
-  ): Animation[] {
-    const [ix, iy] = center(ink);
-    const [mx, my] = center(mark);
-    const ox = ix - box.left;
-    const oy = iy - box.top;
-    const markSize = Math.max(mark.width, mark.height);
-    const inkSize = Math.max(1, ink.width, ink.height);
-    const scale = Math.min(1, Math.max(0.04, markSize / inkSize));
-    ghost.el.style.transformOrigin = `${ox}px ${oy}px`;
-
-    const timing: KeyframeAnimationOptions = {
-      duration: ms,
-      easing: backwards ? reversed(easing) : easing,
-      direction: backwards ? 'reverse' : 'normal',
-      fill: 'both',
-    };
-    const travel = ghost.el.animate(
-      [
-        { transform: 'none', color: colors[0], filter: 'blur(0px)' },
-        { offset: 0.5, color: colors[1] },
-        { transform: `translate(${mx - ix}px, ${my - iy}px) scale(${scale})`, color: colors[1], filter: `blur(${blur / 8}px)` },
-      ],
-      timing,
-    );
-    if (isWhitespace(text)) return [travel];
-
-    const style = instance.markStyle;
-    const shapeName = typeof style === 'string' ? 'dot' : style.shape;
-    const w = mark.width / scale;
-    const h = mark.height / scale;
-    const shape = document.createElement('span');
-    shape.style.cssText =
-      `position:absolute;left:${ox - w / 2}px;top:${oy - h / 2}px;width:${w}px;height:${h}px;opacity:0;` +
-      `border-radius:${shapeName === 'square' ? 0 : '50%'};` +
-      (shapeName === 'ring' ? `box-sizing:border-box;border:${Math.max(1, w * 0.16)}px solid currentColor` : 'background:currentColor');
-    ghost.el.append(shape);
-    // The shape shrinks with the glyph, but starts no bigger than the
-    // glyph's narrow side: a comma or an `l` is tall, not wide.
-    const start = Math.min(1, Math.max(Math.min(ink.width, ink.height), markSize) / inkSize);
-
-    return [
-      travel,
-      ghost.inner.animate([{ opacity: 1 }, { offset: 0.55, opacity: 1 }, { opacity: 0 }], timing),
-      shape.animate(
-        [
-          { opacity: 0, transform: `scale(${start})` },
-          { offset: 0.55, opacity: 0 },
-          { opacity: 1, transform: 'none' },
-        ],
-        timing,
-      ),
-    ];
-  }
-
-  /** The mark a grapheme maps to, by where it sits in its hidden part. */
-  function markOf(i: number, part: Part, marks: DOMRect[]): DOMRect | undefined {
-    const at = (i - part.start + 0.5) / Math.max(1, part.end - part.start);
-    return marks[Math.min(marks.length - 1, Math.floor(at * marks.length))];
-  }
-
-  /** An ellipsis with no marks is a gap: things merge into its middle. */
-  function gapPoint(j: number): DOMRect | undefined {
-    const r = ellipsisRect(instance, j);
-    return r ? new DOMRect(r.left + r.width / 2, r.top + r.height / 2, 0, 0) : undefined;
-  }
-
-  /** The mark a newly shown glyph grows out of, as it was last painted. */
-  function sourceMark(i: number, change: ElideChange): DOMRect | undefined {
-    const was = change.previous?.hidden.findIndex((p) => i >= p.start && i < p.end) ?? -1;
-    const prev = change.previous?.hidden[was];
-    if (!prev) return undefined;
-    const marks = change.marksBefore[was] ?? [];
-    // The part it came from usually still exists, a little smaller: the
-    // glyph comes out of the end of the ellipsis on its side.
-    const match = change.state.hidden.findIndex((p) => p.start < prev.end && p.end > prev.start);
-    if (marks.length === 0) return match >= 0 ? gapPoint(match) : undefined;
-    const part = change.state.hidden[match];
-    if (part) return i < part.start ? marks[0] : marks[marks.length - 1];
-    return markOf(i, prev, marks);
-  }
-
-  /** Marks of ellipsis `j` where they will come to rest. */
-  function restingMarks(j: number): DOMRect[] {
-    const els = markElements(instance, j);
-    const boxes = markInks(instance, j);
-    // One element may draw several dots (a single '…'): they share its shift.
-    return boxes.map((r, k) => {
-      const x = shiftOf(els[els.length === boxes.length ? k : 0] ?? els[0]!);
-      return new DOMRect(r.left - x, r.top, r.width, r.height);
-    });
-  }
-
-  const fadeFrames = (): Keyframe[] => [
-    effect === 'blur' ? { opacity: 0, filter: `blur(${blur * 1.5}px)` } : { opacity: 0 },
-    { opacity: 1, filter: 'blur(0px)' },
-  ];
-
-  function enter(i: number, change: ElideChange, ms: number) {
-    const el = glyph(instance, i);
-    const ink = glyphInk(instance, i);
-    if (!el || !ink) return;
-    entering.get(el)?.anims.forEach((a) => a.cancel());
-    const box = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    let anims: Animation[];
-    const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
-    if (effect === 'merge') {
-      const mark = sourceMark(i, change);
-      if (!mark) {
-        ghost.el.remove();
-        return;
-      }
-      const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(instance.graphemes[i] ?? '', ghost, box, ink, mark, [style.color, markColor], ms, true);
-    } else {
-      anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing })];
-    }
-    el.style.color = 'transparent';
-    const g: Ghost = {
-      el: ghost.el,
-      anims,
-      follow: el,
-      dx: 0,
-      dy: 0,
-      cleanup: () => {
-        el.style.color = '';
-        if (entering.get(el) === g) entering.delete(el);
-      },
-    };
-    entering.set(el, g);
-    track(g);
-  }
-
-  function leave(i: number, before: Before, change: ElideChange, ms: number) {
-    const j = change.state.hidden.findIndex((p) => i >= p.start && i < p.end);
-    const part = change.state.hidden[j];
-    const follow = instance.ellipses[j];
-    const anchor = ellipsisRect(instance, j);
-    if (!part || !follow || !anchor) return;
-    const { box, ink } = before;
-    // The glyph is gone from the DOM; its join carries the same text style.
-    const style = getComputedStyle(follow.parentElement ?? host);
-    const ghost = ghostOf(instance.graphemes[i] ?? '', box, style, style.color);
-    let anims: Animation[];
-    if (effect === 'merge') {
-      const mark = markOf(i, part, restingMarks(j)) ?? gapPoint(j);
-      if (!mark) {
-        ghost.el.remove();
-        return;
-      }
-      const markColor = getComputedStyle(instance.ellipsisElement).color;
-      anims = morph(instance.graphemes[i] ?? '', ghost, box, ink, mark, [style.color, markColor], ms, false);
-    } else {
-      anims = [ghost.el.animate(fadeFrames(), { duration: ms, easing, direction: 'reverse', fill: 'both' })];
-    }
-    track({ el: ghost.el, anims, follow, dx: box.left - anchor.left, dy: box.top - anchor.top });
-  }
-
-  /**
-   * Fade a new ellipsis in through a ghost: animating the element itself is
+   * Fade a new ellipsis in through a copy: animating the element itself is
    * fragile, since fitting may briefly move it, which restarts animations.
    */
   function appear(j: number) {
@@ -544,18 +701,31 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const rect = ellipsisRect(instance, j);
     if (!real || !rect) return;
     const style = getComputedStyle(real);
-    const ghost = ghostOf('', rect, style, style.color);
-    ghost.inner.replaceChildren(...Array.from(real.childNodes, (n) => n.cloneNode(true)));
+    const el = document.createElement('span');
+    el.style.cssText = `position:absolute;margin:0;width:${rect.width}px;height:${rect.height}px;color:${style.color}`;
+    const inner = document.createElement('span');
+    inner.style.cssText = `display:block;white-space:pre;font:${style.font};line-height:${rect.height}px;letter-spacing:${style.letterSpacing}`;
+    inner.append(...Array.from(real.childNodes, (n) => n.cloneNode(true)));
+    el.append(inner);
+    layer.append(el);
     real.style.visibility = 'hidden';
-    track({
-      el: ghost.el,
-      anims: [ghost.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing })],
-      follow: real,
-      dx: 0,
-      dy: 0,
-      cleanup: () => (real.style.visibility = ''),
-    });
+    const f: Fade = { el, follow: real, anim: el.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing }) };
+    fades.add(f);
+    let ended = false;
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      f.anim.cancel();
+      el.remove();
+      fades.delete(f);
+      real.style.visibility = '';
+    };
+    f.anim.addEventListener('finish', end);
+    f.anim.addEventListener('cancel', end);
   }
+
+  // ---------------------------------------------------------------------------
+  // Pacing
 
   /**
    * How long leaving glyphs get, by room. Removing glyphs frees their width, minus
@@ -572,31 +742,17 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return duration * 0.85 * leeway;
   }
 
-  /**
-   * How long arriving glyphs get. Glyphs that arrive together come out of the
-   * same mark, so a run of them would start out stacked on top of each other:
-   * the longer the run, the quicker they go. When glyphs also leave in the
-   * same change (the position moved), they share its leeway.
-   */
+  /** How long arriving glyphs get: when glyphs also leave in the same change (the position moved), they share its leeway. */
   function enterTime(change: ElideChange): number {
-    if (pace === 'fixed' || change.shown.length === 0) return duration;
-    if (change.hidden.length > 0) return leaveTime(change) / 0.85;
-    let run = 1;
-    let longest = 1;
-    for (let k = 1; k < change.shown.length; k++) {
-      run = change.shown[k] === change.shown[k - 1]! + 1 ? run + 1 : 1;
-      longest = Math.max(longest, run);
-    }
-    return duration / longest;
+    if (pace === 'fixed' || change.hidden.length === 0) return duration;
+    return leaveTime(change) / 0.85;
   }
 
   const offChange = onChange(instance, (change: ElideChange) => {
-    // Glyphs hidden mid-entrance stop entering.
-    for (const i of change.hidden) {
-      const el = glyph(instance, i);
-      if (el) entering.get(el)?.anims.forEach((a) => a.cancel());
+    if (change.reset || !change.previous || reduced()) {
+      land();
+      return;
     }
-    if (change.reset || !change.previous || reduced()) return;
 
     // Room is one limit; time is the other. When changes come faster than
     // their animations can play (a slider dragged, a fast resize), each gets
@@ -607,44 +763,52 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     const ms = Math.min(leaveTime(change), cap);
     const inMs = Math.min(enterTime(change), cap);
     const instant = ms < INSTANT;
-    const leaving = change.hidden.length > 0 && effect !== 'none' && !instant;
-    const arriving = change.shown.length > 0 && effect !== 'none' && inMs >= INSTANT;
+    const goes = change.hidden.length > 0 && effect !== 'none' && !instant;
+    const comes = change.shown.length > 0 && effect !== 'none' && inMs >= INSTANT;
     // No time for this change means the text is moving fast: anything still
     // in flight from earlier changes lands now too, rather than piling up.
-    if ((change.hidden.length > 0 && instant) || (change.shown.length > 0 && !arriving))
-      for (const g of Array.from(ghosts)) g.anims.forEach((a) => a.finish());
+    if ((change.hidden.length > 0 && instant) || (change.shown.length > 0 && !comes)) {
+      land();
+      for (const f of Array.from(fades)) f.anim.finish();
+    }
 
     // Arriving glyphs first: the spacing may only glide over glyphs still on their way in.
-    if (arriving) for (const i of change.shown) enter(i, change, inMs);
-    if (glide) glideMarks(markTiming === 'after' && leaving && effect === 'merge' ? performance.now() + ms * 0.8 : 0);
-    if (effect === 'none') return;
-
-    if (leaving) {
+    if (comes) for (const i of change.shown) enter(i, inMs);
+    if (goes) {
       for (const i of change.hidden) {
         const before = change.hiddenGlyphs.get(i);
         if (before) leave(i, before, change, ms);
       }
     }
-    for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
-    if (ghosts.size > 0) place();
+    // Whatever doesn't get to animate is where layout says at once.
+    const hidden = new Set(change.hidden);
+    for (const s of arriving.values()) if (hidden.has(s.i)) drop(s);
+    rebase(change);
+
+    if (glide) glideMarks(markTiming === 'after' && goes && effect === 'merge' ? now + ms * 0.8 : 0);
+    if (effect !== 'none') for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
+    draw(now);
+    if (fades.size > 0) place();
+    loop();
   });
 
-  // After every pass, with layout final for this frame: put ghosts back on
-  // the elements they follow, and redraw the ellipses. A region's glide
-  // offsets are relative to layout, so the gentle drift of resizing is
-  // followed directly; only jumps glide.
+  // After every pass, with layout final for this frame: redraw the ellipses
+  // and the glyphs around them. A region's glide offsets are relative to
+  // layout, so the gentle drift of resizing is followed directly; only jumps
+  // glide.
   // (Doing this in a frame callback would see the old text reflowed at the
   // new width, before truncation catches up, often a line lower.)
   const offRender = instance.onRender(() => {
-    if (ghosts.size > 0) place();
     draw();
+    if (fades.size > 0) place();
   });
   draw();
 
   return () => {
     offChange();
     offRender();
-    for (const g of Array.from(ghosts)) g.anims.forEach((a) => a.cancel());
+    land();
+    for (const f of Array.from(fades)) f.anim.cancel();
     regions.clear();
     instance.state.hidden.forEach((_, j) => {
       for (const el of markElements(instance, j)) {
@@ -652,7 +816,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         applied.delete(el);
       }
     });
-    cancelAnimationFrame(springFrame);
+    cancelAnimationFrame(frame);
     layer.remove();
   };
 }
