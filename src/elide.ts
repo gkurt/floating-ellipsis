@@ -168,6 +168,14 @@ let sharedObserver: ResizeObserver | null = null;
 let nearObserver: IntersectionObserver | null = null;
 const observed = new Map<Element, Elide>();
 
+/** One more for the max-height of every element fitted to its height (see `watchRoom`). */
+let roomObserver: ResizeObserver | null = null;
+const rooms = new Map<Element, Elide>();
+
+/** Out of sight and out of the flow, taking the element's max-height for a box too tall for any to be its height. */
+const ROOM = 'position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;max-height:inherit';
+const ROOM_INSIDE = 'display:block;height:1000000px;max-height:inherit';
+
 export class Elide {
   readonly element: HTMLElement;
 
@@ -218,6 +226,9 @@ export class Elide {
   #lastWidth = -1;
   /** The element's border-box height as last measured with `lines: 'fit'`: a resize to another is the room changing. */
   #lastHeight = -1;
+  /** The box as tall as the element's max-height, while one is watched (see `watchRoom`), and its height. */
+  #room: HTMLElement | null = null;
+  #roomHeight = -1;
   /** Far from the screen, as far as the IntersectionObserver knows (null until it has said). */
   #far: boolean | null = null;
   /** A pass put off while far from the screen (see `putOff`). */
@@ -290,6 +301,7 @@ export class Elide {
     hookDocument();
     this.#schedule('init');
     this.#observe(this.#settings.observe);
+    this.#watchRoom();
   }
 
   /** Current settings. */
@@ -481,6 +493,7 @@ export class Elide {
     }
     if (s.observe !== before.observe) this.#observe(s.observe);
     if (s.lines !== before.lines) this.#bias = null;
+    this.#watchRoom();
     if (s.suffix?.content !== before.suffix?.content) this.#setSuffix();
     if ((text !== undefined && text !== this.#source) || s.glyphs !== before.glyphs) {
       this.#sought = null;
@@ -510,6 +523,7 @@ export class Elide {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#observe(false);
+    this.#watchRoom();
     queued.delete(this);
     unfound.delete(this);
     instances.delete(this);
@@ -554,6 +568,51 @@ export class Elide {
     if (typeof IntersectionObserver === 'undefined') return;
     nearObserver ??= new IntersectionObserver((entries) => Elide.#neared(entries), { rootMargin: '100%' });
     nearObserver.observe(host);
+  }
+
+  /**
+   * With `lines: 'fit'`, watch the element's max-height. An element whose
+   * height comes from its text, capped by max-height, keeps its size when
+   * the cap rises past the lines it shows, so the ResizeObserver can't tell
+   * there is room for more. A box out of sight takes the same cap over a
+   * height too tall for any, so its height is the cap, and it resizes as the
+   * cap does. (A cap in percent resolves against the box's own container,
+   * so it isn't seen.)
+   */
+  #watchRoom() {
+    const { lines, observe } = this.#settings;
+    const on = !this.#destroyed && observe && lines === 'fit' && typeof ResizeObserver !== 'undefined';
+    if (on === (this.#room !== null)) return;
+    if (this.#room) {
+      roomObserver?.unobserve(this.#room);
+      rooms.delete(this.#room);
+      this.#room.parentElement?.remove();
+      this.#room = null;
+      return;
+    }
+    const outer = document.createElement('span');
+    outer.setAttribute('data-fp-room', '');
+    outer.setAttribute('aria-hidden', 'true');
+    outer.style.cssText = ROOM;
+    const room = document.createElement('span');
+    room.style.cssText = ROOM_INSIDE;
+    outer.append(room);
+    this.element.append(outer);
+    this.#room = room;
+    this.#roomHeight = -1;
+    rooms.set(room, this);
+    roomObserver ??= new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const instance = rooms.get(entry.target);
+        if (!instance) continue;
+        const height = entry.contentRect.height;
+        // The first report is how it starts out.
+        const moved = instance.#roomHeight >= 0 && Math.abs(height - instance.#roomHeight) > 0.01;
+        instance.#roomHeight = height;
+        if (moved) instance.#schedule('resize');
+      }
+    });
+    roomObserver.observe(room);
   }
 
   /** Read the text, and its elements, from `source`: a string, a node, or (undefined) the element's own content. */

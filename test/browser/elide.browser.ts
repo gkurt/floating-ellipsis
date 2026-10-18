@@ -545,6 +545,24 @@ describe("lines: 'fit'", () => {
     expect(seen.stop()).toEqual([]);
   });
 
+  it('shows more lines when max-height rises past the lines it shows', async () => {
+    const t = make(box(LONG, 'max-height:60px'), { lines: 'fit' });
+    await frames();
+    expect(t.state.lines).toBe(3);
+    t.element.style.maxHeight = '100px';
+    await frames();
+    expect(t.state.lines).toBe(5);
+    expectFits(t);
+    t.element.style.maxHeight = '40px';
+    await frames();
+    expect(t.state.lines).toBe(2);
+    t.update({ lines: 2 });
+    expect(t.element.querySelector('[data-fp-room]')).toBeNull();
+    t.update({ lines: 'fit' });
+    t.destroy();
+    expect(t.element.textContent).toBe(LONG);
+  });
+
   it('fits a height set in em, with line-height normal', () => {
     const t = make(box(LONG, 'font:16px serif;line-height:normal;max-height:5em'), { lines: 'fit' });
     expect(t.truncated).toBe(true);

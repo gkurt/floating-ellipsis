@@ -351,6 +351,19 @@ input.track:focus-visible {
   white-space: nowrap;
 }
 
+/* 11: icons and mentions, kept whole. */
+.scene .line .icon {
+  vertical-align: -0.12em;
+  color: var(--accent-2);
+}
+.mention {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--accent-2-soft);
+  color: var(--accent-2);
+  font-size: 0.86em;
+}
+
 /* ------------------------------------------------------------------------ */
 
 .more-links {

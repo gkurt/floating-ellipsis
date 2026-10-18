@@ -5,4 +5,4 @@ packages:
 
 ### `lines: 'fit'` shows as many lines as the element's height has room for
 
-The height can come from `height`, `max-height`, or a flex or grid track, and the text fits again when it changes.
+The height can come from `height`, `max-height`, or a flex or grid track, and the text fits again when it changes, `max-height` rising past the lines that show included.

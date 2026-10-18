@@ -26,6 +26,7 @@ import {
   toggleSmoothly,
   tooltipOptions,
   tooltipPaths,
+  unitRows,
 } from './examples.ts';
 import { $, resizable } from './ui.ts';
 
@@ -325,4 +326,20 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('autosizeCode', "elide(chip, { position: «'middle'», autoSize: autoSize() })");
   stage(box, [0.4, 1]);
+}
+
+// ---------------------------------------------------------------------------
+// 11 Icons, emoji and every script
+
+{
+  const box = $('#unitsBox');
+  for (const { label, text, options } of unitRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    row.append(line);
+    box.insertBefore(row, $('.handle', box));
+    transitions(elide(line, options), calm);
+  }
+  setCode('unitsCode', "elide(el, { position: «'middle'» }) // <img>, <svg> and [data-elide-unit] stay whole");
+  stage(box, [0.4, 0.9]);
 }

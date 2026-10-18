@@ -201,9 +201,13 @@ the height is free to follow the text, so probes hold only the overflow, not
 the height, and truncated text isn't held at its height between passes. A
 height that changes from outside, by a flex or grid track or a style, is a
 resize the ResizeObserver reports; the height the element took after the last
-pass isn't. Room can also grow without the element changing size (a larger
-`max-height` on text that is shorter than it): `refresh()` sees it. Text
-always shows at least one line.
+pass isn't. Room can also grow without the element changing size: a
+`max-height` raised past the lines that show leaves the element as tall as
+they are. So a box out of sight and out of the flow (`data-fp-room`) takes
+the element's max-height (`max-height: inherit`) over a height too tall for
+any: its height is the cap, and a second ResizeObserver reports it changing.
+A cap in percent resolves against that box's own container, so it isn't
+seen; `refresh()` sees it. Text always shows at least one line.
 
 ## Suffixes and expanding
 

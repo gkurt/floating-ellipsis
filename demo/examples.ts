@@ -158,6 +158,36 @@ export function differing(path: string, paths: string[]): Keep[] {
   return keep;
 }
 
+/** A folder and a PDF, drawn: each is one grapheme that's shown whole or not at all. */
+const folderIcon =
+  '<svg class="icon" aria-label="Folder" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 3.5h4.5l1.5 1.5h7v8.5h-13z"/></svg>';
+const pdfIcon =
+  '<svg class="icon" aria-label="PDF" width="28" height="16" viewBox="0 0 28 16"><rect width="28" height="16" rx="3" fill="currentColor"/><text x="14" y="11.5" text-anchor="middle" font-size="9" font-weight="700" font-family="system-ui, sans-serif" style="fill: var(--surface)">PDF</text></svg>';
+const mention = (name: string) => `<span class="mention" data-elide-unit>@${name}</span>`;
+
+export const unitRows: { label: string; text: string; options: ElideOptions }[] = [
+  {
+    label: '&lt;svg&gt;',
+    text: `${folderIcon} Projects / ada / ${pdfIcon} Difference engine notes, final draft (2).pdf`,
+    options: { position: 'middle' },
+  },
+  {
+    label: 'data-elide-unit',
+    text: `Waiting on ${mention('ada.lovelace')} and ${mention('charles.babbage')} before Thursday's release`,
+    options: { position: 0.7 },
+  },
+  {
+    label: 'emoji',
+    text: 'Weekend: 🏔️ hike with the 👨‍👩‍👧‍👦, then 🍜 by 🧑🏽‍🍳 in Kyoto and ☕ with 👩🏻‍💻 in Istanbul 👍🏽',
+    options: { position: 'middle' },
+  },
+  {
+    label: 'scripts',
+    text: 'Grüße · नमस्ते दुनिया · こんにちは世界 · 안녕하세요 · Γειά σου · สวัสดีชาวโลก',
+    options: { position: 'middle' },
+  },
+];
+
 export const sharedColumns: [string, (path: string) => ElideOptions][] = [
   ["position: 'middle'", () => ({ position: 'middle' })],
   ['keep: differing(…)', (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/', { fragment: false }) })],

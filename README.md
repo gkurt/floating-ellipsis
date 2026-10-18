@@ -416,8 +416,8 @@ and transitions respect reduced motion.
 
 - Left-to-right text and inline elements only.
 - A line whose leftover room exceeds `maxGap` isn't flush.
-- With `lines: 'fit'`, room that grows without resizing the element (a
-  larger `max-height` on text shorter than it) needs `refresh()`.
+- With `lines: 'fit'`, a `max-height` in percent that grows past the lines
+  showing needs `refresh()`.
 - Find in page can't find a word an ellipsis cuts in two, and with
   `find: 'keep'` moving past a kept match takes a second Enter.
 
