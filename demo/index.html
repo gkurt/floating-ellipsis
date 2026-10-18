@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>floating-ellipsis — fluid, balanced ellipsis</title>
+    <title>floating-ellipsis — truncate text anywhere</title>
+    <meta
+      name="description"
+      content="Fluid, balanced ellipsis: smart text truncation for one or many lines, with the ellipsis anywhere and optically even spacing."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,340 +15,217 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./home.css" />
   </head>
-  <body>
+  <body class="home">
+    <!-- The video's scenes (video.ts), live: the examples come from examples.ts, and the boxes are yours to resize. -->
     <header class="intro">
-      <p class="eyebrow">floating-ellipsis <span>0.1</span></p>
-      <h1>Truncation, <em>in balance.</em></h1>
+      <nav class="eyebrow">
+        <span>floating-ellipsis</span>
+        <a href="./playground.html">Playground</a>
+        <a href="./table.html">Table</a>
+        <a href="https://github.com/gkurt/floating-ellipsis">GitHub</a>
+      </nav>
+      <h1>Truncate text <em>anywhere.</em></h1>
+      <div class="hero-stage">
+        <div class="resizable quiet" id="heroBox">
+          <p class="hero-line" id="hero"></p>
+          <button class="handle" aria-label="Resize the text (left and right arrow keys)"></button>
+        </div>
+      </div>
       <p class="lede">
-        One line or many. The ellipsis goes wherever you ask, sits with the same visible gap on both sides, takes up the slack so the line
-        always ends at the edge, and tells you exactly where it is.
+        One line or many, the ellipsis wherever you ask, with the same visible gap on both sides and the line always ending at the edge.
+        Drag any handle on this page.
       </p>
+      <p class="install"><span>$</span> npm i floating-ellipsis</p>
+      <p class="tags">React · Vue · Svelte · Web Components · Vanilla</p>
     </header>
 
     <main>
-      <section class="block" aria-labelledby="play-title">
-        <div class="block-head">
-          <h2 id="play-title">Playground</h2>
-          <p>Drag the handle, or let it breathe. Every glyph knows when it leaves and which dot it goes into.</p>
+      <section class="block scene" aria-labelledby="position-title">
+        <div class="scene-head">
+          <p class="num">01</p>
+          <h2 id="position-title">Put the ellipsis <em>anywhere.</em></h2>
+          <p>From the start to the end, or anywhere between: a number from 0 to 1, or <code>'middle'</code>.</p>
         </div>
-
+        <p class="code" id="positionCode"></p>
         <div class="stage">
-          <div class="resizable" id="heroBox" style="width: 72%">
-            <p class="hero-text" id="hero">The quiet art of leaving things out, gracefully and symmetrically, right where you asked.</p>
-            <div class="guides" aria-hidden="true"></div>
-            <button class="handle" aria-label="Resize the text box (left and right arrow keys)"></button>
+          <div class="resizable" id="positionBox">
+            <p class="line" id="positionLine"></p>
+            <button class="handle" aria-label="Resize the text (left and right arrow keys)"></button>
           </div>
-        </div>
-
-        <div class="keep-row">
-          <label class="control keep-field">
-            <span
-              >Keep visible <small>comma-separated words, or <code>/regex/g</code></small></span
-            >
-            <input type="text" id="keep" placeholder="e.g. quiet, asked" spellcheck="false" autocomplete="off" />
-          </label>
-          <div class="hints" aria-label="Suggestions">
-            <button type="button" value="quiet">quiet</button>
-            <button type="button" value="art, asked">art, asked</button>
-            <button type="button" value="symmetrically">symmetrically</button>
-            <button type="button" value="/\w+ly/g" title="Every word ending in -ly">/\w+ly/g</button>
-            <button type="button" value="/[A-Z]\w*/" title="The first capitalised word">/[A-Z]\w*/</button>
-            <button type="button" value="" class="clear">Clear</button>
-          </div>
-        </div>
-
-        <div class="controls">
-          <label class="control">
-            <span>Position <output id="posOut">50%</output></span>
-            <input type="range" id="pos" min="0" max="100" value="50" />
-          </label>
-          <div class="control">
-            <span id="lines-label">Lines</span>
-            <div class="seg" data-name="lines" role="group" aria-labelledby="lines-label">
-              <button aria-pressed="true" value="1">1</button><button value="2">2</button><button value="3">3</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="ellipsis-label">Ellipsis</span>
-            <div class="seg" data-name="ellipsis" role="group" aria-labelledby="ellipsis-label">
-              <button aria-pressed="true" value="glyph" title="The font's own ellipsis glyph">…</button
-              ><button value="periods" title="Three periods">...</button><button value="dot">Dots</button
-              ><button value="bullet">Bullets</button><button value="ring">Rings</button><button value="square">Squares</button>
-            </div>
-          </div>
-          <label class="control">
-            <span>Dots <output id="countOut">3</output></span>
-            <input type="range" id="count" min="0" max="7" value="3" />
-          </label>
-          <div class="control">
-            <span id="gap-label">Gap</span>
-            <div class="seg" data-name="gap" role="group" aria-labelledby="gap-label">
-              <button aria-pressed="true" value="dots">Dots</button><button value="natural">Natural</button
-              ><button value="none">Off</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="justify-label">Justify</span>
-            <div class="seg" data-name="justify" role="group" aria-labelledby="justify-label">
-              <button aria-pressed="true" value="dots">Dots</button><button value="ellipsis">Ellipsis</button
-              ><button value="spread">Spread</button><button value="off">Off</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="words-label">Cut at</span>
-            <div class="seg" data-name="words" role="group" aria-labelledby="words-label">
-              <button aria-pressed="true" value="off">Any glyph</button><button value="words">Whole words</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="effect-label">Transition</span>
-            <div class="seg" data-name="effect" role="group" aria-labelledby="effect-label">
-              <button value="none">None</button><button value="fade">Fade</button><button value="blur">Blur</button
-              ><button aria-pressed="true" value="merge">Merge</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="pace-label">Leaving pace</span>
-            <div class="seg" data-name="pace" role="group" aria-labelledby="pace-label">
-              <button aria-pressed="true" value="leeway" title="Faster when squeezed, instant with no room">Leeway</button
-              ><button value="fixed">Fixed</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="marks-label">Dots move</span>
-            <div class="seg" data-name="marks" role="group" aria-labelledby="marks-label">
-              <button aria-pressed="true" value="together">Together</button
-              ><button value="after" title="Once leaving glyphs have merged">After</button>
-            </div>
-          </div>
-          <div class="control toggles">
-            <label class="switch"><input type="checkbox" id="breathe" checked /> <span>Breathe</span></label>
-            <label class="switch"><input type="checkbox" id="showGuides" /> <span>Ink guides</span></label>
-          </div>
-        </div>
-
-        <dl class="readout" id="readout"></dl>
-      </section>
-
-      <section class="block" aria-labelledby="gap-title">
-        <div class="block-head">
-          <h2 id="gap-title">Balanced gaps</h2>
-          <p>
-            Dropping an ellipsis between two arbitrary letters leaves lopsided space, because every glyph carries its own side bearings.
-            floating-ellipsis measures the ink and evens it out. By default it matches the gap between the dots themselves, so the ellipsis
-            reads as part of the rhythm.
-          </p>
-        </div>
-        <div class="compare" id="compare">
-          <div class="compare-head"><span>Naive</span><span>Balanced</span></div>
+          <input class="track" id="positionTrack" type="range" min="0" max="1" step="0.01" value="1" aria-label="Position" />
         </div>
       </section>
 
-      <section class="block" aria-labelledby="keep-title">
-        <div class="block-head">
-          <h2 id="keep-title">Keep parts, many ellipses</h2>
-          <p>
-            Pin what matters and let the rest give way. A kept part in the middle of a cut splits it into two ellipses, and you can ask for
-            several ellipses outright. Kept parts are highlighted here.
-          </p>
+      <section class="block scene" aria-labelledby="lines-title">
+        <div class="scene-head">
+          <p class="num">02</p>
+          <h2 id="lines-title">Any number of lines and <em>ellipses.</em></h2>
+          <p>Clamp to a few lines and still cut in the middle of one, cut in several places at once, or draw the marks yourself.</p>
         </div>
+        <p class="code" id="linesCode"></p>
+        <div class="steps" id="lineSteps" role="group" aria-label="Options"></div>
         <div class="stage">
-          <div class="resizable examples" id="keepBox" style="width: 74%">
-            <div class="example">
-              <code>keep: /\.[^.]+$/</code>
-              <p id="exFile">Quarterly revenue forecast, final final (2), reviewed by legal and finance.pdf</p>
-            </div>
-            <div class="example">
-              <code>keep: 'fox', position: 'middle'</code>
-              <p id="exFox">The quick brown fox jumps over the lazy dog while the farmer watches from the porch</p>
-            </div>
-            <div class="example">
-              <code>position: [0.25, 0.75]</code>
-              <p id="exHash" class="mono">sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08</p>
-            </div>
-            <div class="example">
-              <code>keep: [/^\S+ \S+/, /ERR_\w+/]</code>
-              <p id="exLog" class="mono">
-                2026-10-14 09:41:07 worker-3 upstream api.internal request failed with ERR_CONN_RESET after 3 retries
-              </p>
-            </div>
-            <button class="handle" aria-label="Resize the examples (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block" aria-labelledby="paths-title">
-        <div class="block-head">
-          <h2 id="paths-title">Paths, hooks and tooltips</h2>
-          <p>
-            The instance tells you whether text is truncated, what each ellipsis hides, the line boxes and the exact ink of every dot.
-            <code>floating-ellipsis/tooltip</code> builds on them: a headless tip that lines up letter for letter, or only answers the
-            ellipsis. Rows are focusable too. Press on a full-path tip to select its text: it stays open while you hover it. Each list has a
-            tooltip of its own, so after the first tip's delay, its neighbours show at once.
-          </p>
-        </div>
-        <div class="controls compact">
-          <div class="control">
-            <span id="reveal-label">Hover reveals</span>
-            <div class="seg" data-name="reveal" role="group" aria-labelledby="reveal-label">
-              <button aria-pressed="true" value="expand">Full path, in place</button
-              ><button value="grow">Full path, grown from the ellipsis</button><button value="peek">Hidden part, on the ellipsis</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="delay-label">Tooltip delay</span>
-            <div class="seg" data-name="delay" role="group" aria-labelledby="delay-label">
-              <button value="0">None</button><button aria-pressed="true" value="500">500ms</button><button value="1000">1s</button>
-            </div>
-          </div>
-          <div class="control">
-            <span id="snap-label">Cut at separators</span>
-            <div class="seg" data-name="snap" role="group" aria-labelledby="snap-label">
-              <button value="off">Off</button><button value="whole">Whole segments</button
-              ><button aria-pressed="true" value="head">Keep a head</button><button value="tail">Keep a tail</button>
-            </div>
-          </div>
-        </div>
-        <div class="stage">
-          <div class="resizable files" id="filesBox" style="width: 62%">
-            <ul class="file-list" id="files" aria-label="Files"></ul>
-            <button class="handle" aria-label="Resize the file list (left and right arrow keys)"></button>
-          </div>
-        </div>
-        <div class="paste">
-          <label for="pasteBox"
-            >Select some truncated text across an ellipsis, copy it, and paste here. The ellipsis copies as the text it hides.</label
-          >
-          <textarea id="pasteBox" rows="2" placeholder="Paste here"></textarea>
-        </div>
-      </section>
-
-      <section class="block" aria-labelledby="grow-title">
-        <div class="block-head">
-          <h2 id="grow-title">A tooltip grown from the line</h2>
-          <p>
-            <code>tooltip({ reveal: 'grow' })</code>, the default. Every glyph starts where it is and moves to make room, and the hidden
-            text fades in once there's room for it. It runs right from where the text starts and wraps at the window's edge, or at half its
-            width, moving left only once wrapping would make it less than twice as wide as it is tall. The second row has two ellipses.
-            Hover or focus a row; the tooltip delay above applies here too.
-          </p>
-        </div>
-        <div class="stage">
-          <div class="resizable files" id="growBox" style="width: 56%">
-            <ul class="file-list" id="growFiles" aria-label="Long paths"></ul>
-            <button class="handle" aria-label="Resize the list (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block" aria-labelledby="multi-title">
-        <div class="block-head">
-          <h2 id="multi-title">Multi-line, anywhere</h2>
-          <p>
-            Line clamping usually means the end. Here the cut can sit in the middle of the third line, or at the very start of the first.
-          </p>
-        </div>
-        <div class="controls compact">
-          <label class="control">
-            <span>Position <output id="mposOut">70%</output></span>
-            <input type="range" id="mpos" min="0" max="100" value="70" />
-          </label>
-          <div class="control">
-            <span id="mlines-label">Lines</span>
-            <div class="seg" data-name="mlines" role="group" aria-labelledby="mlines-label">
-              <button value="2">2</button><button aria-pressed="true" value="3">3</button><button value="4">4</button>
-            </div>
-          </div>
-        </div>
-        <div class="stage">
-          <article class="resizable card" id="cardBox" style="width: 58%">
+          <article class="resizable card" id="linesBox">
             <h3>Field notes</h3>
-            <p id="article">
-              The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill. We waited on the
-              bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning. It did
-              not. By noon the next day it had fallen a full meter, leaving a line of silt on every stone like a tide mark, and the herons
-              had gone somewhere quieter.
-            </p>
+            <p id="river"></p>
             <button class="handle" aria-label="Resize the card (left and right arrow keys)"></button>
           </article>
         </div>
       </section>
 
-      <section class="block" aria-labelledby="rich-title">
-        <div class="block-head">
-          <h2 id="rich-title">Links, suffixes and find in page</h2>
+      <section class="block scene" aria-labelledby="suffix-title">
+        <div class="scene-head">
+          <p class="num">03</p>
+          <h2 id="suffix-title">Suffixes are <em>never cut.</em></h2>
           <p>
-            Links, <code>code</code> and emphasis in the text show wherever their text does: the cut copies them around whatever part of
-            them is left. A <code>suffix</code> follows the text on its last line and is never cut: a button, a badge, a time. And what an
-            ellipsis hides is still found by find in page. Press <kbd>Ctrl</kbd>&nbsp;<kbd>F</kbd> (<kbd>⌘</kbd>&nbsp;<kbd>F</kbd>) and
-            search for <q>lantern</q>, which none of these show. The issue keeps the word in sight, between two ellipses; the post, with
-            <code>find: 'expand'</code>, opens where it is.
+            A button, a badge or a time follows the text on its last line, and the text gives way around it. This button only shows when
+            there's more to read.
           </p>
         </div>
+        <p class="code" id="suffixCode"></p>
         <div class="stage">
-          <div class="resizable examples rich" id="richBox" style="width: 66%">
-            <div class="example">
-              <code>lines: 3, suffix: button, showSuffix: 'truncated', find: 'expand'</code>
-              <p id="post" class="post">
-                We moved the <a href="#keep-title">kept parts</a> into their own pass this week, which is why a search hit in the middle of
-                a cell now gets an ellipsis on <em>each</em> side. The tricky bit was <code>lineSpan()</code>: a highlight in a bolder font
-                makes a taller box, and two boxes on one line used to count as two lines. Thanks to everyone who sent traces, and to the
-                person who found that a paper lantern emoji at the very end of a path made the whole row wrap in Safari.
-                <button class="more" type="button">Read more</button>
-              </p>
-            </div>
-            <div class="example">
-              <code>suffix: badge</code>
-              <div class="issues" id="issues">
-                <p>
-                  <a href="#rich-title">Tooltip</a> grows from the wrong line when <code>lines: 2</code> and the text starts with a space
-                  <span class="badge">#512</span>
-                </p>
-                <p>
-                  Ellipsis loses its colour after <em>update()</em> changes the font, and the lantern icon beside it flickers
-                  <span class="badge">#498</span>
-                </p>
-                <p>
-                  Support <code>text-transform: capitalize</code> when measuring glyphs in <a href="#gap-title">balanced gaps</a>
-                  <span class="badge new">new</span>
-                </p>
-              </div>
-            </div>
-            <div class="example">
-              <code>position: 0.6</code>
-              <p id="commit" class="mono">
-                fix(<b>justify</b>): back off by <code>1/16px</code> when <a href="#multi-title">filling a line</a> would wrap it in Firefox
-              </p>
-            </div>
-            <button class="handle" aria-label="Resize the examples (left and right arrow keys)"></button>
+          <div class="resizable" id="suffixBox">
+            <p class="para" id="post"><button class="more" type="button">Read more</button></p>
+            <div class="issue-list" id="issues"></div>
+            <button class="handle" aria-label="Resize the posts (left and right arrow keys)"></button>
           </div>
         </div>
       </section>
 
-      <section class="block" aria-labelledby="table-title">
-        <div class="block-head">
-          <h2 id="table-title">Crowded tables</h2>
-          <p>
-            Thousands of instances resize together: they all read layout, then all write, so a column drag costs a few layouts in all, not a
-            few per cell. Rows far off screen wait until they come near. <a href="./table.html">Drag the columns of a 2,500-row table →</a>
-          </p>
+      <section class="block scene" aria-labelledby="snap-title">
+        <div class="scene-head">
+          <p class="num">04</p>
+          <h2 id="snap-title">Cut between words or path <em>segments.</em></h2>
+          <p>Cuts can fall between any two glyphs, or only where you say: at word boundaries, or at the separators of a path.</p>
+        </div>
+        <p class="code" id="snapCode"></p>
+        <div class="stage">
+          <div class="resizable labeled" id="snapBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
         </div>
       </section>
 
-      <section class="block" aria-labelledby="autosize-title">
-        <div class="block-head">
-          <h2 id="autosize-title">Sized by content</h2>
+      <section class="block scene" aria-labelledby="tips-title">
+        <div class="scene-head">
+          <p class="num">05</p>
+          <h2 id="tips-title">Tooltips only where text is <em>cut.</em></h2>
           <p>
-            A chip, a flex item or an inline-block takes its width from its text. With <code>autoSize()</code>, it takes the width its full
-            text would, so it grows back once there is room again. <a href="./autosize.html">Narrow and widen a few →</a>
+            <code>floating-ellipsis/tooltip</code> knows which rows are truncated. Hover or focus one that is: its tooltip grows out of the
+            line, every glyph moving to make room for what was hidden.
           </p>
         </div>
+        <p class="code" id="tipsCode"></p>
+        <div class="stage">
+          <div class="resizable" id="tipsBox">
+            <ul class="file-list fits-list" id="tipsList" aria-label="Files"></ul>
+            <button class="handle" aria-label="Resize the file list (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="keep-title">
+        <div class="scene-head">
+          <p class="num">06</p>
+          <h2 id="keep-title">Pin the parts that <em>matter.</em></h2>
+          <p>Keep a file's extension, a search hit or a timestamp in sight. A kept part in the middle of a cut splits it in two.</p>
+        </div>
+        <p class="code" id="keepCode"></p>
+        <div class="stage">
+          <div class="resizable line-list" id="keepBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="find-title">
+        <div class="scene-head">
+          <p class="num">07</p>
+          <h2 id="find-title">Find in page <em>finds it.</em></h2>
+          <p>
+            None of these rows shows the word <q>lantern</q>. Press <kbd>Ctrl</kbd>&nbsp;<kbd>F</kbd> (<kbd>⌘</kbd>&nbsp;<kbd>F</kbd>) and
+            search for it: each match comes into sight, between two ellipses.
+          </p>
+        </div>
+        <p class="code" id="findCode"></p>
+        <div class="stage">
+          <div class="resizable line-list" id="findBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="shared-title">
+        <div class="scene-head">
+          <p class="num">08</p>
+          <h2 id="shared-title">Customize: cut what’s <em>shared.</em></h2>
+          <p>Siblings cut in the middle all look alike. Keep the segments no sibling has in their place, and cut the rest.</p>
+        </div>
+        <p class="code" id="sharedCode"></p>
+        <div class="stage">
+          <div class="resizable split" id="sharedBox">
+            <button class="handle" aria-label="Resize the columns (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="lens-title">
+        <div class="scene-head">
+          <p class="num">09</p>
+          <h2 id="lens-title">Customize: a <em>lens.</em></h2>
+          <p>Move the pointer across the quote: the part under it is kept, and the cut follows.</p>
+        </div>
+        <p class="code" id="lensCode"></p>
+        <div class="stage lens" id="lensStage">
+          <p class="lens-line" id="lensLine"></p>
+          <p class="lens-hint">— Ada Lovelace, 1843</p>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="autosize-title">
+        <div class="scene-head">
+          <p class="num">10</p>
+          <h2 id="autosize-title">Sized by <em>content.</em></h2>
+          <p>
+            A chip or a flex item takes its width from its text, so once cut it stays narrow. With <code>autoSize()</code> it takes the
+            width its full text would, and grows back when there is room. Narrow the box, then widen it again.
+          </p>
+        </div>
+        <p class="code" id="autosizeCode"></p>
+        <div class="stage">
+          <div class="resizable labeled" id="autosizeBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block more-links" aria-labelledby="more-title">
+        <h2 id="more-title">More</h2>
+        <ul>
+          <li>
+            <a href="./playground.html"
+              ><b>Playground</b><span>One line, every option on dials: shapes, gaps, justification, motion, ink guides.</span></a
+            >
+          </li>
+          <li>
+            <a href="./table.html"><b>Crowded table</b><span>2,500 rows resized together: all read layout, then all write.</span></a>
+          </li>
+          <li>
+            <a href="./autosize.html"
+              ><b>Sized by content</b><span>Chips, flex items and inline-blocks, with and without autoSize.</span></a
+            >
+          </li>
+          <li>
+            <a href="https://github.com/gkurt/floating-ellipsis"><b>Docs</b><span>The README, and how it works.</span></a>
+          </li>
+        </ul>
       </section>
     </main>
 
     <footer class="foot">floating-ellipsis · built in the lab</footer>
 
-    <script type="module" src="./main.ts"></script>
+    <script type="module" src="./home.ts"></script>
   </body>
 </html>

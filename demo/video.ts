@@ -1,8 +1,30 @@
 import { glyphs } from '#src/glyphs.ts';
-import { type Elide, type ElideOptions, type Keep, elide, separators, words } from '#src/index.ts';
+import { type Elide, type ElideOptions, elide } from '#src/index.ts';
 import { suffix } from '#src/suffix.ts';
 import { type TooltipOptions, tooltip } from '#src/tooltip.ts';
 import { type TransitionOptions, transitions } from '#src/transitions.ts';
+import {
+  calm,
+  code,
+  fast,
+  fileIcon,
+  hero,
+  issues,
+  keepRows,
+  lantern,
+  lanternPosition,
+  lensAt,
+  lineSteps,
+  post as postText,
+  quote,
+  river,
+  sharedColumns,
+  siblings,
+  snapRows,
+  tooltipOptions,
+  toggleSmoothly,
+  tooltipPaths,
+} from './examples.ts';
 import { $ } from './ui.ts';
 
 /**
@@ -101,17 +123,6 @@ const scenes = $('#scenes');
 const counter = $('#counter');
 const chapters = 9;
 
-/** Markup for code: `f(…)` functions, `k:` keys, `«…»` values, `//` comments. */
-function code(src: string) {
-  return src
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/(\/\/.*)$/, '<span class="c">$1</span>')
-    .replace(/«(.*?)»/g, '<span class="v">$1</span>')
-    .replace(/\b([a-zA-Z]+)(?=\()/g, '<span class="f">$1</span>')
-    .replace(/\b([a-zA-Z]+)(?=:)/g, '<span class="k">$1</span>');
-}
-
 class Scene {
   readonly section = document.createElement('section');
   readonly stage = document.createElement('div');
@@ -199,13 +210,6 @@ function box(width: number, ...children: Node[]) {
   return b;
 }
 
-/** Glyphs merge into the dots, and the spacing between the dots glides: for one change at a time. */
-const calm: TransitionOptions = { effect: 'merge' };
-/** For text that changes every frame: gliding spacing would trail behind it. */
-const fast: TransitionOptions = { effect: 'merge', glide: false };
-
-const hero = 'The quiet art of leaving things out, gracefully and symmetrically, right where you asked.';
-
 async function intro() {
   const s = new Scene(null, '<h1>Truncate text <em>anywhere.</em></h1>');
   const line = el('p', 'line', hero);
@@ -248,29 +252,20 @@ async function position() {
   await s.leave();
 }
 
-const river =
-  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill. We waited on the bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning. It did not. By noon the next day it had fallen a full meter, leaving a line of silt on every stone like a tide mark, and the herons had gone somewhere quieter.';
-
 /** Several lines, then several ellipses, then marks of other shapes: one change at a time. */
 async function lines() {
-  const s = new Scene(2, 'Any number of lines and <em>ellipses.</em>', 'elide(el, { lines: «3» })');
+  const [first, ...steps] = lineSteps;
+  const s = new Scene(2, 'Any number of lines and <em>ellipses.</em>', `elide(el, { ${first!.src} })`);
   const para = el('p', 'para', river);
   const card = el('article', 'card box', '<h3>Field notes</h3>');
   card.append(para);
   card.style.width = '980px';
   s.stage.append(card);
-  const t = s.elide(para, { lines: 3 }, calm);
-  const steps: [Partial<ElideOptions>, string][] = [
-    [{ position: 0.6 }, 'lines: «3», position: «0.6»'],
-    [{ position: [0.3, 0.8] }, 'lines: «3», position: «[0.3, 0.8]»'],
-    [{ ellipsis: { shape: 'bullet' } }, "position: «[0.3, 0.8]», ellipsis: { shape: «'bullet'» }"],
-    [{ ellipsis: { shape: 'ring', count: 5 } }, "position: «[0.3, 0.8]», ellipsis: { shape: «'ring'», count: «5» }"],
-    [{ ellipsis: { shape: 'square', size: '0.14em', spacing: 4 } }, "position: «[0.3, 0.8]», ellipsis: { shape: «'square'» }"],
-  ];
+  const t = s.elide(para, first!.options, calm);
   await s.enter();
   await wait(300);
   await widen(card, 720, 1100);
-  for (const [options, src] of steps) {
+  for (const { options, src } of steps) {
     await wait(1000);
     t.update(options);
     s.code(`elide(el, { ${src} })`);
@@ -281,40 +276,17 @@ async function lines() {
 
 async function suffixes() {
   const s = new Scene(3, 'Suffixes are <em>never cut.</em>', "elide(el, { lines: «2», suffix: suffix(button, { show: «'truncated'» }) })");
-  const post = el(
-    'p',
-    'para',
-    'We moved the kept parts into their own pass this week, so a search hit in the middle of a cell now gets an ellipsis on each side.',
-  );
+  const post = el('p', 'para', postText);
   const more = el('button', 'more', 'Read more');
   post.append(more);
-  const issues = el('div', 'issues');
-  const issueLines = [
-    'Tooltip grows from the wrong line when <code>lines: 2</code> and the text starts with a space <span class="badge">#512</span>',
-    'Support <code>text-transform: capitalize</code> when measuring glyphs in balanced gaps <span class="badge new">new</span>',
-  ].map((html) => el('p', 'line', html));
-  issues.append(...issueLines);
-  const b = box(1040, post, issues);
+  const list = el('div', 'issues');
+  const issueLines = issues.map((html) => el('p', 'line', html));
+  list.append(...issueLines);
+  const b = box(1040, post, list);
   s.stage.append(b);
   const t = s.elide(post, { lines: 2, suffix: suffix(more, { show: 'truncated' }) });
   t.onRender((state) => (more.textContent = state.expanded ? 'Show less' : 'Read more'));
-  // The post's height follows: opening, the text is all there and the box
-  // grows over it; closing, the box shrinks over it, and then it's cut.
-  more.addEventListener('click', () => {
-    const from = post.getBoundingClientRect().height;
-    const opening = !t.expanded;
-    t[opening ? 'expand' : 'collapse']();
-    // (Reading the state runs the pass the change put off.)
-    const { expanded } = t.state;
-    const to = post.getBoundingClientRect().height;
-    if (!expanded) t.expand();
-    post.style.overflow = 'clip';
-    const growing = post.animate({ height: [`${from}px`, `${to}px`] }, { duration: 480, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
-    void growing.finished.then(() => {
-      post.style.overflow = '';
-      if (!opening) t.collapse();
-    });
-  });
+  more.addEventListener('click', () => toggleSmoothly(t));
   for (const line of issueLines) {
     const badge = line.querySelector<HTMLElement>('.badge')!;
     s.elide(line, { suffix: suffix(badge) });
@@ -338,22 +310,17 @@ async function suffixes() {
 
 async function snapping() {
   const s = new Scene(4, 'Cut between words or path <em>segments.</em>', "snap: words()      snap: separators(«'/'»)");
-  const sentence = 'The quick brown fox jumps over the lazy dog by the old river mill';
-  const path = '/Users/ada/Projects/analytical-engine/src/notes/bernoulli-numbers.md';
-  const rows: [string, HTMLElement, Partial<ElideOptions>][] = [
-    ['any glyph', el('p', 'line', sentence), {}],
-    ['words()', el('p', 'line', sentence), { snap: words() }],
-    ["separators('/')", el('p', 'line mono', path), { snap: separators('/', { fragment: false }) }],
-  ];
   const list = el('div', 'rows');
-  for (const [label, line] of rows) {
+  const rows = snapRows.map(({ label, text, mono, options }) => {
     const row = el('div', 'row', `<code>${label}</code>`);
+    const line = el('p', mono ? 'line mono' : 'line', text);
     row.append(line);
     list.append(row);
-  }
+    return { line, options };
+  });
   list.style.width = '1000px';
   s.stage.append(list);
-  for (const [, line, options] of rows) s.elide(line, { position: 0.5, ...options });
+  for (const { line, options } of rows) s.elide(line, options);
   await s.enter();
   await wait(200);
   await widen(list, 600, 1700);
@@ -363,14 +330,11 @@ async function snapping() {
   await s.leave();
 }
 
-const fileIcon =
-  '<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3"/></svg>';
-
 /** A file list; `fits` adds a tag that follows `truncated`. */
 function files(s: Scene, paths: string[], options: ElideOptions, fits = false) {
   const list = el('ul', 'files');
   const made = paths.map((path) => {
-    const li = el('li', '', fileIcon);
+    const li = el('li', '', fileIcon(22));
     const span = el('span', 'path', path);
     li.append(span);
     list.append(li);
@@ -396,17 +360,7 @@ function files(s: Scene, paths: string[], options: ElideOptions, fits = false) {
 /** Rows that fit show no tooltip; cut ones grow theirs out of the line. */
 async function tooltips() {
   const s = new Scene(5, 'Tooltips only where text is <em>cut.</em>', "tooltip({ reveal: «'grow'» }).attach(instance)");
-  const rows = files(
-    s,
-    [
-      'README.md',
-      '/Users/ada/Projects/analytical-engine/notes/bernoulli.md',
-      'package.json',
-      'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal\\LocalState\\settings\\backups\\2026-10-14\\campbell-powershell.json',
-    ],
-    { position: [0.3, 0.7], snap: separators('/\\') },
-    true,
-  );
+  const rows = files(s, tooltipPaths, tooltipOptions, true);
   s.stage.querySelector<HTMLElement>('.files')!.style.width = '860px';
   // Wide enough for the second row's tip to stay on one line; the last one wraps.
   const tips = s.tooltip({ reveal: 'grow', delay: 250, grace: 0, breaks: '/\\', duration: 700, maxWidth: 0.75 });
@@ -431,25 +385,14 @@ async function tooltips() {
 
 async function keeping() {
   const s = new Scene(6, 'Pin the parts that <em>matter.</em>', "keep: [/\\.pdf$/, { match: /fox|porch/, class: «'hit'» }]");
-  const rows: [HTMLElement, ElideOptions][] = [
-    [
-      el('p', 'line', 'Quarterly revenue forecast, final final (2), reviewed by legal and finance.pdf'),
-      { keep: { match: /\.[^.]+$/, class: 'hit blue' } },
-    ],
-    [
-      el('p', 'line', 'The quick brown fox jumps over the lazy dog while the farmer watches from the porch'),
-      { keep: { match: /fox|porch/g, class: 'hit' }, position: 'middle' },
-    ],
-    [
-      el('p', 'line mono', '2026-10-14 09:41:07 worker-3 upstream request failed with ERR_CONN_RESET after 3 retries'),
-      { keep: [/^\S+ \S+/, { match: /ERR_\w+/, class: 'hit' }], position: 'middle' },
-    ],
-  ];
   const list = el('div', 'rows');
-  for (const [line] of rows) list.append(line);
   const b = box(1000, list);
   s.stage.append(b);
-  for (const [line, options] of rows) s.elide(line, options);
+  for (const { text, mono, options } of keepRows) {
+    const line = el('p', mono ? 'line mono' : 'line', text);
+    list.append(line);
+    s.elide(line, options);
+  }
   await s.enter();
   await wait(200);
   await widen(b, 480, 1800);
@@ -464,19 +407,12 @@ async function find() {
   const bar = el('div', 'findbar', '<span class="query"></span><span class="count"></span><kbd>Enter</kbd>');
   const query = bar.querySelector<HTMLElement>('.query')!;
   const count = bar.querySelector<HTMLElement>('.count')!;
-  const texts = [
-    'Ellipsis loses its colour after update() changes the font, and the lantern icon beside it flickers in Safari',
-    'Thanks to everyone who sent traces, and to whoever found that a paper lantern emoji made the whole row wrap',
-    'The lantern fixture still assumes the old metrics, so regenerate it before the release and pin the font',
-  ];
-  const lines = texts.map((text) => el('p', 'line', text));
+  const lines = lantern.map((text) => el('p', 'line', text));
   const list = el('div', 'rows find-rows');
   list.append(...lines);
   const b = box(1000, list);
   s.stage.append(bar, b);
-  // Each cut right where the word is, so all of it is hidden.
-  const found = texts.map((text) => text.indexOf('lantern'));
-  for (const [i, line] of lines.entries()) s.elide(line, { position: (found[i]! + 3.5) / texts[i]!.length }, calm);
+  for (const [i, line] of lines.entries()) s.elide(line, { position: lanternPosition(lantern[i]!) }, calm);
   await s.enter();
   await wait(300);
   for (const ch of 'lantern') {
@@ -486,7 +422,8 @@ async function find() {
   for (const [i, line] of lines.entries()) {
     count.textContent = `${i + 1}/${lines.length}`;
     // What find in page fires on the hidden word it found.
-    const word = line.querySelector(`[data-fp-word="${found[i]}:${found[i]! + 7}"]`);
+    const found = lantern[i]!.indexOf('lantern');
+    const word = line.querySelector(`[data-fp-word="${found}:${found + 7}"]`);
     word?.dispatchEvent(new Event('beforematch', { bubbles: true }));
     await wait(1100);
   }
@@ -494,43 +431,14 @@ async function find() {
   await s.leave();
 }
 
-/**
- * What sets `path` apart from the rest: each segment no other path has in
- * its place, highlighted, then the file name. Kept parts that can't all fit
- * give way last first.
- */
-function differing(path: string, paths: string[]): Keep[] {
-  const others = paths.filter((p) => p !== path).map((p) => p.split('/'));
-  const parts = path.split('/');
-  const keep: Keep[] = [];
-  let at = 0;
-  parts.forEach((part, i) => {
-    const [start, end] = [at, at + part.length];
-    at = end + 1;
-    if (i === parts.length - 1) keep.push({ start, end });
-    else if (others.every((o) => o[i] !== part)) keep.unshift({ start, end, class: 'hit' });
-  });
-  return keep;
-}
-
 /** Siblings cut in the middle all look alike; keeping what differs tells them apart. */
 async function shared() {
   const s = new Scene(8, 'Customize: cut what’s <em>shared.</em>', "keep: differing(path, siblings), snap: separators(«'/'»)");
-  const paths = [
-    'src/components/forms/Button/index.tsx',
-    'src/components/forms/Checkbox/index.tsx',
-    'src/components/layout/Dialog/index.tsx',
-    'src/components/layout/Sidebar/index.tsx',
-  ];
   const split = el('div', 'split box');
-  const columns: [string, (path: string) => ElideOptions][] = [
-    ["position: 'middle'", () => ({ position: 'middle' })],
-    ['keep: differing(…)', (path) => ({ position: 'middle', keep: differing(path, paths), snap: separators('/', { fragment: false }) })],
-  ];
-  for (const [label, options] of columns) {
+  for (const [label, options] of sharedColumns) {
     const column = el('div', 'rows', `<code>${label}</code>`);
     split.append(column);
-    for (const path of paths) {
+    for (const path of siblings) {
       const line = el('p', 'line mono', path);
       column.append(line);
       s.elide(line, options(path), calm);
@@ -545,9 +453,6 @@ async function shared() {
   await s.leave();
 }
 
-const quote =
-  'We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard loom weaves flowers and leaves.';
-
 /** `keep` and `position` following the pointer. */
 async function lens() {
   const s = new Scene(9, 'Customize: a <em>lens.</em>', 'keep: { start: «0», end: «0» }, position: «0.00»');
@@ -558,14 +463,11 @@ async function lens() {
   s.stage.append(b, el('p', 'lens-hint', '— Ada Lovelace, 1843'));
   const n = [...new Intl.Segmenter().segment(quote)].length;
   const t = s.elide(line, { position: 0.5, glyphs }, fast);
-  const reach = 9;
   const look = () => {
     const r = b.getBoundingClientRect();
-    const p = Math.min(1, Math.max(0, (pointer.x - r.left) / r.width));
-    const i = Math.round(p * (n - 1));
-    const [start, end] = [Math.max(0, i - reach), Math.min(n, i + reach)];
-    t.update({ keep: { start, end, class: 'lensed' }, position: p });
-    s.code(`keep: { start: «${start}», end: «${end}» }, position: «${p.toFixed(2)}»`);
+    const { options, src } = lensAt(Math.min(1, Math.max(0, (pointer.x - r.left) / r.width)), n);
+    t.update(options);
+    s.code(src);
   };
   await s.enter();
   pointer.x = 140;

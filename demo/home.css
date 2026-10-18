@@ -1,0 +1,426 @@
+/* The home page (index.html): the video's scenes (video.css), on the site's tokens. */
+
+.home .intro {
+  padding-top: 40px;
+  text-align: center;
+}
+.home .eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  margin-bottom: 64px;
+}
+.home .eyebrow span {
+  color: var(--accent);
+  margin-right: auto;
+}
+.home .eyebrow a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.home .eyebrow a:hover {
+  color: var(--ink);
+}
+.home h1 {
+  font-size: clamp(52px, 10vw, 112px);
+}
+
+.hero-stage {
+  margin: 48px 0 32px;
+  text-align: left;
+}
+.resizable.quiet {
+  border-right-color: transparent;
+}
+.hero-line {
+  margin: 0;
+  font: 400 clamp(22px, 3.4vw, 36px) / 1.35 var(--sans);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.hero-line [data-fp-ellipsis] {
+  color: var(--accent);
+}
+.home .lede {
+  margin: 0 auto;
+}
+.install {
+  display: inline-block;
+  margin: 32px 0 0;
+  padding: 12px 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font: 400 clamp(16px, 2.4vw, 22px) / 1 var(--mono);
+}
+.install span {
+  color: var(--muted);
+}
+.tags {
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------------------ */
+/* A scene: number, title, what it's about, its code, and its stage. */
+
+.scene {
+  padding-top: 112px;
+}
+.scene-head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px 0;
+  align-items: baseline;
+}
+.scene-head .num {
+  margin: 0;
+  font: 500 15px/1 var(--mono);
+  color: var(--muted);
+}
+.scene-head h2 {
+  margin: 0;
+  font: 400 clamp(34px, 5vw, 56px) / 1.05 var(--serif);
+  letter-spacing: -0.01em;
+}
+.scene-head h2 em {
+  color: var(--accent);
+}
+.scene-head > p:last-child {
+  grid-column: 2;
+  margin: 0;
+  max-width: 640px;
+  color: var(--muted);
+}
+.scene-head code,
+.scene-head kbd {
+  font: 0.86em var(--mono);
+  background: var(--accent-2-soft);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.code {
+  margin: 22px 0 18px 56px;
+  font: 400 clamp(12px, 1.6vw, 16px) / 1.5 var(--mono);
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 1.5em;
+}
+.code .f {
+  color: var(--accent-2);
+}
+.code .k {
+  color: var(--ink);
+}
+.code .v {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.code .c {
+  opacity: 0.65;
+}
+
+.scene .stage {
+  padding: 36px 40px;
+}
+.scene .resizable {
+  padding-right: 22px;
+}
+
+/* One line of text. */
+.scene .line {
+  margin: 0;
+  font: 400 clamp(18px, 2.6vw, 28px) / 1.4 var(--sans);
+  white-space: nowrap;
+}
+.scene .line.mono {
+  font: 400 clamp(14px, 2vw, 21px) / 1.5 var(--mono);
+}
+.scene [data-fp-ellipsis] {
+  color: var(--accent);
+}
+
+/* Kept parts, as the video marks them. */
+.home .hit {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 5px;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.home .hit[data-fp-open~='start'] {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.home .hit[data-fp-open~='end'] {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.home .hit.blue {
+  color: var(--accent-2);
+  background: var(--accent-2-soft);
+  box-shadow: 0 0 0 2px var(--accent-2-soft);
+}
+
+/* 01: a track under the line, its knob at the position. */
+input.track {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 28px 0 0;
+  background: linear-gradient(var(--line), var(--line)) center / 100% 4px no-repeat;
+  cursor: pointer;
+}
+input.track::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+input.track::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+input.track:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 4px;
+}
+
+/* 02: the steps of the video, as buttons. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px 56px;
+}
+.steps button {
+  font: 500 13px/1 var(--sans);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 13px;
+  cursor: pointer;
+}
+.steps button:hover {
+  color: var(--ink);
+}
+.steps button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+.steps button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* 03: a post with its button, and issues with their badges. */
+.para {
+  margin: 0;
+  font: 400 clamp(16px, 2vw, 20px) / 1.55 var(--sans);
+}
+.home .more {
+  font-size: 13px;
+  line-height: 22px;
+  vertical-align: 1px;
+}
+.issue-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 24px;
+}
+.issue-list .line {
+  font-size: clamp(15px, 1.9vw, 19px);
+}
+.issue-list code {
+  font: 0.88em var(--mono);
+  color: var(--accent);
+}
+
+/* 04 and 10: rows with a label beside them. */
+.labeled {
+  display: grid;
+  gap: 20px;
+}
+.labeled-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 20px;
+}
+.labeled-row > code,
+.split code {
+  font: 13px/1 var(--mono);
+  color: var(--muted);
+}
+.labeled-row > code {
+  text-align: right;
+}
+
+/* 05: files that say whether they fit. */
+.fits-list .path {
+  font-size: clamp(13px, 1.7vw, 16px);
+  line-height: 24px;
+}
+.fits-list .fits {
+  flex: none;
+  width: 84px;
+  text-align: center;
+  font: 500 12px/1 var(--mono);
+  color: var(--muted);
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+}
+.fits-list .fits.cut {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+}
+.fits-list li:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* 06 and 07: lines, one under another. */
+.line-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+/* 08: two columns of the same paths. */
+.split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px;
+}
+.split .column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+.split .line.mono {
+  font-size: clamp(12px, 1.6vw, 17px);
+}
+
+/* 09: the lens. */
+.stage.lens {
+  cursor: crosshair;
+}
+.lens-line {
+  margin: 0;
+  font: 400 clamp(28px, 4.4vw, 50px) / 1.3 var(--serif);
+  white-space: nowrap;
+}
+.lens-line [data-fp-kept] {
+  color: var(--accent);
+}
+.lens-line [data-fp-ellipsis] {
+  color: var(--muted);
+}
+.lens-hint {
+  margin: 24px 0 0;
+  color: var(--muted);
+}
+
+/* 10: chips sized by their text, in a row that may not wrap. */
+.chips {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--accent-2-soft);
+  font: 13px/20px var(--mono);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------------ */
+
+.more-links {
+  padding-top: 112px;
+}
+.more-links h2 {
+  margin: 0 0 20px;
+  font: 400 clamp(34px, 5vw, 56px) / 1.05 var(--serif);
+}
+.more-links ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.more-links a {
+  display: grid;
+  gap: 6px;
+  height: 100%;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+.more-links a b {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 16px;
+}
+.more-links a:hover,
+.more-links a:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+@media (max-width: 720px) {
+  .home .eyebrow {
+    gap: 8px 14px;
+    margin-bottom: 40px;
+  }
+  .scene {
+    padding-top: 72px;
+  }
+  .scene-head {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .scene-head > p:last-child {
+    grid-column: 1 / -1;
+  }
+  .code,
+  .steps {
+    margin-left: 0;
+  }
+  .scene .stage {
+    padding: 24px 16px;
+  }
+  .labeled-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .labeled-row > code {
+    text-align: left;
+  }
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}

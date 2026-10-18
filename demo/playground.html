@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>floating-ellipsis — playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="intro">
+      <p class="eyebrow"><a href="./">floating-ellipsis</a> <span>/ playground</span></p>
+    </header>
+
+    <main>
+      <section class="block" aria-label="Playground">
+        <div class="stage">
+          <div class="resizable" id="heroBox" style="width: 72%">
+            <p class="hero-text" id="hero">The quiet art of leaving things out, gracefully and symmetrically, right where you asked.</p>
+            <div class="guides" aria-hidden="true"></div>
+            <button class="handle" aria-label="Resize the text box (left and right arrow keys)"></button>
+          </div>
+        </div>
+
+        <dl class="readout" id="readout"></dl>
+      </section>
+    </main>
+
+    <footer class="foot">floating-ellipsis · built in the lab</footer>
+
+    <script type="module" src="./playground.ts"></script>
+  </body>
+</html>

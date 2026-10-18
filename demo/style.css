@@ -307,50 +307,6 @@ input[type='range'] {
 
 /* ------------------------------------------------------------------------ */
 
-.compare {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.compare-head {
-  display: contents;
-}
-.compare-head span {
-  background: var(--surface);
-  padding: 12px 24px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-.compare-cell {
-  position: relative;
-  background: var(--surface);
-  padding: 28px 24px 34px;
-  min-width: 0;
-}
-.compare-cell p {
-  margin: 0;
-  font: 400 clamp(36px, 5vw, 60px) / 1.1 var(--serif);
-}
-.compare-cell .mono {
-  font: 400 clamp(22px, 3vw, 34px) / 1.2 var(--mono);
-}
-.compare-cell .caps {
-  font: 600 clamp(26px, 3.6vw, 42px) / 1.2 var(--sans);
-  letter-spacing: 0.02em;
-}
-
-/* ------------------------------------------------------------------------ */
-
-.files {
-  min-width: 140px;
-}
 .file-list {
   list-style: none;
   margin: 0;
@@ -381,19 +337,6 @@ input[type='range'] {
   color: var(--accent);
   border-radius: 4px;
 }
-/* The highlight covers the ellipsis' whole area: its marks and the gaps. */
-.reveal-peek .path [data-fp-ellipsis][data-fp-tip-open]::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset: -2px calc(-1 * var(--peek-right, 0px)) -2px calc(-1 * var(--peek-left, 0px));
-  border-radius: 4px;
-  background: var(--accent-soft);
-}
-.reveal-peek .file-list li[data-fp-tip-open] {
-  cursor: help;
-}
-
 /* The tooltips. floating-ellipsis/tooltip lays them out (full-text ones take
    the text's font); this is only how they look. The background is a layer of
    its own, so it can grow without reflowing the text. */
@@ -410,29 +353,6 @@ input[type='range'] {
 /* The dots it grows out of, fading. */
 [data-fp-tip] [data-fp-mark] {
   color: color-mix(in oklab, var(--accent) 55%, var(--bg));
-}
-
-/* Only the hidden part, on its ellipsis, with an arrow pointing at it. */
-[data-fp-tip='peek'] {
-  padding: 6px 10px;
-  font: 13px/18px var(--mono);
-  max-width: min(420px, 90vw);
-  overflow-wrap: anywhere;
-}
-[data-fp-tip='peek']::after {
-  content: '';
-  position: absolute;
-  left: var(--fp-tip-anchor);
-  top: 100%;
-  border: 6px solid transparent;
-  border-top-color: var(--ink);
-  transform: translateX(-50%);
-}
-[data-fp-tip='peek'][data-side='bottom']::after {
-  top: auto;
-  bottom: 100%;
-  border-top-color: transparent;
-  border-bottom-color: var(--ink);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -468,12 +388,6 @@ input[type='range'] {
   .stage {
     padding: 28px 16px;
   }
-  .compare {
-    grid-template-columns: 1fr;
-  }
-  .compare-head {
-    display: none;
-  }
   .intro,
   .block,
   .foot {
@@ -488,76 +402,12 @@ input[type='range'] {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Keep parts, many ellipses */
+/* Suffixes and find in page (the home page) */
 
-.examples {
-  display: grid;
-  gap: 22px;
-}
-.example {
-  /* Grid items won't shrink below their content's min width otherwise. */
-  min-width: 0;
-}
-.example > code {
-  display: block;
-  font: 12px/1.4 var(--mono);
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.example p {
-  margin: 0;
-  font: 400 clamp(22px, 2.6vw, 30px) / 1.3 var(--serif);
-}
-.example p.mono {
-  font: 400 clamp(14px, 1.5vw, 17px) / 1.5 var(--mono);
-}
-.example [data-fp-ellipsis] {
-  color: var(--accent);
-}
-.example [data-fp-kept] {
-  background: var(--accent-2-soft);
-  border-radius: 2px;
-}
-
-/* ------------------------------------------------------------------------ */
-/* Links, suffixes and find in page */
-
-.rich a {
-  color: var(--accent-2);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-}
-.rich p code,
-.block-head kbd {
-  font: 0.86em var(--mono);
-  background: var(--accent-2-soft);
-  border-radius: 4px;
-  padding: 0 3px;
-}
-.rich p.post,
-.issues p {
-  font: 16px/1.6 var(--sans);
-}
-/* Code beside an ellipsis comes in pieces: they meet seamlessly. */
-.rich p code[data-fp-open~='start'] {
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-  padding-left: 0;
-}
-.rich p code[data-fp-open~='end'] {
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-  padding-right: 0;
-}
 /* What find in page found in text the cut hid, kept in sight. */
 [data-fp-match] {
   background: Mark;
   color: MarkText;
-}
-.rich [data-fp-focus] {
-  outline: 2px solid var(--accent-2);
-  outline-offset: 1px;
-  border-radius: 3px;
 }
 .more {
   margin-left: 0.5em;
@@ -574,12 +424,6 @@ input[type='range'] {
   border-color: var(--accent);
   outline: none;
 }
-.issues {
-  display: grid;
-  /* Rows truncate to the column instead of widening it. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-}
 .badge {
   margin-left: 8px;
   padding: 1px 7px;
@@ -594,25 +438,7 @@ input[type='range'] {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Copy / paste */
 
-.paste {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.paste textarea {
-  font: 14px/1.5 var(--mono);
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px;
-  resize: vertical;
-}
-.paste textarea:focus-visible,
 .file-list li:focus-visible,
 .seg button:focus-visible,
 input:focus-visible {
@@ -626,60 +452,8 @@ input:focus-visible {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Keep visible */
+/* Kept parts in the playground */
 
-.keep-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  align-items: end;
-  margin-top: 20px;
-}
-.keep-field {
-  flex: 0 1 340px;
-}
-.keep-field small {
-  color: var(--muted);
-  font-size: 11px;
-}
-.keep-field code {
-  font: 11px var(--mono);
-}
-.keep-field input {
-  font: 14px/1.4 var(--mono);
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 8px 10px;
-}
-.keep-field input[aria-invalid] {
-  border-color: var(--accent);
-}
-.hints {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 4px;
-}
-.hints button {
-  font: 12px/1 var(--mono);
-  color: var(--accent-2);
-  background: var(--accent-2-soft);
-  border: 0;
-  border-radius: 999px;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-.hints button.clear {
-  color: var(--muted);
-  background: none;
-  font-family: var(--sans);
-}
-.hints button:focus-visible {
-  outline: 2px solid var(--accent-2);
-  outline-offset: 2px;
-}
 .hero-text [data-fp-kept] {
   text-decoration: underline;
   text-decoration-color: var(--accent-2);

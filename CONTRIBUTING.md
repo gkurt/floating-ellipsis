@@ -20,11 +20,14 @@ sourcemaps resolve and readers can see the implementation. See
 
 ## Demo
 
-`demo/` holds the playground and `/table.html`, a crowded table (up to 2,500
-rows, four truncated cells each, as a `<table>` or grid rows) with tooltips and
-a search that keeps and highlights matches. In the playground, `window.hero`,
-`window.keepExamples` and `window.pathInstances` are live instances to try
-from the console. `/autosize.html` shows elements sized by their content (a
+`demo/` holds the home page, the playground and `/table.html`. The home page
+plays the video's scenes live, from the same examples (`demo/examples.ts`):
+each box sweeps its width once as it comes into view, then has a handle to
+drag. `/playground.html` is one line with every option on [dialkit](https://github.com/joshpuckett/dialkit)
+panels, ink guides and a readout of its state; `window.hero` is the instance,
+to try from the console. `/table.html` is a crowded table
+(up to 2,500 rows, four truncated cells each, as a `<table>` or grid rows) with
+tooltips and a search that keeps and highlights matches. `/autosize.html` shows elements sized by their content (a
 chip, a flex item, an inline-block) with and without `autoSize`, under a
 slider for the room they have.
 
