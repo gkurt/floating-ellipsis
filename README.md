@@ -131,7 +131,8 @@ more.onclick = () => (post.expanded ? post.collapse() : post.expand());
 The content is a string or a node, which follows the text on its last line and
 is never cut. A node is moved into place, keeping its listeners, and goes back
 on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
-shows all of the text until `collapse()`.
+shows all of the text until `collapse()`. To animate the height as it opens and
+closes, see [Animating "Read more"](docs/how-it-works.md#animating-read-more).
 
 ### Sized by content
 

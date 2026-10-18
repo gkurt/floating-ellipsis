@@ -185,6 +185,47 @@ fits again. `expand()` keeps the cut, so collapsing is quick, and an expanded
 instance doesn't re-truncate on resize. Focus reaching a link the cut hides
 keeps it in sight while focused, or expands the text with `find: 'expand'`.
 
+### Animating "Read more"
+
+The element's height can follow the toggle: opening, the box grows over the
+full text; closing, the text is cut at once, the button already in place, and
+the room it leaves closes up below it. (The demo's `toggleSmoothly`, in
+`demo/examples.ts`.)
+
+```js
+function toggle(t) {
+  const el = t.element;
+  if (el.getAnimations().length > 0) return; // the button is clickable mid-way
+  const from = el.getBoundingClientRect().height;
+  const opening = !t.expanded;
+  t[opening ? 'expand' : 'collapse']();
+  void t.state; // runs the pass the change put off
+  t.refresh(); // the label changed its width: fit that now, too
+  void t.state;
+  const to = el.getBoundingClientRect().height;
+  const motion = { duration: 480, easing: 'ease-out' };
+  if (!opening) {
+    const held = parseFloat(getComputedStyle(el).height);
+    el.animate({ minHeight: [`${held + from - to}px`, `${held}px`] }, motion);
+    return;
+  }
+  el.style.overflow = 'clip';
+  el.animate({ height: [`${from}px`, `${to}px`] }, motion).finished.then(() => (el.style.overflow = ''));
+}
+```
+
+Two things make closing differ from opening:
+
+- Cut text on several lines holds its height with an inline
+  `height: … !important` (see [Stability](#a-layout-pass)), which overrides any
+  animation of `height`. A larger `min-height` overrides the held height, so
+  that's what shrinks. `margin-bottom` would collapse into the next element's
+  margin, and most of the motion would be lost.
+- A label set in `onRender` ("Show less" to "Read more") changes the suffix's
+  width, and the text fits again in a pass a microtask later. Run during the
+  animation, that pass would measure the element at its `min-height` and hold
+  that. `refresh()` and reading `state` run it first.
+
 ## Sized by content
 
 An element sized by its content (an inline-block, a float, an absolutely
