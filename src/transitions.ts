@@ -22,7 +22,15 @@ export interface TransitionOptions {
    * and goes at once when nothing is left.
    */
   effect?: Effect;
-  /** Milliseconds for glyph effects, and roughly how long the spacing takes to settle. Default 460. */
+  /**
+   * Milliseconds for glyph effects, and roughly how long the spacing takes
+   * to settle. Default 460. Arriving glyphs always take this long. Leaving
+   * ones take less the less room and time there is: room, in proportion to
+   * the space their removal frees (squeezed text frees almost nothing);
+   * time, a few times the gap since the previous change when changes come
+   * faster than they can play (a dragged slider, a fast resize). With no
+   * time left, they go at once and anything still in flight lands.
+   */
   duration?: number;
   /** How glyphs shrink and grow, as a CSS keyword or `cubic-bezier()`. */
   easing?: string;
@@ -37,23 +45,6 @@ export interface TransitionOptions {
    * the text. Default true.
    */
   glide?: boolean;
-  /**
-   * How long glyphs take to leave:
-   * - 'leeway' (default): shorter the less room and time there is. Room: a
-   *   glyph leaving gets time in proportion to the space its removal frees;
-   *   squeezed text frees almost nothing. Time: when changes come faster than
-   *   animations can play (a dragged slider, a fast resize), each gets a few
-   *   times the gap since the previous one. With no leeway, glyphs come and
-   *   go at once and anything still in flight lands immediately.
-   * - 'fixed': always `duration`.
-   */
-  pace?: 'leeway' | 'fixed';
-  /**
-   * When the marks move as glyphs leave: 'together' (default) with them, or
-   * 'after' they have merged, so the dots only spread into the freed space
-   * once it is empty.
-   */
-  marks?: 'together' | 'after';
   /** Skip animations when the user prefers reduced motion. Default true. */
   respectReducedMotion?: boolean;
 }
@@ -110,8 +101,6 @@ interface Region {
   right: number;
   vLeft: number;
   vRight: number;
-  /** Don't start settling before this time (for `marks: 'after'`). */
-  hold: number;
 }
 
 /** An ellipsis' region and its marks, relative to the host. */
@@ -200,8 +189,6 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     easing = 'cubic-bezier(.45,0,.2,1)',
     blur = 4,
     glide = true,
-    pace = 'leeway',
-    marks: markTiming = 'together',
     respectReducedMotion = true,
   } = options;
   const host = instance.element;
@@ -639,7 +626,6 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
         regions.delete(el);
         continue;
       }
-      if (now < r.hold) continue;
       [r.left, r.vLeft] = settle(r.left, r.vLeft, omega, dt);
       [r.right, r.vRight] = settle(r.right, r.vRight, omega, dt);
       const done = (x: number, v: number) => Math.abs(x) < 0.05 && Math.abs(v) < 1;
@@ -659,7 +645,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
    * its region where it was on screen and let the edges glide over,
    * carrying their current velocity.
    */
-  function glideMarks(hold: number) {
+  function glideMarks() {
     for (const g of geometry()) {
       const before = drawn.get(g.ellipsis);
       // An ellipsis that changed lines just goes there; gliding across lines reads as noise.
@@ -668,10 +654,9 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       const right = before.right - g.right;
       // Only the spacing glides: a region that kept its width has nothing to do.
       if (Math.abs(right - left) < 0.25) continue;
-      const r = regions.get(g.ellipsis) ?? { left: 0, right: 0, vLeft: 0, vRight: 0, hold: 0 };
+      const r = regions.get(g.ellipsis) ?? { left: 0, right: 0, vLeft: 0, vRight: 0 };
       r.left = left;
       r.right = right;
-      r.hold = Math.max(r.hold, hold);
       regions.set(g.ellipsis, r);
     }
   }
@@ -734,18 +719,12 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
    * jump in position): be quick, down to nothing.
    */
   function leaveTime(change: ElideChange): number {
-    if (pace === 'fixed' || change.hidden.length === 0) return duration * 0.85;
+    if (change.hidden.length === 0) return duration * 0.85;
     let removed = 0;
     for (const i of change.hidden) removed += change.hiddenGlyphs.get(i)?.box.width ?? 0;
     if (removed === 0) return duration * 0.85;
     const leeway = Math.min(1, Math.max(0, change.state.slack / removed));
     return duration * 0.85 * leeway;
-  }
-
-  /** How long arriving glyphs get: when glyphs also leave in the same change (the position moved), they share its leeway. */
-  function enterTime(change: ElideChange): number {
-    if (pace === 'fixed' || change.hidden.length === 0) return duration;
-    return leaveTime(change) / 0.85;
   }
 
   const offChange = onChange(instance, (change: ElideChange) => {
@@ -754,26 +733,26 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       return;
     }
 
-    // Room is one limit; time is the other. When changes come faster than
-    // their animations can play (a slider dragged, a fast resize), each gets
-    // a few times the gap since the last one, and soon nothing at all.
+    // Leaving, room is one limit; time is the other. When changes come
+    // faster than their animations can play (a slider dragged, a fast
+    // resize), each gets a few times the gap since the last one, and soon
+    // nothing at all. Arriving glyphs grow in their own place, so they
+    // always take their time.
     const now = performance.now();
-    const cap = pace === 'fixed' ? Infinity : (now - lastChange) * 3;
+    const ms = Math.min(leaveTime(change), (now - lastChange) * 3);
     lastChange = now;
-    const ms = Math.min(leaveTime(change), cap);
-    const inMs = Math.min(enterTime(change), cap);
     const instant = ms < INSTANT;
     const goes = change.hidden.length > 0 && effect !== 'none' && !instant;
-    const comes = change.shown.length > 0 && effect !== 'none' && inMs >= INSTANT;
-    // No time for this change means the text is moving fast: anything still
-    // in flight from earlier changes lands now too, rather than piling up.
-    if ((change.hidden.length > 0 && instant) || (change.shown.length > 0 && !comes)) {
-      land();
+    const comes = change.shown.length > 0 && effect !== 'none';
+    // No time for this change means the text is moving fast: whatever is
+    // still leaving from earlier changes goes now too, rather than piling up.
+    if (change.hidden.length > 0 && instant) {
+      for (const s of leaving.values()) drop(s);
       for (const f of Array.from(fades)) f.anim.finish();
     }
 
     // Arriving glyphs first: the spacing may only glide over glyphs still on their way in.
-    if (comes) for (const i of change.shown) enter(i, inMs);
+    if (comes) for (const i of change.shown) enter(i, duration);
     if (goes) {
       for (const i of change.hidden) {
         const before = change.hiddenGlyphs.get(i);
@@ -785,7 +764,7 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     for (const s of arriving.values()) if (hidden.has(s.i)) drop(s);
     rebase(change);
 
-    if (glide) glideMarks(markTiming === 'after' && goes && effect === 'merge' ? now + ms * 0.8 : 0);
+    if (glide) glideMarks();
     if (effect !== 'none') for (let j = change.previous.hidden.length; j < change.state.hidden.length; j++) appear(j);
     draw(now);
     if (fades.size > 0) place();

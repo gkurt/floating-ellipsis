@@ -282,9 +282,12 @@ Next to a glyph that's showing, the dots keep at least half the gap layout
 gives them, so they never crowd the text. Only jumps glide; the drift of a
 resize follows layout.
 
-With `pace: 'leeway'`, leaving glyphs take time in proportion to the room
-their removal frees, and every effect is capped at three times the interval since the
-previous change, so fast drags are instant and nothing piles up.
+Leaving glyphs take time in proportion to the room their removal frees,
+capped at three times the interval since the previous change, so fast drags
+are instant and nothing piles up. Arriving glyphs always take `duration`:
+each grows in its own place, so there is nothing for them to run into. The
+dots spread into freed room as the glyphs there shrink, which is what
+squeezes them out.
 
 `transitions` can be attached at any time; the first change after it animates
 from what's showing.

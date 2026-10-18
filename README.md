@@ -324,13 +324,11 @@ const t = elide(el, { position: 0.5, glyphs });
 const stop = transitions(t, { effect: 'merge' });
 ```
 
-| Option     | Default      |                                                                                   |
-| ---------- | ------------ | --------------------------------------------------------------------------------- |
-| `effect`   | `'merge'`    | `'merge'` (glyphs shrink and fade into the dots), `'fade'`, `'blur'` or `'none'`. |
-| `duration` | `460`        | Milliseconds.                                                                     |
-| `glide`    | `true`       | The ellipsis' spacing glides when the cut changes. Works without glyph mode.      |
-| `pace`     | `'leeway'`   | `'leeway'` scales durations to the change and speeds up fast drags; or `'fixed'`. |
-| `marks`    | `'together'` | When the dots spread into freed room: `'together'` with the glyphs, or `'after'`. |
+| Option     | Default   |                                                                                   |
+| ---------- | --------- | --------------------------------------------------------------------------------- |
+| `effect`   | `'merge'` | `'merge'` (glyphs shrink and fade into the dots), `'fade'`, `'blur'` or `'none'`. |
+| `duration` | `460`     | Milliseconds. Leaving glyphs take less when squeezed or dragged fast.             |
+| `glide`    | `true`    | The ellipsis' spacing glides when the cut changes. Works without glyph mode.      |
 
 Respects `prefers-reduced-motion`.
 

@@ -19,7 +19,7 @@ afterEach(async () => {
 async function animated(options: TransitionOptions = {}, width = 360): Promise<Elide> {
   const t = make(box(PROSE, `width:${width}px`), { position: 'middle', glyphs });
   // Attached before the first pass, so leaving glyphs know where they were painted.
-  stops.push(transitions(t, { pace: 'fixed', ...options }));
+  stops.push(transitions(t, options));
   expect(t.truncated).toBe(true);
   await frames();
   return t;
@@ -149,8 +149,8 @@ describe('transitions', () => {
     const t = make(box(PROSE, 'width:360px'), { position: 'middle', glyphs });
     expect(t.truncated).toBe(true);
     await frames();
-    stops.push(transitions(t, { pace: 'fixed' }));
-    narrow(t, 240);
+    stops.push(transitions(t));
+    narrow(t, 350);
     expect(ghosts(t)).toBeGreaterThan(0);
   });
 
@@ -230,12 +230,25 @@ describe('transitions', () => {
 
   it('glides without glyph mode too', async () => {
     const t = make(box(PROSE, 'width:360px'), { position: 'middle' });
-    stops.push(transitions(t, { pace: 'fixed' }));
+    stops.push(transitions(t));
     await frames();
     narrow(t, 240);
     expect(ghosts(t)).toBe(0);
     await frame();
     expect(markElements(t, 0).some((m) => m.style.transform !== '')).toBe(true);
+  });
+
+  it('arriving glyphs take their time, however fast the text widens', async () => {
+    const t = make(box(PROSE, 'width:200px'), { position: 'middle', glyphs });
+    stops.push(transitions(t));
+    await frames();
+    for (let w = 200; w <= 300; w += 6) {
+      t.element.style.width = `${w}px`;
+      t.refresh();
+      expect(t.truncated).toBe(true);
+    }
+    expect(ghosts(t)).toBeGreaterThan(0);
+    await settled(t);
   });
 
   it('keeps up with changes faster than it can play them', async () => {

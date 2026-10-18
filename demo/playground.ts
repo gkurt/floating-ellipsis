@@ -4,7 +4,7 @@ import 'dialkit/vanilla/styles.css';
 import { ellipsisInk, markInks } from '#src/geometry.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type ElideOptions, type EllipsisStyle, type Gap, elide, words } from '#src/index.ts';
-import { type Effect, type TransitionOptions, transitions } from '#src/transitions.ts';
+import { type Effect, transitions } from '#src/transitions.ts';
 import { $, resizable } from './ui.ts';
 
 // One floating panel holds the dials; on a phone it starts closed.
@@ -131,18 +131,12 @@ textDials.subscribe(({ text, position, lines, keep, ellipsis, cutAt }) => {
 
 const motionDials = createDialKit('Motion', {
   transition: { type: 'select', options: ['merge', 'fade', 'blur', 'none'], default: 'merge' },
-  pace: { type: 'select', options: ['leeway', 'fixed'], default: 'leeway' },
-  dotsMove: { type: 'select', options: ['together', { value: 'after', label: 'after glyphs merge' }], default: 'together' },
 });
 let stopTransitions: () => void = () => {};
-motionDials.subscribe(({ transition, pace, dotsMove }) => {
+motionDials.subscribe(({ transition }) => {
   stopTransitions();
   // With no glyph effect the dots still glide.
-  stopTransitions = transitions(hero, {
-    effect: transition as Effect | 'none',
-    pace: pace as TransitionOptions['pace'],
-    marks: dotsMove as TransitionOptions['marks'],
-  });
+  stopTransitions = transitions(hero, { effect: transition as Effect });
 });
 
 // Live readout of the instance state.
