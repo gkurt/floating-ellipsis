@@ -152,6 +152,22 @@ describe.each(FONTS)('elide in %s', (font) => {
   });
 
   it.each([
+    ['...', '...'],
+    ['…', '…'],
+    ['bullets', { shape: 'bullet' }],
+  ] as const)('cuts a spread line as a fresh one at every width, with %s', (_, ellipsis) => {
+    // The letter-spacing left from the last width mustn't change what fits.
+    const long = 'Internationalization accessibility, localization and globalization considerations';
+    const options: ElideOptions = { snap: words(), ellipsis, justify: 'spread' };
+    const t = make(box(long, `font:${font}`), options);
+    for (const w of sweep(t, 140, 420, 11)) {
+      const fresh = make(box(long, `font:${font};width:${w}px`), options);
+      expect(t.state.hidden).toEqual(fresh.state.hidden);
+      fresh.destroy();
+    }
+  });
+
+  it.each([
     // Narrower than "/Users/…/difference-tables.md", no whole segments fit,
     // and the cut goes inside the last one.
     ['words', PROSE, words(), /[\s,.]/u, 120],
@@ -223,10 +239,8 @@ describe.each(FONTS)('elide in %s', (font) => {
         expectFits(t, options.lines);
         expectConsistent(t);
         // The cut is the same: marks only go into the room it leaves. (A
-        // single '…' is drawn as dots to repeat them, a little narrower.
-        // Swept, a spread line can keep a narrower width's cut.)
-        if (justify === 'dots' || (options.ellipsis !== undefined && justify !== 'spread'))
-          expect(t.state.hidden).toEqual(without.state.hidden);
+        // single '…' is drawn as dots to repeat them, a little narrower.)
+        if (justify === 'dots' || options.ellipsis !== undefined) expect(t.state.hidden).toEqual(without.state.hidden);
         if (!t.truncated) continue;
         // Flush, unless the gaps around the marks are already as wide as `maxGap` lets them get.
         const capped = t.state.gaps.some((g) => [g.left, g.right].some((v) => v !== null && v >= maxGap - 0.01));

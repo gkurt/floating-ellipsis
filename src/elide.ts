@@ -819,10 +819,17 @@ export class Elide {
     if (width === undefined || Math.abs(el.getBoundingClientRect().width - width) > 0.01) this.refresh();
   }
 
-  /** Mark measurements, read from the first ellipsis' computed style. */
+  /**
+   * Mark measurements, read from the first ellipsis' computed style. A line
+   * `justify: 'spread'` left letter-spaced letter-spaces the ellipsis with
+   * it: the marks are measured as they are set without that.
+   */
   #markLayout(run: Run): MarkLayout {
-    const first = this.#joins[0]!;
-    run.marks ??= layoutMarks(this.#style, getComputedStyle(first.ellipsis), markCount(this.#style));
+    if (run.marks) return run.marks;
+    const cs = getComputedStyle(this.#joins[0]!.ellipsis);
+    const spread = this.#lineEl.style.letterSpacing;
+    const inherited = spread !== '' && Math.abs(parseFloat(cs.letterSpacing) - parseFloat(spread)) < 0.01;
+    run.marks = layoutMarks(this.#style, cs, markCount(this.#style), inherited ? run.letterSpacing : undefined);
     return run.marks;
   }
 

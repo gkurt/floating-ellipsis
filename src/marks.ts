@@ -119,12 +119,17 @@ const diameter = (m: GlyphMetrics) => (m.left + m.right + m.ascent + m.descent) 
 
 /**
  * Measure the marks with the ellipsis' computed style, and size drawn marks
- * (`count` of them). Only reads: `styleMarks` applies the drawn style.
+ * (`count` of them), with `letterSpacing` in place of the style's when
+ * given. Only reads: `styleMarks` applies the drawn style.
  */
-export function layoutMarks(style: EllipsisStyle, cs: CSSStyleDeclaration, count: number): MarkLayout {
+export function layoutMarks(
+  style: EllipsisStyle,
+  cs: CSSStyleDeclaration,
+  count: number,
+  letterSpacing = parseFloat(cs.letterSpacing),
+): MarkLayout {
   const font = fontOf(cs);
   const fontSize = parseFloat(cs.fontSize);
-  const letterSpacing = parseFloat(cs.letterSpacing);
   const transform = cs.textTransform;
   // The same marks, set the same way, measure the same (until fonts load):
   // the same layout, which tells a pass that nothing changed.
