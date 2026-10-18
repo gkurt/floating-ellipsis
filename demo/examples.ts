@@ -50,25 +50,34 @@ export const post =
   'We moved the kept parts into their own pass this week, so a search hit in the middle of a cell now gets an ellipsis on each side.';
 
 /**
- * Expand or collapse `t`, its element's height following: opening, the text
- * is all there and the box grows over it; closing, the box shrinks over it,
- * and then it's cut.
+ * Expand or collapse `t`, the space it takes following: opening, the text is
+ * all there and the box grows over it; closing, it's cut at once, its suffix
+ * in place, and the room it leaves closes up below it.
  */
 export function toggleSmoothly(t: Elide) {
   const el = t.element;
+  // Collapsing, the button stays in reach: a click waits for the box to settle.
+  if (el.getAnimations().length > 0) return;
   const from = el.getBoundingClientRect().height;
   const opening = !t.expanded;
   t[opening ? 'expand' : 'collapse']();
-  // (Reading the state runs the pass the change put off.)
-  const { expanded } = t.state;
+  // (Reading the state runs the pass the change put off.) The label changed
+  // with it: fit that now too, or a pass during the animation would hold the
+  // height the min-height below gives.
+  void t.state;
+  t.refresh();
+  void t.state;
   const to = el.getBoundingClientRect().height;
-  if (!expanded) t.expand();
+  const motion = { duration: 480, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' };
+  if (!opening) {
+    // A cut element's height is held (`!important`, over any animation), but a min-height overrules it.
+    const held = parseFloat(getComputedStyle(el).height);
+    el.animate({ minHeight: [`${held + from - to}px`, `${held}px`] }, motion);
+    return;
+  }
   el.style.overflow = 'clip';
-  const growing = el.animate({ height: [`${from}px`, `${to}px`] }, { duration: 480, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
-  void growing.finished.then(() => {
-    el.style.overflow = '';
-    if (!opening) t.collapse();
-  });
+  const growing = el.animate({ height: [`${from}px`, `${to}px`] }, motion);
+  void growing.finished.then(() => (el.style.overflow = ''));
 }
 
 export const issues = [
