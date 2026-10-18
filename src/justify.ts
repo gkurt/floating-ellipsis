@@ -4,15 +4,15 @@
  */
 import type { LineBox } from './lines.ts';
 import type { Phase } from './lockstep.ts';
-import type { MarkLayout } from './marks.ts';
+import { type MarkLayout, toUnit } from './marks.ts';
 import type { GapPlan } from './metrics.ts';
 import type { ElideOptions, GapInfo } from './options.ts';
 
 /** The rendered text being justified. */
 export interface Justified {
   mode: ElideOptions['justify'];
-  /** Add marks where there is room for them (see `ElideOptions.repeat`). */
-  repeat: boolean;
+  /** The share of the marks that fit to draw, from 0 to 1 (see `ElideOptions.repeat`). */
+  repeat: number;
   /** How many lines the text is on. Filling a line mustn't change it. */
   lines: number;
   /**
@@ -76,14 +76,39 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   let room = 0;
   for (const line of byLine.keys()) room += Math.max(0, edge - boxes[line]!.right);
   const mode = t.mode;
-  const repeat = t.repeat && layout.repeats;
+  const ratio = layout.repeats ? t.repeat : 0;
+  const repeat = ratio > 0;
   if (((mode === undefined || mode === false) && !repeat) || room <= 0) return { gaps: infos, slack: room };
   // A repeated mark takes its ink, and a gap like the ones between the marks.
   const mark = layout.metrics[0] ? layout.metrics[0].left + layout.metrics[0].right : 0;
   const between = layout.natural.at(-1) ?? 0;
   const step = layout.natural.length > 0 ? between + layout.inner.at(-1)! : (layout.rhythm ?? 0);
-  /** How many marks spaced `gap` from the one before fit in `room`. */
-  const marksIn = (room: number, gap: number) => (repeat && mark + gap > 0 ? Math.max(0, Math.floor(room / (mark + gap) + 1e-6)) : 0);
+  /**
+   * How many marks to add in `room`, each spaced `gap` from the one before:
+   * `ratio` of as many as fit there, the ellipsis' own counted.
+   */
+  const marksIn = (room: number, gap: number) => {
+    if (!repeat || mark + gap <= 0) return 0;
+    const own = layout.metrics.length;
+    const fit = own + Math.floor(room / (mark + gap) + 1e-6);
+    return Math.max(0, Math.floor(ratio * fit + 1e-6) - own);
+  };
+  /**
+   * Drawn marks' margins (`inner`) as whole numbers of layout's units, each
+   * mark's place rounded and not each margin, so many of them add up
+   * exactly (their size is one already).
+   */
+  const onUnits = (inner: readonly number[]) => {
+    let at = 0;
+    let was = 0;
+    return inner.map((v) => {
+      at += mark + v;
+      const now = toUnit(at);
+      const margin = now - was - mark;
+      was = now;
+      return margin;
+    });
+  };
   /** The space before each mark after the first, with `added` more spaced like the others. */
   const withMarks = (added: number) =>
     added > 0 ? [...layout.inner, ...Array.from({ length: added }, () => step - between)] : layout.inner;
@@ -202,6 +227,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
         let left = p.marginLeft;
         let right = p.marginRight;
         let inner = layout.inner;
+        let added = 0;
         if (dots) {
           // Every gap of this ellipsis becomes the same width.
           const current = [
@@ -214,7 +240,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
           // wide as it was: the gaps only grow by what's too little for one.
           // Gaps that would grow past `maxGap` take another, a little closer.
           const capped = repeat && cap < Infinity ? Math.ceil((sum + share - cap * count) / (cap + mark) - 1e-6) : 0;
-          const added = Math.max(marksIn(share, sum / count), capped);
+          added = Math.max(marksIn(share, sum / count), capped);
           const gaps = count + added;
           // As wide as `maxGap` allows, but never taking room away.
           const fill = (sum + share - added * mark) / gaps;
@@ -223,12 +249,11 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
           if (p.naturalRight !== null) right = even - p.naturalRight;
           inner = Array.from({ length: layout.natural.length + added }, (_, i) => even - (layout.natural[i] ?? between));
           used = Math.max(0, even * gaps + added * mark - sum);
-          repeated += added;
         } else {
           // Marks spaced like the others go in wherever they fit, and the
           // two gaps around the ellipsis take what's too little for one, as
           // far as `maxGap` lets them: past it, the gaps between the marks.
-          const added = marksIn(share, step);
+          added = marksIn(share, step);
           const rest = grows ? share - added * (mark + step) : 0;
           const each = rest / Math.max(1, sides(p));
           const grow = (natural: number | null, margin: number) =>
@@ -240,23 +265,32 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
           right += r;
           inner = withMarks(added).map((v) => v + spread);
           used = l + r + added * (mark + step) + spread * gaps;
-          repeated += added;
         }
+        repeated += added;
+        if (added > 0 && layout.drawn) inner = onUnits(inner);
         t.space(j, left, right, inner);
         spaced.push({ j, left, right, inner, used });
       }
-      // Each repeated mark's size and margins are rounded to layout's units,
-      // which adds up: what's off goes into the last ellipsis' gaps.
+      // A repeated text mark's width is rounded to layout's units, which adds
+      // up: what's off goes into the last ellipsis' gaps (as far as `maxGap`
+      // lets them grow).
       const last = spaced.at(-1);
-      if (grows && repeated > 0 && last) {
+      if (grows && repeated > 0 && !layout.drawn && last) {
         yield* phase.read();
-        const off = edge - inset - (t.measure()[line]?.right ?? edge - inset);
-        if (off !== 0 && Math.abs(off) < 0.5 + repeated / 32) {
+        const measured = edge - inset - (t.measure()[line]?.right ?? edge - inset);
+        if (measured !== 0 && Math.abs(measured) < 0.5 + repeated / 32) {
           yield* phase.write();
           const p = plans[last.j]!;
-          if (p.naturalRight !== null) last.right += off;
-          else if (p.naturalLeft !== null) last.left += off;
-          else if (last.inner.length > 0) last.inner = [...last.inner.slice(0, -1), last.inner.at(-1)! + off];
+          const by = (gap: number) => Math.min(measured, cap - gap);
+          let off = 0;
+          if (p.naturalRight !== null) {
+            last.right += off = by(p.naturalRight + last.right);
+          } else if (p.naturalLeft !== null) {
+            last.left += off = by(p.naturalLeft + last.left);
+          } else if (last.inner.length > 0) {
+            off = by(between + last.inner.at(-1)!);
+            last.inner = [...last.inner.slice(0, -1), last.inner.at(-1)! + off];
+          }
           last.used += off;
           t.space(last.j, last.left, last.right, last.inner);
         }

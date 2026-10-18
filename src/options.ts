@@ -59,15 +59,20 @@ export interface ElideOptions {
    */
   justify?: 'ellipsis' | 'dots' | 'spread' | false;
   /**
-   * Where justifying leaves room for another mark, add one, so a lot of
-   * room (a word or a path segment cut whole) fills with marks rather than
-   * wide gaps. With `justify: 'dots'` a mark goes in wherever it fits with
-   * every gap as wide as it was; with 'ellipsis', wherever it fits spaced
-   * like the other marks, the two gaps around them taking the rest. Only
+   * Fill the room left on a line with more marks, so a lot of it (a word or
+   * a path segment cut whole) doesn't spread the marks far apart: a number
+   * from 0 to 1, the share of the marks that would fit at their own spacing
+   * (the ellipsis' own included) that are drawn. 1 (or true) adds one
+   * wherever it fits; 0.75 lets the gaps grow a little first (3 dots stay 3
+   * until 6 would fit), and a long run settles that much sparser. 0 (or
+   * false) adds none. With `justify: 'dots'` every gap stays even; with
+   * 'ellipsis' (or 'spread' on more than one line) the marks keep their
+   * spacing and the two gaps around them take the rest; with 'spread' the
+   * letters spread by what's left; with false, it stays at the end. Only
    * marks that are all the same are repeated (drawn marks, '...', and '…'
-   * split into dots). Default false.
+   * split into dots). Default 0.75.
    */
-  repeat?: boolean;
+  repeat?: boolean | number;
   /**
    * The widest an ink gap next to or inside an ellipsis gets from justifying
    * ('dots' and 'ellipsis'): px, or a string like '0.75em'. Room past it
@@ -132,7 +137,7 @@ export const DEFAULTS: Settings = {
   ellipsis: '…',
   gap: 'dots',
   justify: 'dots',
-  repeat: false,
+  repeat: 0.75,
   maxGap: '0.75em',
   trim: true,
   snap: null,
@@ -190,6 +195,10 @@ export interface AutoSizeSlot {
   suffix(suffix: Element | null): void;
   remove(): void;
 }
+
+/** The share of the marks that fit that `repeat` draws, from 0 to 1. */
+export const repeatRatio = (repeat: boolean | number): number =>
+  typeof repeat === 'boolean' ? Number(repeat) : Number.isNaN(repeat) ? 0 : Math.min(1, Math.max(0, repeat));
 
 /** Whether text set to `lines` can wrap: more than one line, or as many as fit. */
 export const wraps = (lines: number | 'fit'): boolean => lines === 'fit' || lines > 1;

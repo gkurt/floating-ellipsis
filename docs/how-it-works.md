@@ -66,18 +66,26 @@ Implementation details behind the behaviour described in the
 
    With `repeat`, marks go into that room first, copies of the ellipsis' last
    (so only marks that are all the same repeat: drawn ones, `'...'`, and a
-   single `'…'`, which is drawn as dots for it). With `justify: 'dots'` one
-   goes in wherever it fits with every gap as wide as it was, so the gaps
-   only grow by what's too little for another mark; where they would still
-   grow past `maxGap`, one more goes in and they close up a little. With
+   single `'…'`, which is drawn as dots for it). How many is `repeat`'s share
+   of as many as would fit at the marks' own spacing, the ellipsis' own
+   counted, rounded down and never fewer than its own: with the default
+   0.75, three dots stay three until six would fit, then four, five at
+   seven, six at eight. So a few more letters of room only widen the gaps a
+   little, rather than bringing a dot in and out at every glyph as the box
+   resizes, and a long run of marks settles a third sparser than the
+   ellipsis' own. With `justify: 'dots'` every gap stays even; where they
+   would grow past `maxGap`, one more goes in and they close up a little. With
    `'ellipsis'` (and `'spread'` on more than one line) they go in spaced like
    the other marks, and the two gaps around them take the rest, up to
    `maxGap`, then the gaps between the marks. With `'spread'` they go in
    before the letter-spacing, which spreads only what's left; with `false`
-   what's too little for one more stays at the line's end. Each mark's size
-   and margins are rounded to layout's units, which adds up over many marks:
-   a line with marks added is read once more, and what's off goes into its
-   last ellipsis' gaps. The cut is the same as without `repeat`, except that
+   what's too little for one more stays at the line's end. Layout rounds
+   each mark's size and margins to its units (1/64 px, 1/60 in Firefox),
+   which would add up over many marks and leave the line off where it was
+   expected to end. So drawn marks are sized in whole units, and each one's
+   place is rounded rather than each margin, so they add up exactly. A text
+   mark's width can't be set like that: a line with text marks added is read
+   once more, and what's off goes into its last ellipsis' gaps. The cut is the same as without `repeat`, except that
    a single `'…'` drawn as dots is a hair narrower.
 
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and

@@ -2,11 +2,14 @@ import { type ElideOptions, elide, separators, words } from '#src/index.ts';
 import { $ } from './ui.ts';
 
 const MODES: [ElideOptions['justify'], string][] = [
-  ['dots', 'Every gap evens out, growing up to maxGap. With repeat, a dot goes in wherever one fits with every gap as wide as it was.'],
+  ['dots', 'Every gap evens out, growing up to maxGap. With repeat, dots go in as the gaps grow, keeping them even.'],
   ['ellipsis', 'The two gaps around the dots take the room. With repeat, dots spaced like the others go in first.'],
   ['spread', 'Letter-spacing takes the room. With repeat, dots go in first and the letters spread only by what is left.'],
-  [false, 'The room stays at the end. With repeat, dots go in wherever they fit, leaving less than one.'],
+  [false, 'The room stays at the end. With repeat, dots go in, leaving the rest there.'],
 ];
+
+/** Each example as it shows with these, one under the other. */
+const REPEATS: (number | false)[] = [false, 0.75, 1];
 
 const PROSE = 'Internationalization and accessibility considerations for a globally distributed design system';
 const PATH = '/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md';
@@ -35,10 +38,11 @@ for (const [justify, about] of MODES) {
   card.append(line(`justify: ${justify === false ? 'false' : `'${justify}'`}`, 'name'), line(about, 'about'));
   for (const [label, content, options, cls] of EXAMPLES) {
     card.append(line(label, 'label'));
-    for (const repeat of [false, true]) {
+    for (const repeat of REPEATS) {
       const el = document.createElement('div');
       el.className = `room ${cls ?? ''}`;
       el.dataset.repeat = String(repeat);
+      el.title = `repeat: ${repeat}`;
       el.textContent = content;
       rooms.push(el);
       card.append(el);

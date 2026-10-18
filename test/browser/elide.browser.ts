@@ -198,10 +198,10 @@ describe.each(FONTS)('elide in %s', (font) => {
       { text: long, options: { position: 'end', snap: words(), justify: 'ellipsis' } },
       ...[0.1, 0.2, 0.3].map((position) => ({ text: wrapping, options: { position, lines: 2 } })),
     ] as const;
-    const widest = (maxGap: number | null) => {
+    const widest = (maxGap: number | null, repeat?: number | false) => {
       let most = 0;
       for (const { text, options } of cases) {
-        const t = make(box(text, `font:${font}`), { ...options, maxGap });
+        const t = make(box(text, `font:${font}`), { ...options, maxGap, repeat });
         for (const _w of sweep(t, 140, 420, 11)) {
           expectFits(t);
           // The gaps as planned: what justifying controls.
@@ -213,9 +213,11 @@ describe.each(FONTS)('elide in %s', (font) => {
       return most;
     };
     const em = parseFloat(getComputedStyle(box('', `font:${font}`)).fontSize);
-    expect(widest(0.75 * em)).toBeLessThanOrEqual(0.75 * em + 0.01);
+    expect(widest(0.75 * em, false)).toBeLessThanOrEqual(0.75 * em + 0.01);
     // The same widths with no limit: the cap was doing something.
-    expect(widest(null)).toBeGreaterThan(0.75 * em + 1);
+    expect(widest(null, false)).toBeGreaterThan(0.75 * em + 1);
+    // Marks repeated into the room keep under it too.
+    for (const repeat of [0.75, 1]) expect(widest(0.75 * em, repeat)).toBeLessThanOrEqual(0.75 * em + 0.01);
   });
 
   it.each(['dots', 'ellipsis', 'spread', false] as const)('repeats marks into the room with justify %s', (justify) => {
@@ -231,7 +233,7 @@ describe.each(FONTS)('elide in %s', (font) => {
     const maxGap = 0.75 * parseFloat(getComputedStyle(box('', `font:${font}`)).fontSize);
     for (const options of cases) {
       const t = make(box(long, `font:${font}`), { ...options, snap: words(), justify, repeat: true });
-      const without = make(box(long, `font:${font}`), { ...options, snap: words(), justify });
+      const without = make(box(long, `font:${font}`), { ...options, snap: words(), justify, repeat: false });
       let repeated = 0;
       for (const w of sweep(t, 140, 420, 11)) {
         without.element.style.width = `${w}px`;
@@ -277,6 +279,34 @@ describe.each(FONTS)('elide in %s', (font) => {
       if (t.truncated) expect(markInks(t, 0)).toHaveLength(markInks(without, 0).length);
       t.destroy();
       without.destroy();
+    }
+  });
+
+  it.each(['dots', 'ellipsis'] as const)('draws the share of the marks that fit that repeat says, with justify %s', (justify) => {
+    const long = 'Internationalization accessibility, localization and globalization considerations';
+    for (const position of ['end', 'middle'] as const) {
+      // By default 0.75 of them: 3 dots stay 3 until 6 would fit.
+      const t = make(box(long, `font:${font}`), { position, snap: words(), justify, maxGap: null });
+      const every = make(box(long, `font:${font}`), { position, snap: words(), justify, maxGap: null, repeat: 1 });
+      let fewer = 0;
+      for (const w of sweep(t, 140, 420, 7)) {
+        every.element.style.width = `${w}px`;
+        every.refresh();
+        expectFits(t);
+        if (!t.truncated) continue;
+        expectFlush(t);
+        t.ellipses.forEach((_, j) => {
+          const fit = markInks(every, j).length;
+          const drawn = markInks(t, j).length;
+          // (Give or take one where the two measure the room a hair apart.)
+          expect(Math.abs(drawn - Math.max(3, Math.floor(0.75 * fit + 1e-6)))).toBeLessThanOrEqual(1);
+          expect(drawn).toBeLessThanOrEqual(fit);
+          if (drawn < fit) fewer++;
+        });
+      }
+      expect(fewer).toBeGreaterThan(0);
+      t.destroy();
+      every.destroy();
     }
   });
 

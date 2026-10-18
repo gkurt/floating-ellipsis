@@ -40,6 +40,7 @@ import {
   type SuffixSlot,
   DEFAULTS,
   defined,
+  repeatRatio,
   stateOf,
   wraps,
 } from './options.ts';
@@ -1101,7 +1102,7 @@ export class Elide {
     const boxes = (): LineBox[] => (end === null ? lineBoxes(...this.#lineParts()) : [{ top: 0, bottom: 0, left: run.left, right: end }]);
     return {
       mode: this.#settings.justify,
-      repeat: this.#settings.repeat,
+      repeat: repeatRatio(this.#settings.repeat),
       maxGap: this.#settings.maxGap === null ? null : toPx(this.#settings.maxGap, run.marks!.fontSize),
       lines,
       // Truncated, lines break one after another (see `greedy`).

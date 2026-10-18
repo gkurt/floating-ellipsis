@@ -15,6 +15,7 @@ import {
   measure,
   metricsVersion,
 } from './metrics.ts';
+import { repeatRatio } from './options.ts';
 
 export type Shape = 'dot' | 'bullet' | 'ring' | 'square';
 export type Length = number | `${number}em` | `${number}px`;
@@ -66,6 +67,15 @@ export interface MarkLayout {
   repeats: boolean;
 }
 
+/**
+ * Layout's unit, as parts of a px: Firefox lays out in 1/60 px, Chromium
+ * and WebKit in 1/64. A length that is a whole number of them isn't rounded.
+ */
+export const UNIT: number = typeof navigator !== 'undefined' && /\bGecko\/\d/.test(navigator.userAgent) ? 60 : 64;
+
+/** `px` to the nearest whole number of layout's units. */
+export const toUnit = (px: number): number => Math.round(px * UNIT) / UNIT;
+
 export function toPx(value: Length, fontSize: number): number {
   if (typeof value === 'number') return value;
   const n = parseFloat(value);
@@ -81,9 +91,9 @@ const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
  * marks, so a single glyph like '…' is redrawn as dots sized and placed like
  * its own.
  */
-export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown; repeat: boolean }): EllipsisStyle {
+export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown; repeat: boolean | number }): EllipsisStyle {
   const e = settings.ellipsis;
-  const split = settings.justify === 'dots' || settings.repeat;
+  const split = settings.justify === 'dots' || repeatRatio(settings.repeat) > 0;
   if (split && typeof e === 'string' && graphemes(e).length === 1) return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
 
   return e;
@@ -190,7 +200,8 @@ function measureMarks(
   const period = measure(font, '.');
   const parts = style.like ? inkRuns(font, style.like) : [];
   const natural = parts.length > 0 ? parts.reduce((s, [a, b]) => s + b - a, 0) / parts.length : diameter(reference);
-  const d = style.size !== undefined ? toPx(style.size, fontSize) : natural;
+  // A whole number of layout's units, so many of them add up exactly (see `repeat`).
+  const d = toUnit(style.size !== undefined ? toPx(style.size, fontSize) : natural);
   const middle = (reference.ascent - reference.descent) / 2;
   const bottom = middle - d / 2;
   const own = style.like ? dotSpacing(font, style.like) : null;

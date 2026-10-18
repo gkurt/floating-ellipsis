@@ -119,7 +119,7 @@ const ellipsisDials = createDialKit('Ellipsis', {
   dots: [3, 0, 7, 1],
   gap: { type: 'select', options: ['dots', 'natural', 'none'], default: 'dots' },
   justify: { type: 'select', options: ['dots', 'ellipsis', 'spread', 'off'], default: 'dots' },
-  repeat: false,
+  repeat: [0.75, 0, 1, 0.05],
 });
 
 function update() {
