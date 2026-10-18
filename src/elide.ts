@@ -1290,7 +1290,12 @@ export class Elide {
         // Judged by what showed before the pass, it's checked once rendered.
         const checked = expected !== null && !(probed && predictor!.close(SLIP));
         if (measured) {
-          // Showing already, as measured.
+          // Showing already, as measured. The full text, measured, may still
+          // keep the ellipsis that was showing (out of the flow): it goes now.
+          if (hidden.length === 0 && this.#joins[0]?.el.style.display !== 'none') {
+            yield* phase.write();
+            this.#showAll();
+          }
           plans = this.#plan(run, hidden);
         } else {
           yield* phase.write();

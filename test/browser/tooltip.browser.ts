@@ -122,6 +122,22 @@ describe('tooltip', () => {
     expectOnLine(tip, t);
   });
 
+  it('grows the room first, then shows the hidden text where it lands', () => {
+    const { t, tip } = growing();
+    const part = t.state.hidden[0]!;
+    const hidden = graphemeSpans(tip)[part.start]!.parentElement!;
+    const opacity = (k: number) => {
+      for (const a of tip.element.getAnimations({ subtree: true })) {
+        a.pause();
+        a.currentTime = k * 460;
+      }
+      return Number(getComputedStyle(hidden).opacity);
+    };
+    expect(opacity(0)).toBe(0);
+    expect(opacity(0.4)).toBe(0);
+    expect(opacity(0.9)).toBeGreaterThan(0.5);
+  });
+
   it('stays in the window, and wraps long text no narrower than its aspect', () => {
     const long = Array.from({ length: 6 }, () => PATH).join('');
     const t = make(box(long, 'width:300px;margin-left:600px'), { position: 'middle' });

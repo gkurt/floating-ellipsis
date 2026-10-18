@@ -1,11 +1,12 @@
 import type { Elide } from './elide.ts';
-import { ellipsisArea, ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements } from './geometry.ts';
+import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements } from './geometry.ts';
 import { isWhitespace } from './graphemes.ts';
 
 /**
  * What a tip shows, and where:
  * - 'grow': the full text over the line, growing out of it. Every glyph
- *   starts where it is on screen, and hidden ones come out of their ellipsis.
+ *   starts where it is on screen and moves to make room, and the hidden text
+ *   fades in where it lands once there is room for it.
  * - 'expand': the same full text over the line, at once.
  * - 'peek': only what one ellipsis hides, next to that ellipsis. Hovering the
  *   ellipsis (its whole area, gaps included) shows it.
@@ -103,7 +104,7 @@ const DEFAULTS: Settings = {
   respectReducedMotion: true,
 };
 
-/** Where every grapheme of the tip's text is before it grows: its box on screen. */
+/** Where the tip's text is before it grows: each grapheme's box on screen (the line's, for a hidden one). */
 interface Origin {
   from: DOMRect[];
   /** The ellipsis hiding each grapheme, or -1. */
@@ -112,6 +113,9 @@ interface Origin {
 }
 
 const OPEN = 'data-fp-tip-open';
+
+/** How far into a 'grow' the hidden text starts to show: the tip has nearly grown by then. */
+const REVEAL = 0.5;
 
 /**
  * A headless tooltip for truncated text: one tip element, shared by every
@@ -484,41 +488,32 @@ export class Tooltip {
   }
 
   /**
-   * Where each grapheme is now: its own box, or for a hidden one, its place
-   * in the ellipsis hiding it (spread across it, in order). And the marks of
-   * every ellipsis, as drawn.
+   * Where each grapheme showing is now, which ellipsis hides each one that
+   * isn't, and the marks of every ellipsis, as drawn.
    */
   #origin(t: Elide): Origin {
     const from = t.graphemes.map((_, i) => graphemeRect(t, i));
     const part = t.graphemes.map(() => -1);
     const line = lineRects(t)[0]!;
-    t.state.hidden.forEach(({ start, end }, j) => {
-      const area = ellipsisArea(t, j) ?? line;
-      const count = end - start;
-      for (let k = 0; k < count; k++) {
-        from[start + k] = new DOMRect(area.left + ((k + 0.5) / count) * area.width, area.top, 0, area.height);
-        part[start + k] = j;
-      }
-    });
+    t.state.hidden.forEach(({ start, end }, j) => part.fill(j, start, end));
     const dots = t.state.hidden.flatMap((_, j) => markElements(t, j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
     return { from: from.map((r) => r ?? line), part, dots };
   }
 
   /**
-   * Every grapheme travels from where it was. Hidden ones come out of their
-   * ellipsis, blurred, and only show once the others have made some room.
-   * The marks stay where they are and fade, and the background grows from
-   * the lines' box to the tip's.
+   * Every grapheme showing travels from where it was, the marks stay where
+   * they are and fade, and the background grows from the lines' box to the
+   * tip's. The hidden text waits where it lands, and fades in, unblurring,
+   * once the tip has nearly grown: the room first, then what fills it.
    *
    * Inline text can't be transformed, so while it moves the text is taken
    * out of the flow, in runs set where they land, and the tip keeps its size.
    * A run is the graphemes on one line of the tip that move as one: shown
-   * side by side, or out of the same ellipsis, which a run spreads from by
-   * scaling, so each grapheme still travels from its own place in it. A few
-   * runs moved by transforms leave the browser next to nothing to do on each
-   * frame (a grapheme each would be thousands of layers). They're set in a
-   * layer of their own, so the background growing doesn't lay them out, and
-   * go back into the text when it lands.
+   * side by side, or hidden by the same ellipsis. A few runs moved by
+   * transforms leave the browser next to nothing to do on each frame (a
+   * grapheme each would be thousands of layers). They're set in a layer of
+   * their own, so the background growing doesn't lay them out, and go back
+   * into the text when it lands.
    */
   #grow(origin: Origin, targets: DOMRect[], box: DOMRect, start: Record<'left' | 'right' | 'top' | 'bottom', number>, bg: HTMLElement) {
     const { duration, easing } = this.#settings;
@@ -572,39 +567,30 @@ export class Tooltip {
       return i;
     });
     const range = document.createRange();
-    const placed = groups.map((group, k) => {
+    const placed = groups.map((_, k) => {
       range.selectNodeContents(spans[lead[k]!]!);
-      return { at: range.getBoundingClientRect(), own: group.getBoundingClientRect() };
+      return range.getBoundingClientRect();
     });
 
     groups.forEach((group, k) => {
-      const { start, end } = runs[k]!;
       const i = lead[k]!;
-      const { at, own } = placed[k]!;
+      const at = placed[k]!;
       const dx = targets[i]!.left - at.left;
       group.style.left = `${dx}px`;
       group.style.top = `${targets[i]!.top - at.top}px`;
-      const y = from[i]!.top - targets[i]!.top;
       if (part[i]! < 0) {
-        group.animate([{ transform: `translate(${from[i]!.left - targets[i]!.left}px, ${y}px)` }, { transform: 'none' }], timing);
+        const [x, y] = [from[i]!.left - targets[i]!.left, from[i]!.top - targets[i]!.top];
+        group.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: 'none' }], timing);
         return;
       }
-      // Map the run's graphemes from where they land onto their places in the ellipsis.
-      const left = own.left + dx;
-      const center = (j: number) => targets[j]!.left + targets[j]!.width / 2 - left;
-      const [a, b] = [start, end - 1];
-      const width = center(b) - center(a);
-      const scale = width > 0 ? (from[b]!.left - from[a]!.left) / width : 1;
-      const x = from[a]!.left - left - scale * center(a);
-      group.style.transformOrigin = '0 0';
+      // Hidden text waits where it lands, and shows once the tip has nearly grown.
       group.animate(
         [
-          { transform: `translate(${x}px, ${y}px) scaleX(${scale})`, opacity: 0, filter: 'blur(3px)' },
-          { offset: 0.15, opacity: 0 },
-          { offset: 0.6, opacity: 1, filter: 'blur(0px)' },
-          { transform: 'none', opacity: 1, filter: 'blur(0px)' },
+          { opacity: 0, filter: 'blur(4px)' },
+          { offset: REVEAL, opacity: 0, filter: 'blur(4px)', easing: 'ease-out' },
+          { opacity: 1, filter: 'blur(0px)' },
         ],
-        timing,
+        { duration, fill: 'backwards' },
       );
     });
 

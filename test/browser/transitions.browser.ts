@@ -137,6 +137,25 @@ describe('transitions', () => {
     await expect.poll(() => markElements(t, 0).every((m) => m.style.transform === ''), { timeout: 2000 }).toBe(true);
   });
 
+  it('keeps every ellipsis centred where layout puts it: only the spacing glides', async () => {
+    const t = await animated({ effect: 'merge', duration: 300 });
+    const middle = () => {
+      const marks = markInks(t, 0);
+      return (marks[0]!.left + marks.at(-1)!.right) / 2;
+    };
+    narrow(t, 240);
+    const centres: number[] = [];
+    let spread = false;
+    for (let k = 0; k < 6; k++) {
+      await frame();
+      centres.push(middle());
+      spread ||= markElements(t, 0).some((m) => m.style.transform !== '');
+    }
+    expect(spread).toBe(true);
+    await expect.poll(() => markElements(t, 0).every((m) => m.style.transform === ''), { timeout: 2000 }).toBe(true);
+    for (const c of centres) expect(c).toBeCloseTo(middle(), 1);
+  });
+
   it('glides without glyph mode too', async () => {
     const t = make(box(PROSE, 'width:360px'), { position: 'middle' });
     stops.push(transitions(t, { pace: 'fixed' }));

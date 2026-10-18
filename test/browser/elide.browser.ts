@@ -254,6 +254,22 @@ describe('elide', () => {
     }
   });
 
+  it('shows no ellipsis once the text fits again, however closely', () => {
+    const el = box('floating-ellipsis and some more', 'width:max-content');
+    const natural = el.getBoundingClientRect().width;
+    el.style.width = '100px';
+    const t = make(el, { position: 'middle' });
+    for (const extra of [0.5, 1, 4, 40]) {
+      el.style.width = '100px';
+      t.refresh();
+      expect(t.truncated).toBe(true);
+      el.style.width = `${natural + extra}px`;
+      t.refresh();
+      expect(t.truncated).toBe(false);
+      for (const e of el.querySelectorAll('[data-fp-ellipsis]')) expect(e.getBoundingClientRect().width, `+${extra}px`).toBe(0);
+    }
+  });
+
   it('follows its element as it is resized', async () => {
     const t = make(box(PROSE), { position: 'middle' });
     const seen = errors();

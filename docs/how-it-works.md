@@ -212,10 +212,12 @@ cross-fades into the mark's shape. Arriving glyphs grow back out the same way.
 
 Nothing moves the text itself: glyphs keep their layout positions, so the line
 always ends at the edge. Ghost glyphs are drawn in an overlay beside the text
-and re-placed after every pass. Dots shift with a transform, only within the
-space between their neighbouring glyphs, so they never collide with text.
-That space's edges glide on a critically damped spring (velocity carries over,
-no overshoot), and only jumps glide; the drift of a resize follows layout.
+and re-placed after every pass. Dots shift with a transform: each ellipsis
+stays centred where layout puts it, and only the spacing between its dots
+glides, on a critically damped spring (velocity carries over, no overshoot).
+Next to a glyph that's showing, the dots keep at least half the gap layout
+gives them, so they never crowd the text. Only jumps glide; the drift of a
+resize follows layout.
 
 With `pace: 'leeway'`, leaving glyphs take time in proportion to the room
 their removal frees, arriving ones are compressed by how many arrive side by
@@ -232,8 +234,9 @@ only waits once. Listeners are shared, so attaching every cell of a table is
 cheap.
 
 A growing tip starts as an exact copy of the line, dots included: every
-grapheme starts where it is on screen and the hidden ones come out of their
-ellipsis. Its text starts where the line's does and runs right. Past the
+grapheme showing starts where it is on screen and moves to make room. The
+room grows first: the hidden text waits where it lands, and fades in once the
+tip has nearly grown. Its text starts where the line's does and runs right. Past the
 window's edge or `maxWidth` it wraps (after `breaks` where it can), and only
 when that would leave it narrower than `aspect` does it widen to the left, as
 little as it can. A full-text tip takes the text's font so its glyphs land on

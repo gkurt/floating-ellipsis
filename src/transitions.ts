@@ -220,11 +220,11 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   }
 
   /**
-   * Draw every ellipsis. Its region's edges sit where their springs are, but
-   * never past a glyph that is showing (nor the content box), and never
-   * closer together than the marks need. The marks are laid out inside it
-   * with every gap scaled alike, so what animates is the spacing, and the
-   * marks can't run into the text or into each other.
+   * Draw every ellipsis. Its marks stay centred where layout puts them, and
+   * only the spacing between them animates: the region's width, as its
+   * springs have it, spreads them with every gap scaled alike. Next to a
+   * glyph that is showing they keep at least half the gap layout gives them,
+   * so they can't crowd the text, nor run into each other.
    */
   function draw() {
     const bounds = contentBox();
@@ -240,28 +240,26 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       const r = regions.get(g.ellipsis);
       const showingBefore = g.before >= 0 && !arriving(g.before);
       const showingAfter = g.after < n && !arriving(g.after);
-      if (r && r.left < 0 && showingBefore) [r.left, r.vLeft] = [0, 0];
-      if (r && r.right > 0 && showingAfter) [r.right, r.vRight] = [0, 0];
-      const hardLeft = showingBefore ? g.left : bounds.left;
-      const hardRight = showingAfter ? g.right : bounds.right;
-
       const widths = g.marks.map((m) => m.right - m.left);
       const need = widths.reduce((sum, w) => sum + w, 0);
-      let left = Math.max(hardLeft, g.left + (r?.left ?? 0));
-      let right = Math.min(hardRight, g.right + (r?.right ?? 0));
-      if (right - left < need) {
-        // Too tight for the marks: widen around the middle, within bounds.
-        const middle = (left + right) / 2;
-        left = Math.max(hardLeft, middle - need / 2);
-        right = Math.min(hardRight, left + need);
-        left = Math.max(hardLeft, right - need);
-      }
-      next.set(g.ellipsis, { left, right, top: g.top });
+      const first = g.marks[0]!;
+      const last = g.marks.at(-1)!;
+      // Next to a glyph showing, they keep at least half the gap layout gives them.
+      const hardLeft = showingBefore ? (g.left + first.left) / 2 : bounds.left;
+      const hardRight = showingAfter ? (g.right + last.right) / 2 : bounds.right;
+      const middle = (first.left + last.right) / 2;
+      const inner = last.right - first.left - need;
+      const outer = g.right - g.left - (last.right - first.left);
+      const wanted = r ? g.right - g.left + r.right - r.left - outer : last.right - first.left;
+      const room = 2 * Math.min(middle - hardLeft, hardRight - middle);
+      // (One element drawing every dot can't spread.)
+      const span = inner > 0.01 ? Math.max(need, Math.min(wanted, room)) : need;
+      const left = middle - span / 2;
+      next.set(g.ellipsis, { left: left - (first.left - g.left), right: left + span + (g.right - last.right), top: g.top });
 
-      // Layout's gaps (outer and between marks), scaled to the drawn region.
-      const free = g.right - g.left - need;
-      const scale = free > 0.01 ? Math.max(0, right - left - need) / free : 1;
-      let x = left + (g.marks[0]!.left - g.left) * scale;
+      // Layout's gaps between marks, scaled to the drawn span.
+      const scale = inner > 0.01 ? (span - need) / inner : 1;
+      let x = left;
       g.marks.forEach((m, k) => {
         const shift = r ? x - m.left : 0;
         x += widths[k]! + ((g.marks[k + 1]?.left ?? m.right) - m.right) * scale;
@@ -305,7 +303,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
       if (!before || Math.abs(before.top - g.top) > 2) continue;
       const left = before.left - g.left;
       const right = before.right - g.right;
-      if (Math.abs(left) < 0.25 && Math.abs(right) < 0.25) continue;
+      // Only the spacing glides: a region that kept its width has nothing to do.
+      if (Math.abs(right - left) < 0.25) continue;
       const r = regions.get(g.ellipsis) ?? { left: 0, right: 0, vLeft: 0, vRight: 0, hold: 0 };
       r.left = left;
       r.right = right;
