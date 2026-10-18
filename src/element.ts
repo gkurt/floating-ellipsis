@@ -21,6 +21,7 @@ const ATTRIBUTES = [
   'gap',
   'max-gap',
   'justify',
+  'repeat',
   'trim',
   'snap',
   'glyphs',
@@ -66,7 +67,7 @@ function parseSnap(value: string): Snap | null {
  * `slot="suffix"` is the `suffix`. Attributes: `lines` (a number or `fit`), `position`
  * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
  * `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap`
- * (`none` for no limit), `justify` (`false` to turn it off), `trim`
+ * (`none` for no limit), `justify` (`false` to turn it off), `repeat`, `trim`
  * (`false`), `snap` (`words`, `paths`, or separator characters), `glyphs`,
  * `tooltip-title` (the `title` option), `copy`, `show-suffix`, `find`
  * (`keep`, `expand` or `false`), `auto-size` and `text` (else its content). The `options` property takes
@@ -176,6 +177,7 @@ export class ElideElement extends Base {
     }
     const copy = attr('copy');
     if (copy === 'full' || copy === 'visible') options.copy = copy;
+    options.repeat = flag('repeat');
     options.trim = flag('trim');
     const glyphMode = flag('glyphs');
     if (glyphMode !== undefined) options.glyphs = glyphMode ? glyphs : null;

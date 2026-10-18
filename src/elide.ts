@@ -27,7 +27,7 @@ import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, se
 import { type Justified, justify } from './justify.ts';
 import { type LineBox, contentEdges, contentHeight, holdStyle, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
-import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markStyleFor, styleMarks, toPx } from './marks.ts';
+import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markCount, markStyleFor, styleMarks, toPx } from './marks.ts';
 import { type Chain, UNIT_COPY, extentOf, graphemesWith, markCopies, originals, readMarkup, speak } from './markup.ts';
 import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
@@ -485,7 +485,8 @@ export class Elide {
     const before = this.#settings;
     this.#settings = { ...before, ...defined(rest) };
     const s = this.#settings;
-    const restyled = markStyleFor(s) !== this.#style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify);
+    const restyled =
+      markStyleFor(s) !== this.#style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify || s.repeat !== before.repeat);
     if (restyled || wraps(s.lines) !== wraps(before.lines)) {
       for (const join of this.#joins) this.#fillMarks(join);
       // The old measurements describe marks that are gone.
@@ -693,7 +694,7 @@ export class Elide {
     return join;
   }
 
-  /** The marks being drawn: `options.ellipsis`, unless `justify: 'dots'` needs it split into dots. */
+  /** The marks being drawn: `options.ellipsis`, unless `justify: 'dots'` or `repeat` needs it split into dots. */
   get markStyle(): EllipsisStyle {
     return this.#style;
   }
@@ -821,7 +822,7 @@ export class Elide {
   /** Mark measurements, read from the first ellipsis' computed style. */
   #markLayout(run: Run): MarkLayout {
     const first = this.#joins[0]!;
-    run.marks ??= layoutMarks(this.#style, getComputedStyle(first.ellipsis), first.marks.length);
+    run.marks ??= layoutMarks(this.#style, getComputedStyle(first.ellipsis), markCount(this.#style));
     return run.marks;
   }
 
@@ -1093,6 +1094,7 @@ export class Elide {
     const boxes = (): LineBox[] => (end === null ? lineBoxes(...this.#lineParts()) : [{ top: 0, bottom: 0, left: run.left, right: end }]);
     return {
       mode: this.#settings.justify,
+      repeat: this.#settings.repeat,
       maxGap: this.#settings.maxGap === null ? null : toPx(this.#settings.maxGap, run.marks!.fontSize),
       lines,
       // Truncated, lines break one after another (see `greedy`).
@@ -1100,10 +1102,11 @@ export class Elide {
       right: run.right,
       layout: run.marks!,
       plans,
-      characters: shownLength(this.#offsets, hidden, this.#joins[0]?.marks.length ?? 0),
+      characters: shownLength(this.#offsets, hidden, markCount(this.#style)),
       known: end !== null,
       boxes,
       lineOf: (j, boxes) => (end === null ? this.#lineOf(j, boxes) : 0),
+      measure: () => lineBoxes(...this.#lineParts()),
       fits: () => this.#measure(run),
       space: (j, left, right, inner) => space(this.#joins[j]!, left, right, inner),
       spread: (ls) => (this.#lineEl.style.letterSpacing = ls !== 0 ? `${run.letterSpacing + ls}px` : ''),

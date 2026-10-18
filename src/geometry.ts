@@ -62,7 +62,10 @@ export function markInks(instance: Elide, index = 0): DOMRect[] {
   const join = s.joins[index];
   const layout = s.run?.marks;
   if (!join || !layout || index >= (s.current?.hidden.length ?? 0)) return [];
-  return layout.metrics.length === join.marks.length ? markInk(layout, join.marks, join.ellipsis) : [];
+  // More marks than measured are repeated ones (see `MarkLayout.repeats`).
+  return join.marks.length === layout.metrics.length || (layout.repeats && join.marks.length > layout.metrics.length)
+    ? markInk(layout, join.marks, join.ellipsis)
+    : [];
 }
 
 /**

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>floating-ellipsis — justify modes</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      .modes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .mode {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        min-width: 0;
+      }
+      .name {
+        font: 500 13px/1 var(--mono);
+        color: var(--accent);
+        margin: 0 0 4px;
+      }
+      .about {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      .room {
+        outline: 1px dashed var(--line);
+        margin-bottom: 4px;
+        max-width: 100%;
+      }
+      .room[data-repeat='true'] {
+        outline: 1px solid var(--accent);
+        margin-bottom: 14px;
+      }
+      .label {
+        font: 12px/1 var(--mono);
+        color: var(--muted);
+        margin: 0 0 6px;
+      }
+      .path {
+        font: 13px/20px var(--mono);
+      }
+      .width {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        font: 13px/1 var(--mono);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="intro">
+      <p class="eyebrow"><a href="./">floating-ellipsis</a> <span>/ justify</span></p>
+      <h1>Where the <em>room</em> goes.</h1>
+      <p class="lede">
+        Cutting whole words or path segments leaves a lot of room on the line. Each <code>justify</code> mode puts it somewhere: between the
+        dots, around them, between the letters, or at the end. Under each line, outlined, the same with <code>repeat: true</code>, which
+        fills that room with more dots first. Drag the width.
+      </p>
+    </header>
+    <main class="block wide">
+      <label class="width"
+        >Room <input id="width" type="range" min="80" max="460" value="250" /> <output id="width-out">250px</output></label
+      >
+      <div class="modes" id="modes"></div>
+    </main>
+    <script type="module" src="./justify.ts"></script>
+  </body>
+</html>

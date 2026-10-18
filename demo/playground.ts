@@ -119,11 +119,12 @@ const ellipsisDials = createDialKit('Ellipsis', {
   dots: [3, 0, 7, 1],
   gap: { type: 'select', options: ['dots', 'natural', 'none'], default: 'dots' },
   justify: { type: 'select', options: ['dots', 'ellipsis', 'spread', 'off'], default: 'dots' },
+  repeat: false,
 });
 
 function update() {
   const { text, position, lines, keep, cutAt } = textDials.values;
-  const { style, dots, gap, justify } = ellipsisDials.values;
+  const { style, dots, gap, justify, repeat } = ellipsisDials.values;
   hero.update({
     text,
     position,
@@ -132,6 +133,7 @@ function update() {
     ellipsis: ellipsisStyle(style, dots),
     gap: gap as Gap,
     justify: justify === 'off' ? false : (justify as ElideOptions['justify']),
+    repeat,
     snap: cutAt === 'words' ? byWords : null,
   });
 }

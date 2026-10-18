@@ -62,6 +62,8 @@ export interface MarkLayout {
   runs: [number, number][] | null;
   /** Drawn marks: their inline style (see `styleMarks`). */
   css: string | null;
+  /** Every mark is the same, so `repeat` can add more of them. */
+  repeats: boolean;
 }
 
 export function toPx(value: Length, fontSize: number): number {
@@ -75,16 +77,21 @@ export function toPx(value: Length, fontSize: number): number {
 const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
 
 /**
- * The marks actually drawn. `justify: 'dots'` needs separate marks, so a
- * single glyph like '…' is redrawn as dots sized and placed like its own.
+ * The marks actually drawn. `justify: 'dots'` and `repeat` need separate
+ * marks, so a single glyph like '…' is redrawn as dots sized and placed like
+ * its own.
  */
-export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown }): EllipsisStyle {
+export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown; repeat: boolean }): EllipsisStyle {
   const e = settings.ellipsis;
-  if (settings.justify === 'dots' && typeof e === 'string' && graphemes(e).length === 1)
-    return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
+  const split = settings.justify === 'dots' || settings.repeat;
+  if (split && typeof e === 'string' && graphemes(e).length === 1) return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
 
   return e;
 }
+
+/** How many marks `style` draws (before `repeat` adds any). */
+export const markCount = (style: EllipsisStyle): number =>
+  typeof style === 'string' ? graphemes(style).length : Math.max(0, Math.round(style.count ?? 3));
 
 /** Create the mark elements for an ellipsis. */
 export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
@@ -96,7 +103,7 @@ export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
     return el;
   };
   if (typeof style === 'string') return graphemes(style).map(make);
-  return Array.from({ length: Math.max(0, Math.round(style.count ?? 3)) }, () => {
+  return Array.from({ length: markCount(style) }, () => {
     const el = make('');
     el.setAttribute('data-fp-shape', style.shape);
     return el;
@@ -168,6 +175,7 @@ function measureMarks(
         none ?? (single ? dotSpacing(font, marks[0]!) : natural.length > 0 ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
       runs: single ? inkRuns(font, marks[0]!) : null,
       css: null,
+      repeats: marks.length > 1 && marks.every((g) => g === marks[0]),
     };
   }
 
@@ -205,6 +213,7 @@ function measureMarks(
     rhythm,
     runs: null,
     css,
+    repeats: count > 0,
   };
 }
 
@@ -224,12 +233,13 @@ const styled = new WeakMap<HTMLElement, string>();
 
 /**
  * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`.
- * For a single glyph like '…' the dots are found in the glyph itself.
+ * For a single glyph like '…' the dots are found in the glyph itself. Marks
+ * past the layout's (repeated, see `MarkLayout.repeats`) are like its last.
  */
 export function markInk(layout: MarkLayout, marks: readonly HTMLElement[], ellipsis: HTMLElement): DOMRect[] {
   if (layout.drawn) return marks.map((m) => m.getBoundingClientRect());
   const baseline = ellipsis.getBoundingClientRect().top + layout.ascent;
-  const boxes = marks.map((el, i) => inkBox(layout.metrics[i]!, el.getBoundingClientRect().left, baseline));
+  const boxes = marks.map((el, i) => inkBox((layout.metrics[i] ?? layout.metrics.at(-1))!, el.getBoundingClientRect().left, baseline));
   const ink = boxes[0];
   if (boxes.length !== 1 || !ink || !layout.runs || layout.runs.length <= 1) return boxes;
   return layout.runs.map(([a, b]) => new DOMRect(ink.left + a, ink.top, b - a, ink.height));

@@ -74,8 +74,13 @@ export function drawMarks(join: Join, style: EllipsisStyle, glue: boolean): void
   join.ellipsis.replaceChildren(...join.drawn);
 }
 
-/** Margins around the join's ellipsis, and before each of its marks after the first (`inner`). */
+/**
+ * Margins around the join's ellipsis, and before each of its marks after the
+ * first (`inner`). An ellipsis with marks gets one more than `inner` has
+ * gaps: copies of its last are added or taken away (see `MarkLayout.repeats`).
+ */
 export function space(join: Join, left: number, right: number, inner: readonly number[]): void {
+  if (join.marks.length > 0 && join.marks.length !== inner.length + 1) repeat(join, inner.length + 1);
   const style = join.ellipsis.style;
   style.marginLeft = left !== 0 ? `${left}px` : '';
   style.marginRight = right !== 0 ? `${right}px` : '';
@@ -84,6 +89,20 @@ export function space(join: Join, left: number, right: number, inner: readonly n
     const before = inner[i - 1] ?? 0;
     mark.style.marginLeft = before !== 0 ? `${before}px` : '';
   });
+}
+
+/** Give the join `count` marks, copying its last or dropping the ones past `count`. */
+function repeat(join: Join, count: number): void {
+  const glued = join.drawn !== join.marks;
+  const last = join.marks.at(-1)!;
+  if (count < join.marks.length) {
+    for (const el of join.marks.splice(count)) el.remove();
+  } else {
+    const added = Array.from({ length: count - join.marks.length }, () => last.cloneNode(true) as HTMLSpanElement);
+    last.after(...added);
+    join.marks.push(...added);
+  }
+  if (glued) join.drawn = [join.drawn[0]!, ...join.marks, join.drawn.at(-1)!];
 }
 
 /** Put what the join's ellipsis hides in the document, before the ellipsis, or take it out. */

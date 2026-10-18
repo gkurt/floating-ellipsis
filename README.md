@@ -49,6 +49,7 @@ inline-block), see [Sized by content](#sized-by-content).
 | `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
 | `gap`      | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                            |
 | `justify`  | `'dots'`        | Where leftover room goes so lines end flush: `'dots'` (all gaps equal), `'ellipsis'` (the two outer gaps), `'spread'` (letter-spacing), or `false`. |
+| `repeat`   | `false`         | Fill the leftover room with more marks first, wherever another fits, so cutting whole words or path segments doesn't leave wide gaps.               |
 | `maxGap`   | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                            |
 | `trim`     | `true`          | Drop whitespace next to an ellipsis.                                                                                                                |
 | `snap`     | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                        |

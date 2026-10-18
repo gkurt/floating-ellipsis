@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { onChange } from '#src/changes.ts';
 import { type Position, separators, words } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
-import { ellipsisArea, ellipsisAt, ellipsisInk, ellipsisRect, graphemeAt, graphemeRect, markInks } from '#src/geometry.ts';
+import { ellipsisArea, ellipsisAt, ellipsisInk, ellipsisRect, graphemeAt, graphemeRect, lineRects, markInks } from '#src/geometry.ts';
+import type { ElideOptions } from '#src/options.ts';
 import {
   FONTS,
   PATH,
@@ -199,6 +200,70 @@ describe.each(FONTS)('elide in %s', (font) => {
     expect(widest(0.75 * em)).toBeLessThanOrEqual(0.75 * em + 0.01);
     // The same widths with no limit: the cap was doing something.
     expect(widest(null)).toBeGreaterThan(0.75 * em + 1);
+  });
+
+  it.each(['dots', 'ellipsis', 'spread', false] as const)('repeats marks into the room with justify %s', (justify) => {
+    // Whole words dropped leave more room than `maxGap` takes.
+    const long = 'Internationalization accessibility, localization and globalization considerations';
+    const cases: ElideOptions[] = [
+      { position: 'end' },
+      { position: 'middle' },
+      { position: 'end', ellipsis: { shape: 'bullet' } },
+      { position: 'end', ellipsis: '...' },
+      { position: 'end', lines: 2 },
+    ];
+    const maxGap = 0.75 * parseFloat(getComputedStyle(box('', `font:${font}`)).fontSize);
+    for (const options of cases) {
+      const t = make(box(long, `font:${font}`), { ...options, snap: words(), justify, repeat: true });
+      const without = make(box(long, `font:${font}`), { ...options, snap: words(), justify });
+      let repeated = 0;
+      for (const w of sweep(t, 140, 420, 11)) {
+        without.element.style.width = `${w}px`;
+        without.refresh();
+        expectFits(t, options.lines);
+        expectConsistent(t);
+        // The cut is the same: marks only go into the room it leaves. (A
+        // single '…' is drawn as dots to repeat them, a little narrower.
+        // Swept, a spread line can keep a narrower width's cut.)
+        if (justify === 'dots' || (options.ellipsis !== undefined && justify !== 'spread'))
+          expect(t.state.hidden).toEqual(without.state.hidden);
+        if (!t.truncated) continue;
+        // Flush, unless the gaps around the marks are already as wide as `maxGap` lets them get.
+        const capped = t.state.gaps.some((g) => [g.left, g.right].some((v) => v !== null && v >= maxGap - 0.01));
+        if (justify !== false && !capped) expectFlush(t);
+        t.ellipses.forEach((_, j) => {
+          const marks = markInks(t, j);
+          const base = markInks(without, j).length;
+          expect(marks.length).toBeGreaterThanOrEqual(base);
+          if (marks.length > base) repeated++;
+          const { left, right, inner } = inkGaps(t, j);
+          for (const g of inner) expect(g).toBeCloseTo(inner[0]!, 0);
+          const step = marks[0]!.width + inner[0]!;
+          if (justify === 'dots' || justify === 'ellipsis') {
+            // The gaps grow by less than another mark would take.
+            const at = without.state.gaps[j]!;
+            for (const [g, rest] of [
+              [left, at.target],
+              [right, at.target],
+              [inner.at(-1)!, inkGaps(without, j).inner[0] ?? null],
+            ] as const)
+              if (g !== null && rest !== null) expect(g - rest).toBeLessThan(step + 0.5);
+          }
+        });
+        if (justify === false) {
+          // What's left at the end is too little for another mark (and the
+          // quarter pixel a line stays inside the edge, and rounding).
+          const line = lineRects(t).at(-1)!;
+          expect(content(t.element).right - line.right).toBeLessThan(markInks(t, 0)[0]!.width + inkGaps(t, 0).inner[0]! + 1);
+        }
+      }
+      expect(repeated).toBeGreaterThan(0);
+      // Off again, only the ellipsis' own marks are left.
+      t.update({ repeat: false });
+      if (t.truncated) expect(markInks(t, 0)).toHaveLength(markInks(without, 0).length);
+      t.destroy();
+      without.destroy();
+    }
   });
 
   it('keeps what it is told to', () => {

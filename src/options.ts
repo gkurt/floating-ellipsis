@@ -59,6 +59,16 @@ export interface ElideOptions {
    */
   justify?: 'ellipsis' | 'dots' | 'spread' | false;
   /**
+   * Where justifying leaves room for another mark, add one, so a lot of
+   * room (a word or a path segment cut whole) fills with marks rather than
+   * wide gaps. With `justify: 'dots'` a mark goes in wherever it fits with
+   * every gap as wide as it was; with 'ellipsis', wherever it fits spaced
+   * like the other marks, the two gaps around them taking the rest. Only
+   * marks that are all the same are repeated (drawn marks, '...', and '…'
+   * split into dots). Default false.
+   */
+  repeat?: boolean;
+  /**
    * The widest an ink gap next to or inside an ellipsis gets from justifying
    * ('dots' and 'ellipsis'): px, or a string like '0.75em'. Room past it
    * stays at the end of the line, which then isn't flush: a long word that
@@ -122,6 +132,7 @@ export const DEFAULTS: Settings = {
   ellipsis: '…',
   gap: 'dots',
   justify: 'dots',
+  repeat: false,
   maxGap: '0.75em',
   trim: true,
   snap: null,

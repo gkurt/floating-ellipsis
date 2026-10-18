@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 
-// The demo is four pages: the home page, the playground, the crowded table, and elements sized by their content.
+// The demo is five pages: the home page, the playground, the crowded table, elements sized by their content, and the justify modes side by side.
 export default defineConfig({
   build: {
     rolldownOptions: {
@@ -12,6 +12,7 @@ export default defineConfig({
         playground: page('playground.html'),
         table: page('table.html'),
         autosize: page('autosize.html'),
+        justify: page('justify.html'),
       },
     },
   },

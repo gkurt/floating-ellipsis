@@ -63,6 +63,23 @@ Implementation details behind the behaviour described in the
    been off by more than that tenth of a pixel (as in WebKit on Linux). No
    gap grows past `maxGap`: room a long wrapping word leaves behind stays at
    the line's end.
+
+   With `repeat`, marks go into that room first, copies of the ellipsis' last
+   (so only marks that are all the same repeat: drawn ones, `'...'`, and a
+   single `'…'`, which is drawn as dots for it). With `justify: 'dots'` one
+   goes in wherever it fits with every gap as wide as it was, so the gaps
+   only grow by what's too little for another mark; where they would still
+   grow past `maxGap`, one more goes in and they close up a little. With
+   `'ellipsis'` (and `'spread'` on more than one line) they go in spaced like
+   the other marks, and the two gaps around them take the rest, up to
+   `maxGap`, then the gaps between the marks. With `'spread'` they go in
+   before the letter-spacing, which spreads only what's left; with `false`
+   what's too little for one more stays at the line's end. Each mark's size
+   and margins are rounded to layout's units, which adds up over many marks:
+   a line with marks added is read once more, and what's off goes into its
+   last ellipsis' gaps. The cut is the same as without `repeat`, except that
+   a single `'…'` drawn as dots is a hair narrower.
+
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
    only its neighbours change, so animations and hover state survive resizes.
    When truncating changes the element's height inside the resize observer's

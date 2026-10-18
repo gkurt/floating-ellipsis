@@ -29,7 +29,9 @@ to try from the console. `/table.html` is a crowded table
 (up to 2,500 rows, four truncated cells each, as a `<table>` or grid rows) with
 tooltips and a search that keeps and highlights matches. `/autosize.html` shows elements sized by their content (a
 chip, a flex item, an inline-block) with and without `autoSize`, under a
-slider for the room they have.
+slider for the room they have. `/justify.html` shows each `justify` mode with
+and without `repeat`, on cuts that leave a lot of room (whole words, path
+segments), under a slider for the width.
 
 `/video.html` plays a short video of the features, scene by scene (`?scene=N`
 starts at one). `bun run video` records it frame by frame into

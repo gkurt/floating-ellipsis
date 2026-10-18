@@ -11,6 +11,8 @@ import type { ElideOptions, GapInfo } from './options.ts';
 /** The rendered text being justified. */
 export interface Justified {
   mode: ElideOptions['justify'];
+  /** Add marks where there is room for them (see `ElideOptions.repeat`). */
+  repeat: boolean;
   /** How many lines the text is on. Filling a line mustn't change it. */
   lines: number;
   /**
@@ -36,6 +38,8 @@ export interface Justified {
   /** Reads layout: the lines, the line ellipsis `j` is on, and whether the text fits. */
   boxes: () => LineBox[];
   lineOf: (j: number, boxes: LineBox[]) => number;
+  /** Reads layout: the lines as laid out, even when `known`. */
+  measure: () => LineBox[];
   fits: () => { ok: boolean; lines: number };
   /** Writes: margins around and inside ellipsis `j`, or extra letter-spacing for the line. */
   space: (j: number, left: number, right: number, inner: readonly number[]) => void;
@@ -55,7 +59,8 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
     ...plan,
     left: plan.naturalLeft === null ? null : plan.naturalLeft + left + extra,
     right: plan.naturalRight === null ? null : plan.naturalRight + right + extra,
-    inner: layout.natural.map((v, i) => v + (inner[i] ?? 0) + extra),
+    // Repeated marks (see `MarkLayout.repeats`) are like the last.
+    inner: inner.map((v, i) => (layout.natural[i] ?? layout.natural.at(-1) ?? 0) + v + extra),
     slack,
   });
   const infos = plans.map((p) => info(p, p.marginLeft, p.marginRight, layout.inner, 0, 0));
@@ -71,7 +76,17 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   let room = 0;
   for (const line of byLine.keys()) room += Math.max(0, edge - boxes[line]!.right);
   const mode = t.mode;
-  if (mode === undefined || mode === false || room <= 0) return { gaps: infos, slack: room };
+  const repeat = t.repeat && layout.repeats;
+  if (((mode === undefined || mode === false) && !repeat) || room <= 0) return { gaps: infos, slack: room };
+  // A repeated mark takes its ink, and a gap like the ones between the marks.
+  const mark = layout.metrics[0] ? layout.metrics[0].left + layout.metrics[0].right : 0;
+  const between = layout.natural.at(-1) ?? 0;
+  const step = layout.natural.length > 0 ? between + layout.inner.at(-1)! : (layout.rhythm ?? 0);
+  /** How many marks spaced `gap` from the one before fit in `room`. */
+  const marksIn = (room: number, gap: number) => (repeat && mark + gap > 0 ? Math.max(0, Math.floor(room / (mark + gap) + 1e-6)) : 0);
+  /** The space before each mark after the first, with `added` more spaced like the others. */
+  const withMarks = (added: number) =>
+    added > 0 ? [...layout.inner, ...Array.from({ length: added }, () => step - between)] : layout.inner;
 
   const holds = (line: number, ellipses: number[]) => {
     const m = t.fits();
@@ -86,10 +101,11 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
   const insets = t.sure ? [0.25] : [1 / 16, 0.25, 1];
 
   if (mode === 'spread' && t.lines === 1) {
-    // Letter-spacing goes after every character; drawn marks get the same
-    // as margins. Measure how the line grows rather than count characters.
-    // Firefox rounds letter-spacing to 1/60 px, so it is snapped down to
-    // that, and what that leaves over goes into the ellipses' gaps.
+    // Repeated marks go in first, spaced like the others. Letter-spacing
+    // goes after every character; drawn marks get the same as margins.
+    // Measure how the line grows rather than count characters. Firefox
+    // rounds letter-spacing to 1/60 px, so it is snapped down to that, and
+    // what that leaves over goes into the ellipses' gaps.
     const snap = (ls: number) => Math.floor(ls * 60 + 1e-6) / 60;
     const sidesOf = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
     const sides = plans.reduce((sum, p) => sum + sidesOf(p), 0);
@@ -98,7 +114,7 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
       return {
         left: p.marginLeft + (p.naturalLeft !== null ? each : 0),
         right: p.marginRight + (p.naturalRight !== null ? each : 0) + (layout.drawn ? ls : 0),
-        inner: layout.drawn ? layout.inner.map((v) => v + ls) : layout.inner,
+        inner: layout.drawn ? withMarks(added).map((v) => v + ls) : withMarks(added),
       };
     };
     const apply = (ls: number, rest: number) => {
@@ -108,9 +124,23 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
         t.space(j, m.left, m.right, m.inner);
       });
     };
-    const start = boxes[0]!.right;
+    // As many as fit however far inside the edge the line ends.
+    const added = marksIn((room - insets.at(-1)!) / plans.length, step);
+    let start = boxes[0]!.right;
+    if (added > 0) {
+      yield* phase.write();
+      apply(0, 0);
+      yield* phase.read();
+      start = t.boxes()[0]?.right ?? start;
+    }
+    const filled = start - boxes[0]!.right;
+    const result = (ls: number, rest: number, slack: number) =>
+      plans.map((p) => {
+        const m = margins(p, 0, rest);
+        return info(p, m.left, m.right, m.inner, ls, filled / plans.length + slack);
+      });
     for (const inset of insets) {
-      const slack = room - inset;
+      const slack = room - filled - inset;
       if (slack <= 0) break;
       const probe = snap(slack / Math.max(1, t.characters));
       let grown = 0;
@@ -121,26 +151,34 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
         grown = (t.boxes()[0]?.right ?? start) - start;
       }
       const ls = grown > 0 ? snap((probe * slack) / grown) : 0;
-      const rest = sides > 0 ? slack - (grown > 0 ? (grown * ls) / probe : 0) : 0;
+      let rest = sides > 0 ? slack - (grown > 0 ? (grown * ls) / probe : 0) : 0;
       yield* phase.write();
       apply(ls, rest);
       yield* phase.read();
-      if (holds(0, [...plans.keys()])) {
-        const gaps = plans.map((p) => {
-          const m = margins(p, 0, rest);
-          return info(p, m.left, m.right, layout.inner, ls, slack / plans.length);
-        });
-        return { gaps, slack: room };
+      // Repeated marks' margins are rounded too (see below).
+      const off = edge - inset - (t.boxes()[0]?.right ?? edge - inset);
+      if (added > 0 && sides > 0 && off !== 0 && Math.abs(off) < 0.5 + added / 32) {
+        rest += off;
+        yield* phase.write();
+        apply(ls, rest);
+        yield* phase.read();
       }
+      if (holds(0, [...plans.keys()])) return { gaps: result(ls, rest, slack / plans.length), slack: room };
     }
     yield* phase.write();
     apply(0, 0);
-    return { gaps: infos, slack: room };
+    return { gaps: result(0, 0, 0), slack: room };
   }
 
   const dots = mode === 'dots';
+  // Not justified: repeated marks go in, and what's too little for one stays at the end.
+  const grows = mode !== undefined && mode !== false;
   const sides = (p: GapPlan) => (p.naturalLeft !== null ? 1 : 0) + (p.naturalRight !== null ? 1 : 0);
-  const gapsOf = (p: GapPlan) => sides(p) + (dots ? layout.natural.length : 0);
+  const gapsOf = (p: GapPlan) => {
+    const gaps = sides(p) + (dots ? layout.natural.length : 0);
+    // Without sides (every grapheme hidden) a repeated mark still has room.
+    return gaps === 0 && repeat ? 1 : gaps;
+  };
 
   for (const line of [...byLine.keys()].sort((a, b) => a - b)) {
     const ellipses = byLine.get(line)!;
@@ -153,7 +191,8 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
       if (slack <= 0) break;
       // Each ellipsis takes a share in proportion to the gaps it spreads it over.
       yield* phase.write();
-      const tried = new Map<number, GapInfo>();
+      const spaced: { j: number; left: number; right: number; inner: readonly number[]; used: number }[] = [];
+      let repeated = 0;
       for (const j of ellipses) {
         const p = plans[j]!;
         const count = gapsOf(p);
@@ -171,24 +210,58 @@ export function* justify(t: Justified, phase: Phase): Generator<void, { gaps: Ga
             ...(p.naturalRight !== null ? [p.naturalRight + p.marginRight] : []),
           ];
           const sum = current.reduce((total, v) => total + v, 0);
+          // Another mark goes in wherever it fits with every gap still as
+          // wide as it was: the gaps only grow by what's too little for one.
+          // Gaps that would grow past `maxGap` take another, a little closer.
+          const capped = repeat && cap < Infinity ? Math.ceil((sum + share - cap * count) / (cap + mark) - 1e-6) : 0;
+          const added = Math.max(marksIn(share, sum / count), capped);
+          const gaps = count + added;
           // As wide as `maxGap` allows, but never taking room away.
-          const even = Math.max(sum / count, Math.min((sum + share) / count, cap));
+          const fill = (sum + share - added * mark) / gaps;
+          const even = added > 0 ? Math.min(fill, cap) : Math.max(sum / count, Math.min(fill, cap));
           if (p.naturalLeft !== null) left = even - p.naturalLeft;
           if (p.naturalRight !== null) right = even - p.naturalRight;
-          inner = layout.natural.map((v) => even - v);
-          used = Math.max(0, even * count - sum);
+          inner = Array.from({ length: layout.natural.length + added }, (_, i) => even - (layout.natural[i] ?? between));
+          used = Math.max(0, even * gaps + added * mark - sum);
+          repeated += added;
         } else {
-          const each = share / count;
+          // Marks spaced like the others go in wherever they fit, and the
+          // two gaps around the ellipsis take what's too little for one, as
+          // far as `maxGap` lets them: past it, the gaps between the marks.
+          const added = marksIn(share, step);
+          const rest = grows ? share - added * (mark + step) : 0;
+          const each = rest / Math.max(1, sides(p));
           const grow = (natural: number | null, margin: number) =>
             natural === null ? 0 : Math.max(0, Math.min(each, cap - natural - margin));
           const [l, r] = [grow(p.naturalLeft, left), grow(p.naturalRight, right)];
+          const gaps = layout.natural.length + added;
+          const spread = repeat && gaps > 0 ? Math.max(0, Math.min((rest - l - r) / gaps, cap - step)) : 0;
           left += l;
           right += r;
-          used = l + r;
+          inner = withMarks(added).map((v) => v + spread);
+          used = l + r + added * (mark + step) + spread * gaps;
+          repeated += added;
         }
         t.space(j, left, right, inner);
-        tried.set(j, info(p, left, right, inner, 0, used));
+        spaced.push({ j, left, right, inner, used });
       }
+      // Each repeated mark's size and margins are rounded to layout's units,
+      // which adds up: what's off goes into the last ellipsis' gaps.
+      const last = spaced.at(-1);
+      if (grows && repeated > 0 && last) {
+        yield* phase.read();
+        const off = edge - inset - (t.measure()[line]?.right ?? edge - inset);
+        if (off !== 0 && Math.abs(off) < 0.5 + repeated / 32) {
+          yield* phase.write();
+          const p = plans[last.j]!;
+          if (p.naturalRight !== null) last.right += off;
+          else if (p.naturalLeft !== null) last.left += off;
+          else if (last.inner.length > 0) last.inner = [...last.inner.slice(0, -1), last.inner.at(-1)! + off];
+          last.used += off;
+          t.space(last.j, last.left, last.right, last.inner);
+        }
+      }
+      const tried = new Map(spaced.map((s) => [s.j, info(plans[s.j]!, s.left, s.right, s.inner, 0, s.used)]));
       if (!t.sure) yield* phase.read();
       if (t.sure || holds(line, ellipses)) {
         for (const [j, g] of tried) infos[j] = g;
