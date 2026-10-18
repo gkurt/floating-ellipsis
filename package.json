@@ -131,6 +131,7 @@
     "dev": "vite demo --port 4181 --strictPort",
     "build": "tsdown",
     "build:site": "vite build demo --base ./ --outDir ../out/site --emptyOutDir",
+    "video": "node scripts/video.ts",
     "typecheck": "tsc",
     "lint": "oxlint",
     "format": "oxfmt",

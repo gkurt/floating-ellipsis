@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1280" />
+    <title>floating-ellipsis — video</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./video.css" />
+  </head>
+  <body>
+    <!-- A 1280×720 frame, played as a script of scenes. `scripts/video.ts` records it; `?scene=4` starts at a scene. -->
+    <div class="frame" id="frame">
+      <p class="brand">floating-ellipsis</p>
+      <p class="counter" id="counter"></p>
+      <div class="scenes" id="scenes"></div>
+      <svg class="cursor" id="cursor" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+        <path d="M5 3.5v18.2l4.6-4.3 3 6.9 3.3-1.4-3-6.8h6.4z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round" />
+      </svg>
+    </div>
+    <script type="module" src="./video.ts"></script>
+  </body>
+</html>

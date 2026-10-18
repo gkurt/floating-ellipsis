@@ -25,6 +25,11 @@ a search that keeps and highlights matches. In the playground, `window.hero`,
 `window.keepExamples` and `window.pathInstances` are live instances to try
 from the console.
 
+`/video.html` plays a short video of the features, scene by scene (`?scene=N`
+starts at one). `bun run video` records it frame by frame into
+`out/video/floating-ellipsis.mp4` (1920×1080, 60fps, H.264, for sharing); it
+needs ffmpeg on the PATH.
+
 ## Releasing
 
 Releases go through [Tegami](https://tegami.fuma-nama.dev) (config in

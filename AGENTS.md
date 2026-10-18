@@ -14,6 +14,7 @@ bun run size       # Gzipped size of each entry, as an app bundles it, against i
 bun typecheck      # Type check (TypeScript 7, native tsc)
 bun run build      # dist/ via tsdown (one entry per subpath export, with .d.ts)
 bun run build:site # Demo as a static site in out/site (deployed to GitHub Pages)
+bun run video      # Records demo/video.html into out/video/floating-ellipsis.mp4 (needs ffmpeg)
 bun run lint       # Lint
 bun run format     # Format
 bun run fix        # Lint + format + autofix
@@ -50,7 +51,7 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/suffix.ts` — `floating-ellipsis/suffix`: `suffix(content, { show })`, the `suffix` option's value: content after the line, never cut.
 - `src/transitions.ts` — optional add-on (`floating-ellipsis/transitions`): animates glyphs entering/leaving (merge, fade, blur) from `ElideChange` diffs.
 - `src/tooltip.ts` — optional add-on (`floating-ellipsis/tooltip`): a headless tooltip on the public instance API and `geometry`. Shows the full text grown from the line, or what one ellipsis hides; owns delays, placement, the grow animation and selecting text in the tip, and leaves the looks to CSS (`data-fp-tip*` hooks).
-- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance and search highlights, both with tooltips, and shared UI helpers (`ui.ts`).
+- `demo/` — the Vite demo: the playground (`index.html`, `main.ts`), a crowded table (`table.html`, `table.ts`) for performance and search highlights, both with tooltips, a scripted video of the features (`video.html`, `video.ts`; recorded by `scripts/video.ts`), and shared UI helpers (`ui.ts`).
 - `src/fallback.css` — `floating-ellipsis/fallback.css`: plain CSS truncation for `[data-elide-fallback]` until an instance marks the element `data-elide`. Copied to `dist/` by tsdown.
 - `scripts/size.ts` — per-entry size budgets, checked in CI. Raise a budget only in the change that needs it.
 - `scripts/tegami.mts` — Tegami release config; `.tegami/` holds pending changelog entries; `.github/workflows/release.yml` (+ the `tegami-pr*.yml` preview pair) versions and publishes.
