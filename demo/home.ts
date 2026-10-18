@@ -324,7 +324,14 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
     row.append(strip);
     box.insertBefore(row, $('.handle', box));
   }
-  setCode('autosizeCode', "elide(chip, { position: «'middle'», autoSize: autoSize() })");
+  const row = el('div', 'labeled-row', "<code>lines: 'fit'</code>");
+  const card = el('div', 'fit-card');
+  const para = el('p', '', river);
+  card.append(para);
+  row.append(card);
+  box.insertBefore(row, $('.handle', box));
+  transitions(elide(para, { lines: 'fit', position: 0.6 }), calm);
+  setCode('autosizeCode', "elide(chip, { autoSize: autoSize() })   elide(p, { lines: «'fit'» })");
   stage(box, [0.4, 1]);
 }
 

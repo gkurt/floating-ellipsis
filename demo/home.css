@@ -351,6 +351,27 @@ input.track:focus-visible {
   white-space: nowrap;
 }
 
+/* 10: a card as tall as you drag it, its text fitted to that. */
+.fit-card {
+  display: flex;
+  flex-direction: column;
+  height: 9.5em;
+  min-height: 3.5em;
+  max-height: 24em;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font: 15px/1.5 var(--sans);
+  resize: vertical;
+  overflow: hidden;
+}
+.fit-card p {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+
 /* 11: icons and mentions, kept whole. */
 .scene .line .icon {
   vertical-align: -0.12em;
