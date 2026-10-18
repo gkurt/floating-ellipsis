@@ -7,6 +7,7 @@ import { transitions } from '#src/transitions.ts';
 import {
   calm,
   code,
+  fading,
   fast,
   fileIcon,
   hero,
@@ -133,7 +134,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   const line = $('#positionLine');
   line.textContent = hero;
   const t = elide(line, { position: 1, glyphs });
-  transitions(t, fast);
+  transitions(t, fading);
   const track = $<HTMLInputElement>('#positionTrack');
   const go = () => {
     const v = Number(track.value);
@@ -291,7 +292,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   line.textContent = quote;
   const n = [...new Intl.Segmenter().segment(quote)].length;
   const t: Elide = elide(line, { position: 0.5, glyphs });
-  transitions(t, fast);
+  transitions(t, fading);
   setCode('lensCode', 'keep: { start: «0», end: «0» }, position: «0.50»');
   lensStage.addEventListener('pointermove', (e) => {
     const r = line.getBoundingClientRect();

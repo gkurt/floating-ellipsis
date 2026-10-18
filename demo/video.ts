@@ -6,6 +6,7 @@ import { type TransitionOptions, transitions } from '#src/transitions.ts';
 import {
   calm,
   code,
+  fading,
   fast,
   fileIcon,
   hero,
@@ -232,7 +233,7 @@ async function position() {
   track.append(knob);
   s.stage.append(box(1000, line), track);
   track.style.width = '1000px';
-  const t = s.elide(line, { position: 1, glyphs }, fast);
+  const t = s.elide(line, { position: 1, glyphs }, fading);
   const go = (v: number) => {
     t.update({ position: v });
     knob.style.left = `${v * 100}%`;
@@ -462,7 +463,7 @@ async function lens() {
   b.classList.add('quiet');
   s.stage.append(b, el('p', 'lens-hint', '— Ada Lovelace, 1843'));
   const n = [...new Intl.Segmenter().segment(quote)].length;
-  const t = s.elide(line, { position: 0.5, glyphs }, fast);
+  const t = s.elide(line, { position: 0.5, glyphs }, fading);
   const look = () => {
     const r = b.getBoundingClientRect();
     const { options, src } = lensAt(Math.min(1, Math.max(0, (pointer.x - r.left) / r.width)), n);

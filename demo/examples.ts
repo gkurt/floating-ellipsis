@@ -7,6 +7,8 @@ import type { TransitionOptions } from '#src/transitions.ts';
 export const calm: TransitionOptions = { effect: 'merge' };
 /** For text that changes every frame: gliding spacing would trail behind it. */
 export const fast: TransitionOptions = { effect: 'merge', glide: false };
+/** For a cut that follows a pointer or a slider: glyphs merging behind it read as smears, so they fade in place. */
+export const fading: TransitionOptions = { effect: 'fade', glide: false };
 
 /** Markup for code: `f(…)` functions, `k:` keys, `«…»` values, `//` comments. */
 export function code(src: string) {
