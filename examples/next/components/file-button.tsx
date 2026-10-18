@@ -1,6 +1,7 @@
 import { Elided } from 'floating-ellipsis/react';
-import { FileText } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { nameOf } from '@/lib/files';
 
 /**
  * A shadcn Button with a path cut in the middle, the file name kept. A Server
@@ -9,11 +10,10 @@ import { Button } from '@/components/ui/button';
  * the room left (`flex-1`) and may shrink below its content (`min-w-0`).
  */
 export function FileButton({ path }: { path: string }) {
-  const name = path.slice(path.lastIndexOf('/') + 1);
   return (
-    <Button variant="outline" className="w-72 justify-start" data-testid="file-button">
-      <FileText />
-      <Elided as="span" text={path} position="middle" keep={name} className="min-w-0 flex-1 text-left" />
+    <Button variant="outline" className="w-full justify-start font-mono text-xs" data-testid="file-button">
+      <ExternalLink className="text-muted-foreground" />
+      <Elided as="span" text={path} position="middle" keep={nameOf(path)} className="min-w-0 flex-1 text-left" />
     </Button>
   );
 }

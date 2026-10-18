@@ -130,6 +130,34 @@ describe('React', () => {
     expect(el.hasAttribute('data-truncated')).toBe(true);
   });
 
+  it('Elided hands its instance to instanceRef once mounted, and cleans up after it', async () => {
+    const { root, container } = mount();
+    const log: string[] = [];
+    const attach = (t: Elide | null) => {
+      log.push(t ? `attach ${t.element.className}` : 'null');
+      return () => void log.push('detach');
+    };
+    const object = createRef<Elide>();
+    const render = (text: string) =>
+      flushSync(() =>
+        root.render([
+          createElement(Elided, { key: 'a', instanceRef: attach, text, className: 'a', style: { width: 200 } }),
+          createElement(Elided, { key: 'b', instanceRef: object, text, className: 'b', style: { width: 200 } }),
+        ]),
+      );
+    render(PATH);
+    await frames(1);
+    expect(log).toEqual(['attach a']);
+    expect(object.current?.element).toBe(container.querySelector('.b'));
+    // A re-render with the same callback and instance leaves them be.
+    render(`${PATH}/more`);
+    await frames(1);
+    expect(log).toEqual(['attach a']);
+    flushSync(() => root.render(null));
+    expect(log).toEqual(['attach a', 'detach']);
+    expect(object.current).toBeNull();
+  });
+
   it('useElide keeps the instance in step, and only updates on real changes', async () => {
     const { root } = mount();
     let instance: Elide | null = null;

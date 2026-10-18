@@ -3,6 +3,7 @@
 import { Elided } from 'floating-ellipsis/react';
 import { useRef, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { TRIGGER } from '@/lib/utils';
 
 /**
  * The full text in a shadcn Tooltip (Radix), opened only while the text is
@@ -15,9 +16,9 @@ export function PathTooltip({ path }: { path: string }) {
   return (
     <Tooltip open={open} onOpenChange={(next) => setOpen(next && trigger.current?.hasAttribute('data-truncated') === true)}>
       <TooltipTrigger asChild>
-        <Elided ref={trigger} text={path} position="middle" tabIndex={0} className="w-60 rounded-sm" data-testid="radix-trigger" />
+        <Elided ref={trigger} text={path} position="middle" tabIndex={0} className={TRIGGER} data-testid="radix-trigger" />
       </TooltipTrigger>
-      <TooltipContent className="max-w-sm break-all">{path}</TooltipContent>
+      <TooltipContent className="max-w-sm font-mono break-all">{path}</TooltipContent>
     </Tooltip>
   );
 }

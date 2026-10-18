@@ -1,13 +1,15 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (@media (prefers-color-scheme: dark));
 
-/* shadcn/ui's neutral theme. */
+/* shadcn/ui's neutral theme, with a violet accent of our own (`--brand`). */
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
@@ -22,33 +24,47 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
+  --brand: oklch(0.56 0.22 285);
+  --canvas: oklch(0.975 0.004 285);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: oklch(0.17 0.006 285);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0.006 285);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.23 0.008 285);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.24 0.006 285);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.27 0.008 285);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --brand: oklch(0.72 0.17 285);
+    --canvas: oklch(0.13 0.008 285);
+  }
 }
 
 @theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -63,6 +79,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-canvas: var(--canvas);
 }
 
 @layer base {
@@ -70,6 +88,67 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-foreground;
   }
+}
+
+/* The ellipses, in the accent. */
+[data-fp-ellipsis] {
+  color: var(--brand);
+}
+
+/* floating-ellipsis/tooltip lays its tips out (one over the line takes the
+   text's font, so its glyphs land on the line's); this is how they look, as a
+   shadcn popover. The background is a layer of its own, so it grows without
+   reflowing the text. */
+[data-fp-tip] {
+  z-index: 50;
+  padding: 2px 8px;
+  color: var(--popover-foreground);
+}
+[data-fp-tip-bg] {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.05),
+    0 16px 40px -12px rgb(0 0 0 / 0.25);
+}
+/* The dots the text grows out of, fading. */
+[data-fp-tip] [data-fp-mark] {
+  color: var(--brand);
+}
+
+/* What one ellipsis hides, beside it, with an arrow pointing at it: dark,
+   like shadcn's own tooltip. */
+[data-fp-tip='peek'] {
+  padding: 5px 10px;
+  max-width: min(360px, 90vw);
+  color: var(--background);
+  font: 500 12px/16px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+[data-fp-tip='peek'] [data-fp-tip-bg] {
+  background: var(--foreground);
+  border: 0;
+}
+[data-fp-tip='peek']::after {
+  content: '';
+  position: absolute;
+  left: var(--fp-tip-anchor);
+  top: 100%;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--foreground);
+  transform: translate(-50%, -60%) rotate(45deg);
+}
+[data-fp-tip='peek'][data-side='bottom']::after {
+  top: 0;
+  transform: translate(-50%, -40%) rotate(45deg);
+}
+/* The ellipsis whose text is showing. */
+[data-fp-ellipsis][data-fp-tip-open] {
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--brand) 16%, transparent);
 }

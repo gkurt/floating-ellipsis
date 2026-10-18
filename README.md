@@ -268,6 +268,18 @@ import { vElide } from 'floating-ellipsis/vue';
 <div use:elide={{ text: path, position: 'middle' }}></div>
 ```
 
+`<Elided>` hands its instance to `instanceRef` once mounted, for the add-ons;
+a callback may return its cleanup. Keep it stable (module-level or
+`useCallback`), or it detaches and attaches on every render:
+
+```jsx
+// Made on first use: ref callbacks only run in the browser.
+let tips;
+const attach = (t) => t && (tips ??= tooltip({ breaks: '/' })).attach(t, t.element.closest('tr') ?? t.element);
+
+<Elided text={path} position="middle" instanceRef={attach} />;
+```
+
 React (18+) is an optional peer dependency. In virtual lists, either recycle
 instances with `update({ text })` or mount one per row; both cost the same.
 
@@ -277,7 +289,8 @@ instances with `update({ text })` or mount one per row; both cost the same.
 Components render `<Elided>` as is. With `fallback.css` imported in the layout,
 static and server-rendered pages show the text cut at the end until they
 hydrate. Props from a Server Component must serialize: `keep` as a string, not
-a RegExp; set `snap`, `onChange`, `glyphs` and `suffix` in a Client Component.
+a RegExp; set `snap`, `onChange`, `glyphs`, `suffix` and `instanceRef` in a
+Client Component.
 
 `<Elided>` passes its `ref` (React 19) and other props to its element, so it can be the
 child of a Radix `asChild` or a Base UI `render` prop:
@@ -296,8 +309,9 @@ child of a Radix `asChild` or a Base UI `render` prop:
 
 In flex rows, give the text `min-w-0 flex-1`; in tables, use `table-fixed`. To
 open a tooltip only while the text is cut, check the trigger's `data-truncated`
-in `onOpenChange`. [`examples/next`](examples/next) has these as shadcn
-components (buttons, Radix and Base UI tooltips, a table), static and
+in `onOpenChange`. [`examples/next`](examples/next) is a file browser built
+from shadcn components (buttons, Radix and Base UI tooltips, a table, cards)
+with floating-ellipsis's own tooltips grown over the rows, static and
 server-rendered.
 
 ## Transitions

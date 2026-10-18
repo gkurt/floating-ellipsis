@@ -6,6 +6,12 @@
       "runtimeExecutable": "bunx",
       "runtimeArgs": ["vite", "demo", "--port", "4182", "--strictPort"],
       "port": 4182
+    },
+    {
+      "name": "next",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "examples/next", "dev"],
+      "port": 4191
     }
   ]
 }

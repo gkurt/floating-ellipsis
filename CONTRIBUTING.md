@@ -35,9 +35,10 @@ needs ffmpeg on the PATH.
 
 ## Next.js example
 
-`examples/next` is a Next.js app (App Router) with shadcn/ui components that use
-the React binding: a button, tooltips on Radix and on Base UI, and a table. `/`
-is generated at build time, `/ssr?path=…` renders on each request. It resolves
+`examples/next` is a Next.js app (App Router): a file browser in a resizable
+window, built from shadcn/ui components that use the React binding (a button,
+tooltips on Radix and on Base UI, a table, cards), with `floating-ellipsis/tooltip`
+attached through `instanceRef` (`components/tips.ts`). `/` is generated at build time, `/ssr?path=…` renders on each request. It resolves
 `floating-ellipsis` to the built `dist/` (tsconfig `paths`), so it runs what an
 app installs, `'use client'` included.
 
@@ -45,8 +46,9 @@ app installs, `'use client'` included.
 runs Playwright (`examples/next/tests`) against `next start` in Chromium,
 Firefox and WebKit and against `next dev` in Chromium: the HTML carries the
 text for `fallback.css`, the page hydrates with nothing logged, every instance
-fits its box, and the tooltips open only while text is cut. It uses ports 4191
-and 4192.
+fits its box, the window refits what it holds as it's dragged, the tips grow
+and peek, and the Radix and Base UI tooltips open only while text is cut. It
+uses ports 4191 and 4192 (`bun run --cwd examples/next dev` serves it on 4191).
 
 ## Releasing
 

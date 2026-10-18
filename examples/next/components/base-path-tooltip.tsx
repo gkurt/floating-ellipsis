@@ -3,6 +3,7 @@
 import { Elided } from 'floating-ellipsis/react';
 import { useRef, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/base/tooltip';
+import { TRIGGER } from '@/lib/utils';
 
 /**
  * The same with shadcn's Base UI Tooltip: `Elided` is the trigger's `render`
@@ -14,9 +15,9 @@ export function BasePathTooltip({ path }: { path: string }) {
   return (
     <Tooltip open={open} onOpenChange={(next) => setOpen(next && trigger.current?.hasAttribute('data-truncated') === true)}>
       <TooltipTrigger
-        render={<Elided ref={trigger} text={path} position="middle" tabIndex={0} className="w-60 rounded-sm" data-testid="base-trigger" />}
+        render={<Elided ref={trigger} text={path} position="middle" tabIndex={0} className={TRIGGER} data-testid="base-trigger" />}
       />
-      <TooltipContent className="break-all">{path}</TooltipContent>
+      <TooltipContent className="font-mono break-all">{path}</TooltipContent>
     </Tooltip>
   );
 }

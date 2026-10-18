@@ -65,13 +65,19 @@ export type ElidedProps<T extends ElementType = 'div'> = BindingOptions & {
   as?: T;
   /** The rendered element, as `asChild` and `render` props pass (Radix, Base UI). React 19. */
   ref?: Ref<HTMLElement>;
+  /**
+   * The instance, once the element mounts, for the add-ons:
+   * `(t) => tips.attach(t)`. A callback may return its cleanup. Keep it stable
+   * (outside the component, or `useCallback`): a new one detaches and attaches again.
+   */
+  instanceRef?: Ref<Elide>;
 } & Omit<ComponentPropsWithoutRef<T>, keyof BindingOptions | 'children' | 'as'>;
 
 /**
  * An element (a `div` unless `as` says otherwise) showing `text`, truncated
  * with the rest of the props as options. Other props, and `ref`, go to the
  * element, so it can be the child of `asChild` (Radix) or a `render` prop
- * (Base UI). It renders the text, marked `data-elide-fallback`, so with
+ * (Base UI); `instanceRef` gets the instance. It renders the text, marked `data-elide-fallback`, so with
  * fallback.css a server-rendered page shows it truncated before it hydrates.
  *
  * ```jsx
@@ -79,15 +85,16 @@ export type ElidedProps<T extends ElementType = 'div'> = BindingOptions & {
  * ```
  */
 export function Elided<T extends ElementType = 'div'>(props: ElidedProps<T>): ReactElement {
-  const { as, ref: forwarded, text, lines = 1, ...rest } = props;
+  const { as, ref: forwarded, instanceRef, text, lines = 1, ...rest } = props;
   const options: Record<string, unknown> = { text, lines };
   const attributes: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rest)) {
     if (OPTIONS.has(key)) options[key] = value;
     else attributes[key] = value;
   }
-  const [bind] = useElide(options);
+  const [bind, instance] = useElide(options);
   const ref = useHandedOn(bind, forwarded);
+  useImperativeHandle(instance ? instanceRef : undefined, () => instance!, [instance]);
   // The text as first rendered, so server-rendered HTML shows it (truncated
   // by fallback.css) before hydrating. It never changes after, so React
   // leaves the content to the instance.

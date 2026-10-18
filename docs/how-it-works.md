@@ -250,6 +250,13 @@ their refs into the child's, and a parent may hand a new ref every render;
 folding that into the binding's callback would make React detach and attach
 it, remaking the instance each time.
 
+`instanceRef` gets the instance through `useImperativeHandle` as well, given
+the ref only once there is an instance, so a callback never sees `null` before
+it and its cleanup (or a call with `null`) comes when the instance goes. The
+add-ons all return a function that undoes them, so a callback can return
+`tips.attach(t)` as is. React treats a new callback as a new ref, detaching and
+attaching again, so it should be stable.
+
 ## Transitions
 
 With `'merge'`, a leaving glyph shrinks into the nearest mark: glyphs on the
