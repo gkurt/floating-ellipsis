@@ -14,10 +14,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun i
+      # First: the Next.js example resolves floating-ellipsis to dist/, for lint and tsc alike.
+      - run: bun run build
       - run: bun check
       - run: bun run test
       - run: bun typecheck
-      - run: bun run build
       - run: bun run size
 
   browser:

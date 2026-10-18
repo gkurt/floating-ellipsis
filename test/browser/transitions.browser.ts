@@ -32,6 +32,16 @@ function narrow(t: Elide, width: number) {
   expect(t.truncated).toBe(true);
 }
 
+/**
+ * Narrow the element a pixel at a time until more is cut: the smallest step,
+ * which leaves the glyphs going room to be drawn in whatever fonts the
+ * engine has. A fixed step can squeeze them out at once.
+ */
+function cutMore(t: Elide) {
+  const hidden = JSON.stringify(t.state.hidden);
+  for (let width = t.element.offsetWidth - 1; JSON.stringify(t.state.hidden) === hidden; width--) narrow(t, width);
+}
+
 const layer = (t: Elide) => t.element.querySelector<HTMLElement>('[data-fp-ghosts]')!;
 const ghosts = (t: Elide) => layer(t).childElementCount;
 const settled = (t: Elide) => expect.poll(() => ghosts(t), { timeout: 3000 }).toBe(0);
@@ -99,15 +109,14 @@ describe('transitions', () => {
   it.each(['merge', 'fade', 'blur'] as const)('%s: leaving glyphs are drawn until they have gone', async (effect) => {
     const t = await animated({ effect, duration: 200 });
     expect(ghosts(t)).toBe(0);
-    // A small step, with room for the glyphs leaving: a big one squeezes them out at once.
-    narrow(t, 350);
+    cutMore(t);
     expect(ghosts(t)).toBeGreaterThan(0);
     await settled(t);
   });
 
   it('merge: a leaving glyph only shrinks and fades, in the room left beside the dots', async () => {
     const t = await animated({ effect: 'merge', duration: 300 });
-    narrow(t, 350);
+    cutMore(t);
     const sprite = layer(t).firstElementChild as HTMLElement;
     expect(sprite).not.toBeNull();
     const scales: number[] = [];
@@ -150,7 +159,7 @@ describe('transitions', () => {
     expect(t.truncated).toBe(true);
     await frames();
     stops.push(transitions(t));
-    narrow(t, 350);
+    cutMore(t);
     expect(ghosts(t)).toBeGreaterThan(0);
   });
 

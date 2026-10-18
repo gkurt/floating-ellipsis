@@ -438,10 +438,12 @@ describe('units', () => {
     const el = marked('Status: all good <img alt=""> and nothing to report', 'width:380px');
     const t = make(el);
     expect(t.truncated).toBe(false);
-    // As if it had been loading all along.
+    // As if it had been loading all along: the image and its copy in the line,
+    // as later passes copy it again.
     const copy = copies(t, 'img')[0];
-    if (!(copy instanceof HTMLImageElement)) throw new Error('No image');
-    copy.src = image(150, 12);
+    const original = copy && t.unitOf(Number(copy.getAttribute('data-fp-unit')));
+    if (!(copy instanceof HTMLImageElement) || !(original instanceof HTMLImageElement)) throw new Error('No image');
+    original.src = copy.src = image(150, 12);
     await copy.decode();
     await frames();
     expect(t.truncated).toBe(true);
