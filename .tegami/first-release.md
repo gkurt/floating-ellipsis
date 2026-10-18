@@ -5,4 +5,18 @@ packages:
 
 ### First stable release
 
-Fluid, balanced truncation for one line or many: the ellipsis anywhere, kept and highlighted parts, word and path snapping, a capped justification gap (`maxGap`), a headless tooltip, transitions, `elideText` without the DOM, a CSS fallback for before scripts run, and bindings for custom elements, React, Vue and Svelte.
+Fluid, balanced truncation for the DOM, for one line or many.
+
+- **Anywhere, any length.** Clamp to any number of lines, or as many as fit the element's height (`lines: 'fit'`), with the ellipsis at the start, middle, end, any position, or several at once.
+- **Balanced and flush.** Even ink gaps on both sides of the ellipsis, and lines that end exactly at the edge (`justify`: `'dots'`, `'ellipsis'` or `'spread'`), with justified gaps capped by `maxGap` and leftover room filled with more marks (`repeat`).
+- **Marks.** Any string, or drawn dots, bullets, rings and squares sized from the font.
+- **Keep what matters.** Words, patterns or ranges that stay visible (`keep`), optionally highlighted with a class.
+- **Words and paths.** Cuts that snap to whole words (`words()`) or path segments (`separators()`).
+- **Rich text.** Links and other inline elements survive the cut; images, icons and `data-elide-unit` elements show whole or not at all.
+- **Suffixes.** A "Read more" button, badge or time follows the text on its last line and is never cut (`floating-ellipsis/suffix`), with `expand()` and `collapse()`.
+- **Sized by content.** `autoSize()` (`floating-ellipsis/autosize`) lets an inline-block, float or flex item take its full text's width, so it grows back.
+- **Native behaviour.** Find in page finds hidden text, copying gives the full text, and screen readers read it all.
+- **Fast in bulk.** Passes run in lockstep, so thousands of instances share a few layouts, and single-line cuts are judged from glyph widths without rendering.
+- **Add-ons**, in their own entries so pages that don't use them don't ship them: a headless tooltip (`floating-ellipsis/tooltip`), glyph transitions (`floating-ellipsis/transitions`), geometry, glyph mode, `onChange`, and `elideText` (`floating-ellipsis/text`) for the same cuts without the DOM.
+- **Before scripts run.** `floating-ellipsis/fallback.css` truncates with CSS until an instance takes over.
+- **Frameworks.** `<elide-text>`, React (`useElide`, `<Elided>`, Server Components ready), Vue (`vElide`) and Svelte (the `elide` action).
