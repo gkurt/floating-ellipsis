@@ -71,8 +71,8 @@ function onCopy(event: ClipboardEvent) {
   }
   if (!touched) return;
 
-  // (What an ellipsis hides is copied in its place, expanded or not.)
-  for (const el of fragment.querySelectorAll('[data-fp-full], [data-fp-ghosts], [data-fp-found]')) el.remove();
+  // (What an ellipsis hides is copied in its place, expanded or not, and the copy `autoSize` sizes the element with isn't seen.)
+  for (const el of fragment.querySelectorAll('[data-fp-full], [data-fp-ghosts], [data-fp-found], [data-fp-sizer]')) el.remove();
   const holder = document.createElement('div');
   holder.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:pre-wrap';
   holder.append(fragment);

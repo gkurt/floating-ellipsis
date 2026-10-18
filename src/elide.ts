@@ -31,6 +31,7 @@ import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markSty
 import { type Chain, extentOf, markCopies, originals, readMarkup, speak } from './markup.ts';
 import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
+  type AutoSizeSlot,
   type ChangeReason,
   type ElideOptions,
   type ElideState,
@@ -187,6 +188,8 @@ export class Elide {
   #unsaid = false;
   /** Holds `suffix`, after the line, while there is one. */
   #suffix: SuffixSlot | null = null;
+  /** The copy of the full text that sizes the element, while `autoSize` is on. */
+  #sizer: AutoSizeSlot | null = null;
   /** What wants the hidden parts shown in place, if anything; and whether they are. */
   #opener: Opener | null = null;
   /** What to keep in sight for now, as if kept: what find in page found, or a focused link the cut hid. */
@@ -251,6 +254,7 @@ export class Elide {
     this.#setText(text);
     element.replaceChildren(this.#srEl, this.#lineEl);
     this.#setSuffix();
+    this.#setSizer();
     // The full text until the first pass, which is scheduled (see `schedule`).
     // On one line, so that the first pass can wait (see `putOff`).
     this.#showAll();
@@ -469,6 +473,7 @@ export class Elide {
       if (s.keep !== before.keep) this.#setPins();
       if (s.position !== before.position) this.#setLayout();
     }
+    this.#setSizer();
     if (!s.title && this.#titled) {
       this.element.removeAttribute('title');
       this.#titled = false;
@@ -500,6 +505,7 @@ export class Elide {
     this.element.removeAttribute('data-elide');
     this.element.removeAttribute('data-fp-expanded');
     if (this.#titled) this.element.removeAttribute('title');
+    this.#sizer = null;
     this.element.replaceChildren(...this.#original);
     this.#suffix?.giveBack(true);
   }
@@ -556,12 +562,29 @@ export class Elide {
   #setSuffix() {
     const suffix = this.#settings.suffix;
     if (suffix && suffix.content !== '') {
-      (this.#suffix ??= suffix.place(this.element, () => this.refresh())).fill(suffix.content);
+      (this.#suffix ??= suffix.place(this.element, () => {
+        this.#setSizer();
+        this.refresh();
+      })).fill(suffix.content);
       return;
     }
     this.#suffix?.giveBack(false);
     this.#suffix?.el.remove();
     this.#suffix = null;
+  }
+
+  /** Copy the full text, and a suffix that always shows, for `autoSize` to size the element by; or take the copy out. */
+  #setSizer() {
+    const autoSize = this.#settings.autoSize;
+    if (!autoSize) {
+      this.#sizer?.remove();
+      this.#sizer = null;
+      return;
+    }
+    this.#sizer ??= autoSize.place(this.element);
+    const n = this.#g.length;
+    fillPiece(this.#sizer.text, this.#g, { ...this.#marking, match: null }, [0, n], [0, n]);
+    this.#sizer.suffix(this.#suffix && this.#settings.suffix?.show === 'always' ? this.#suffix.el : null);
   }
 
   #setPins() {

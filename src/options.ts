@@ -100,6 +100,13 @@ export interface ElideOptions {
    * until then. false: doesn't find it.
    */
   find?: 'keep' | 'expand' | false;
+  /**
+   * For an element whose width comes from its content (an inline-block, a
+   * float, a flex or grid item sized by it): `autoSize()` from
+   * `floating-ellipsis/autosize` sizes it as its full text would, whatever
+   * part of it shows. Default null: its width comes from what shows.
+   */
+  autoSize?: AutoSize | null;
 }
 
 export type Settings = Required<Omit<ElideOptions, 'text'>>;
@@ -120,6 +127,7 @@ export const DEFAULTS: Settings = {
   copy: 'full',
   suffix: null,
   find: 'keep',
+  autoSize: null,
 };
 
 /** What the `glyphs` option takes: glyph mode, from `floating-ellipsis/glyphs`. */
@@ -151,6 +159,21 @@ export interface SuffixSlot {
   show(on: boolean): void;
   /** Put a node back where it came from; one of the host's own comes back with its content on `destroy` (`destroying`). */
   giveBack(destroying: boolean): void;
+}
+
+/** What the `autoSize` option takes: made by `autoSize()` from `floating-ellipsis/autosize`. */
+export interface AutoSize {
+  /** Puts an invisible copy of the content in `host`, which sizes it. */
+  place(host: HTMLElement): AutoSizeSlot;
+}
+
+/** The copy of an element's content that sizes it. */
+export interface AutoSizeSlot {
+  /** Where the instance puts the full text. */
+  readonly text: HTMLElement;
+  /** Copy `suffix` (a suffix's element, or null for none) after the text. */
+  suffix(suffix: Element | null): void;
+  remove(): void;
 }
 
 /** `o` without the keys set to undefined, so they don't override defaults. */

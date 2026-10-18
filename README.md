@@ -35,7 +35,8 @@ t.destroy(); // restore the original content
 ```
 
 The element's width must not depend on its content: use a block, or a flex or
-grid item with `min-width: 0`.
+grid item with `min-width: 0`. For one whose width does (a chip, an
+inline-block), see [Sized by content](#sized-by-content).
 
 ## Options
 
@@ -57,6 +58,7 @@ grid item with `min-width: 0`.
 | `copy`     | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                   |
 | `suffix`   | `null`          | `suffix(content)` from `floating-ellipsis/suffix`. See [Suffixes](#suffixes).                                                                       |
 | `find`     | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).     |
+| `autoSize` | `null`          | `autoSize()` from `floating-ellipsis/autosize`, for an element whose width comes from its content. See [Sized by content](#sized-by-content).       |
 
 `instance.update(options)` changes any option, including `text`.
 
@@ -130,6 +132,23 @@ The content is a string or a node, which follows the text on its last line and
 is never cut. A node is moved into place, keeping its listeners, and goes back
 on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
 shows all of the text until `collapse()`.
+
+### Sized by content
+
+```js
+import { autoSize } from 'floating-ellipsis/autosize';
+
+// .chip { display: inline-block; max-width: 100%; }
+elide(chip, { position: 'middle', autoSize: autoSize() });
+```
+
+An inline-block, a float, an absolutely positioned element, or a flex or grid
+item sized by its content takes its width from the text that shows, so once
+cut it never grows back. With `autoSize()`, an invisible copy of the full text
+(with its elements, and a suffix that always shows) sizes it instead: as wide
+as the text, up to the room it has. On one line, as with `text-overflow`,
+something must cap that room: `max-width: 100%`, or `min-width: 0` on a flex
+item.
 
 ### Find in page
 
@@ -220,7 +239,7 @@ empty. Create a `snap` once, not inline.
 ```
 
 `<elide-text>` takes most options as kebab-case attributes (`tooltip-title`
-for `title`, `keep-class` to highlight `keep`, `snap="words|paths"`), or all of
+for `title`, `keep-class` to highlight `keep`, `snap="words|paths"`, `auto-size`), or all of
 them through its `options` property. A child with `slot="suffix"` is its suffix. It exposes
 `instance` and fires `elidechange`.
 

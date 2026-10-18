@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { commands, server } from 'vitest/browser';
+import { autoSize } from '#src/autosize.ts';
 import type { Elide } from '#src/elide.ts';
 import { PATH, PROSE, frames, make, track } from './helpers.ts';
 
@@ -37,6 +38,33 @@ describe.runIf(server.browser === 'chromium')('layouts', () => {
     // 900 instances, one after another, would take thousands.
     expect(created).toBeLessThanOrEqual(6);
     expect(resized).toBeLessThanOrEqual(6);
+  });
+
+  it('sizes rows of auto-sized flex items by their full text with a few shared layouts', async () => {
+    const host = track(document.createElement('div'));
+    host.style.cssText = 'width:900px;font:13px/18px sans-serif';
+    for (let i = 0; i < 600; i++) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px';
+      const cell = document.createElement('div');
+      cell.style.cssText = 'flex:0 1 auto;min-width:0';
+      cell.textContent = `${i} ${i % 2 === 1 ? PATH : PROSE}`;
+      const badge = document.createElement('span');
+      badge.textContent = 'badge';
+      row.append(cell, badge);
+      host.append(row);
+    }
+    document.body.append(host);
+    let instances: Elide[] = [];
+    const created = await layoutsDuring(() => {
+      instances = [...host.children].map((row) => make(row.firstElementChild as HTMLElement, { position: 'middle', autoSize: autoSize() }));
+      void instances[0]!.truncated;
+    });
+    const narrower = await layoutsDuring(() => (host.style.width = '500px'));
+    const wider = await layoutsDuring(() => (host.style.width = '800px'));
+    expect(created).toBeLessThanOrEqual(6);
+    expect(narrower).toBeLessThanOrEqual(6);
+    expect(wider).toBeLessThanOrEqual(6);
   });
 
   it('scrolls a virtual list: recycled rows take new text, or rows are remounted', async () => {

@@ -101,8 +101,8 @@ demo's table page shows both.
 ## Entry points
 
 What only some pages use lives in its own entry, so the rest don't ship it:
-geometry, glyph mode, suffixes and `onChange`. Their code isn't reachable
-from the `Elide` class, so bundlers leave it out. The `glyphs` and `suffix`
+geometry, glyph mode, suffixes, auto-sizing and `onChange`. Their code isn't reachable
+from the `Elide` class, so bundlers leave it out. The `glyphs`, `suffix` and `autoSize`
 options take an object that brings the code with it, as `snap` does.
 Geometry and `onChange` take the instance. They reach its internals through
 `inside.ts`, which the class fills in when it loads, so an add-on doesn't
@@ -184,6 +184,38 @@ room; its own spacing (a margin) is yours. When its width changes, the text
 fits again. `expand()` keeps the cut, so collapsing is quick, and an expanded
 instance doesn't re-truncate on resize. Focus reaching a link the cut hides
 keeps it in sight while focused, or expands the text with `find: 'expand'`.
+
+## Sized by content
+
+An element sized by its content (an inline-block, a float, an absolutely
+positioned element, a flex item's basis, a `max-content` grid track) takes its
+width from what shows. A pass reads that width and cuts the text to it, so the
+cut sets the width the next pass reads: the element shrinks with the room but
+never grows back, and new, longer text is cut to the old width.
+
+`autoSize()` breaks the loop with a copy of the full text in the element: a
+block of no height, invisible, inert and hidden from screen readers. It is
+filled the way the line is when it shows everything (copies of the inline
+elements, `keep` classes), with a copy of a suffix that always shows, so it
+takes the room the full text would. Its max-content width is the full text's,
+and its min-content width the longest word's, as if the text were all there,
+so the element is as wide as the full text up to the room it has, and wraps
+to fit with nothing capping it. A resize that gives it more room changes its
+width, so the ResizeObserver reports it as it does any other.
+
+The copy comes first in the element, so its lines can't give an inline-block
+its baseline (the last line's), and layout containment keeps them from giving
+the element its first, which flex and grid items align by.
+
+The line still counts towards the element's size. Kept on one line so it
+never wraps while the element narrows, a cut is as wide in its min-content
+as it is shown, so on one line the element only shrinks below it when
+something caps it (`max-width: 100%`, or `min-width: 0` on a flex item), as
+with `text-overflow`. The copy costs no layouts of its own: it is laid out in
+the layouts passes share, which takes a little longer with the text in twice.
+It holds the content as elements and text, so what a style gives the copy
+that it doesn't give the line (a selector on the line's own attributes) can
+make them differ.
 
 ## `elideText`
 

@@ -5,18 +5,19 @@
 
 /** Gzipped bytes each entry may take. */
 const BUDGETS: Record<string, number> = {
-  index: 18.25 * 1024,
+  index: 18.5 * 1024,
   geometry: 2 * 1024,
   glyphs: 2 * 1024,
   changes: 2 * 1024,
   suffix: 0.75 * 1024,
+  autosize: 0.5 * 1024,
   transitions: 5.75 * 1024,
   tooltip: 7 * 1024,
   text: 4 * 1024,
-  element: 21 * 1024,
+  element: 21.25 * 1024,
   react: 19 * 1024,
-  vue: 18.5 * 1024,
-  svelte: 18.5 * 1024,
+  vue: 18.75 * 1024,
+  svelte: 18.75 * 1024,
 };
 
 const kb = (bytes: number) => `${(bytes / 1024).toFixed(2)} kB`;

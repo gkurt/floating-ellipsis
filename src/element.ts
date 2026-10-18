@@ -2,6 +2,7 @@
  * `<elide-text>`: a custom element that truncates its own text, configured by
  * attributes, for any framework or none.
  */
+import { autoSize } from './autosize.ts';
 import { type BindingOptions, Binding } from './bind.ts';
 import type { ElideChange } from './changes.ts';
 import { type Position, type Snap, separators, words } from './cut.ts';
@@ -27,6 +28,7 @@ const ATTRIBUTES = [
   'copy',
   'show-suffix',
   'find',
+  'auto-size',
   'text',
 ] as const;
 
@@ -67,11 +69,12 @@ function parseSnap(value: string): Snap | null {
  * (`none` for no limit), `justify` (`false` to turn it off), `trim`
  * (`false`), `snap` (`words`, `paths`, or separator characters), `glyphs`,
  * `tooltip-title` (the `title` option), `copy`, `show-suffix`, `find`
- * (`keep`, `expand` or `false`) and `text` (else its content). The `options` property takes
+ * (`keep`, `expand` or `false`), `auto-size` and `text` (else its content). The `options` property takes
  * anything `elide` does and wins over attributes. Fires `elidechange` with an
  * `ElideChange` as `detail`.
  *
- * It's a block by default: its width must not depend on its content.
+ * It's a block by default. Displayed otherwise, with a width that comes
+ * from its content (an inline-block, a flex item), it needs `auto-size`.
  */
 export class ElideElement extends Base {
   static readonly observedAttributes: readonly string[] = ATTRIBUTES;
@@ -177,6 +180,8 @@ export class ElideElement extends Base {
     const glyphMode = flag('glyphs');
     if (glyphMode !== undefined) options.glyphs = glyphMode ? glyphs : null;
     options.title = flag('tooltip-title');
+    const sized = flag('auto-size');
+    if (sized !== undefined) options.autoSize = sized ? autoSize() : null;
     const { onChange: _, ...extra } = this.#extra;
     return Object.fromEntries(Object.entries({ ...options, ...extra }).filter(([, v]) => v !== undefined));
   }

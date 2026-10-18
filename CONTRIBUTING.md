@@ -24,7 +24,9 @@ sourcemaps resolve and readers can see the implementation. See
 rows, four truncated cells each, as a `<table>` or grid rows) with tooltips and
 a search that keeps and highlights matches. In the playground, `window.hero`,
 `window.keepExamples` and `window.pathInstances` are live instances to try
-from the console.
+from the console. `/autosize.html` shows elements sized by their content (a
+chip, a flex item, an inline-block) with and without `autoSize`, under a
+slider for the room they have.
 
 `/video.html` plays a short video of the features, scene by scene (`?scene=N`
 starts at one). `bun run video` records it frame by frame into

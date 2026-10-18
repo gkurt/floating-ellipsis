@@ -7,6 +7,7 @@ export default defineConfig({
     'src/glyphs.ts',
     'src/changes.ts',
     'src/suffix.ts',
+    'src/autosize.ts',
     'src/transitions.ts',
     'src/tooltip.ts',
     'src/text.ts',
