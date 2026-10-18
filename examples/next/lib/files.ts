@@ -23,21 +23,21 @@ const CHARLES: Person = { name: 'Charles Babbage', initials: 'CB', hue: 220 };
 const MARY: Person = { name: 'Mary Somerville', initials: 'MS', hue: 160 };
 const GRACE: Person = { name: 'Grace Hopper', initials: 'GH', hue: 40 };
 
-export const PATH = '/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md';
+export const PATH = '/Users/ada/Projects/difference-engine/notes/2026/difference-tables.md';
 export const SHORT = '/notes/todo.md';
-export const LINK = 'https://files.analytical-engine.dev/s/7f3a9c2e/notes/2026/difference-tables.md?view=preview';
+export const LINK = 'https://files.difference-engine.dev/s/7f3a9c2e/notes/2026/difference-tables.md?view=preview';
 export const SHORT_LINK = 'ae.dev/s/7f3a';
 
 export const FILES: File[] = [
   { path: PATH, owner: ADA, size: '12 KB', modified: '2 min ago' },
   {
-    path: '/Users/charles/Projects/analytical-engine/drawings/mill/plates/plate-07-anticipating-carriage.svg',
+    path: '/Users/charles/Projects/difference-engine/drawings/mill/plates/plate-07-anticipating-carriage.svg',
     owner: CHARLES,
     size: '1.4 MB',
     modified: '1 hour ago',
   },
   {
-    path: '/Users/mary/Archive/translations/menabrea-sketch-of-the-analytical-engine-annotated.pdf',
+    path: '/Users/mary/Archive/translations/menabrea-sketch-translation-annotated.pdf',
     owner: MARY,
     size: '880 KB',
     modified: 'Yesterday',
@@ -49,7 +49,7 @@ export const FILES: File[] = [
     modified: 'Monday',
   },
   {
-    path: '/Users/ada/Projects/analytical-engine/notes/note-g/bernoulli-numbers-program.ipynb',
+    path: '/Users/ada/Projects/difference-engine/notes/note-g/bernoulli-numbers-program.ipynb',
     owner: ADA,
     size: '220 KB',
     modified: 'Oct 12',

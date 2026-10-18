@@ -76,7 +76,7 @@ export function Showcase({ mode, files }: { mode: 'static' | 'dynamic'; files: F
       </header>
 
       <div className="mx-auto max-w-[80rem] px-4 sm:px-8">
-        <AppWindow title="Files — The Analytical Engine Society">
+        <AppWindow title="Files — The Difference Engine Society">
           <Workspace files={files} />
         </AppWindow>
         <p className="mt-4 hidden items-center justify-center gap-2 text-xs text-muted-foreground sm:flex">

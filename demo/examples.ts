@@ -7,7 +7,7 @@ import type { TransitionOptions } from '#src/transitions.ts';
 export const calm: TransitionOptions = { effect: 'merge' };
 /** For text that changes every frame: gliding spacing would trail behind it. */
 export const fast: TransitionOptions = { effect: 'merge', glide: false };
-/** For a cut that follows a pointer or a slider: glyphs merging behind it read as smears, so they fade in place. */
+/** For a cut that follows a slider: glyphs merging behind it read as smears, so they fade in place. */
 export const fading: TransitionOptions = { effect: 'fade', glide: false };
 
 /** Markup for code: `f(…)` functions, `k:` keys, `«…»` values, `//` comments. */
@@ -94,7 +94,7 @@ export const snapRows: { label: string; text: string; mono?: boolean; options: E
   { label: 'words()', text: sentence, options: { position: 0.5, snap: words() } },
   {
     label: "separators('/')",
-    text: '/Users/ada/Projects/analytical-engine/src/notes/bernoulli-numbers.md',
+    text: '/Users/ada/Projects/difference-engine/src/notes/bernoulli-numbers.md',
     mono: true,
     options: { position: 0.5, snap: separators('/', { fragment: false }) },
   },
@@ -102,7 +102,7 @@ export const snapRows: { label: string; text: string; mono?: boolean; options: E
 
 export const tooltipPaths = [
   'README.md',
-  '/Users/ada/Projects/analytical-engine/notes/bernoulli.md',
+  '/Users/ada/Projects/difference-engine/notes/bernoulli.md',
   'package.json',
   'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal\\LocalState\\settings\\backups\\2026-10-14\\campbell-powershell.json',
 ];

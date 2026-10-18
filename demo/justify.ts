@@ -12,7 +12,7 @@ const MODES: [ElideOptions['justify'], string][] = [
 const REPEATS: (number | false)[] = [false, 0.75, 1];
 
 const PROSE = 'Internationalization and accessibility considerations for a globally distributed design system';
-const PATH = '/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md';
+const PATH = '/Users/ada/Projects/difference-engine/notes/2026/difference-tables.md';
 
 const EXAMPLES: [string, string, ElideOptions, string?][] = [
   ['words, end', PROSE, { snap: words() }],

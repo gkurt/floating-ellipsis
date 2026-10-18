@@ -293,7 +293,6 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   line.textContent = quote;
   const n = [...new Intl.Segmenter().segment(quote)].length;
   const t: Elide = elide(line, { position: 0.5, glyphs });
-  transitions(t, fading);
   setCode('lensCode', 'keep: { start: «0», end: «0» }, position: «0.50»');
   lensStage.addEventListener('pointermove', (e) => {
     const r = line.getBoundingClientRect();

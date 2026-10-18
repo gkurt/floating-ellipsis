@@ -67,7 +67,7 @@ function Sidebar({ files }: { files: File[] }) {
           AE
         </span>
         <span className="min-w-0 flex-1">
-          <Elided as="span" text="The Analytical Engine Society" className="block font-medium" />
+          <Elided as="span" text="The Difference Engine Society" className="block font-medium" />
           <span className="block text-xs text-muted-foreground">Team · 4 members</span>
         </span>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />

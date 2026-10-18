@@ -98,7 +98,7 @@ Matches stay visible and are wrapped in a `<span>` with the class (and
 import { separators, words } from 'floating-ellipsis';
 elide(el, { snap: words() }); // The quick brown…lazy dog
 elide(el, { snap: separators('/\\') }); // /Users/ada/Projects/anal…/notes/x.md
-elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/analytical-engine/notes/x.md
+elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/difference-engine/notes/x.md
 ```
 
 `words()` cuts between words in any language `Intl.Segmenter` knows.

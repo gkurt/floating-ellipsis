@@ -32,7 +32,7 @@ function random(seed: number) {
 
 const words = (s: string) => s.split(' ');
 const NAMES = words(
-  'quarterly revenue forecast draft final review notes meeting design spec roadmap budget invoice contract summary report backup export migration onboarding interview retro launch pricing analytics dashboard survey proposal brief checklist',
+  'quarterly revenue forecast draft final review notes meeting design spec roadmap budget invoice contract summary report backup export migration onboarding interview retro launch pricing insights dashboard survey proposal brief checklist',
 );
 const EXTENSIONS = words('pdf docx xlsx png md ts json csv fig mov zip sql');
 const FOLDERS = words(
