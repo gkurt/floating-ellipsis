@@ -77,10 +77,16 @@ function ellipsisStyle(kind: string, n: number): EllipsisStyle {
 }
 
 const byWords = words();
-// Registered first, so the panel shows its dials at the top.
+// Registered first, so the panel shows them at the top.
+const viewDials = createDialKit('View', { breathe: false, inkGuides: true });
+viewDials.subscribe(({ inkGuides }) => {
+  if (!inkGuides) heroGuides.replaceChildren();
+  animate();
+});
+
+const heroText = $('#hero').textContent;
 const textDials = createDialKit('Text', {
-  breathe: false,
-  inkGuides: true,
+  text: { type: 'text', default: heroText, placeholder: 'Type something long' },
   position: [0.5, 0, 1, 0.01],
   lines: [1, 1, 3, 1],
   keep: { type: 'text', default: '', placeholder: 'quiet, asked or /\\w+ly/g' },
@@ -110,8 +116,9 @@ const textDials = createDialKit('Text', {
     default: 'glyph',
   },
 });
-textDials.subscribe(({ position, lines, keep, ellipsis, cutAt, inkGuides }) => {
+textDials.subscribe(({ text, position, lines, keep, ellipsis, cutAt }) => {
   hero.update({
+    text,
     position,
     lines,
     keep: parseKeep(keep),
@@ -120,8 +127,6 @@ textDials.subscribe(({ position, lines, keep, ellipsis, cutAt, inkGuides }) => {
     justify: ellipsis.justify === 'off' ? false : (ellipsis.justify as ElideOptions['justify']),
     snap: cutAt === 'words' ? byWords : null,
   });
-  if (!inkGuides) heroGuides.replaceChildren();
-  animate();
 });
 
 const motionDials = createDialKit('Motion', {
@@ -178,7 +183,7 @@ function tick(now: number) {
   frame = 0;
   const dt = last !== 0 ? Math.min(64, now - last) : 16;
   last = now;
-  const { breathe, inkGuides } = textDials.values;
+  const { breathe, inkGuides } = viewDials.values;
   if (breathe) {
     phase += dt / 7000;
     const max = heroBox.parentElement!.clientWidth - 64;
@@ -193,6 +198,6 @@ function tick(now: number) {
 function animate() {
   frame ||= requestAnimationFrame(tick);
 }
-resizable(heroBox, () => textDials.setValue('breathe', false));
+resizable(heroBox, () => viewDials.setValue('breathe', false));
 
 animate();
