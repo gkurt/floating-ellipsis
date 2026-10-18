@@ -30,6 +30,9 @@ const ATTRIBUTES = [
   'text',
 ] as const;
 
+// A stand-in on servers, so importing this module there doesn't throw.
+const Base = typeof HTMLElement === 'undefined' ? (class {} as typeof HTMLElement) : HTMLElement;
+
 const isLength = (v: string): v is Exclude<Length, number> => /^-?[\d.]+(em|px)$/.test(v);
 const isGap = (v: string): v is Extract<Gap, string> => v === 'dots' || v === 'natural' || v === 'none' || isLength(v);
 const isJustify = (v: string): v is 'dots' | 'ellipsis' | 'spread' => v === 'dots' || v === 'ellipsis' || v === 'spread';
@@ -70,7 +73,7 @@ function parseSnap(value: string): Snap | null {
  *
  * It's a block by default: its width must not depend on its content.
  */
-export class ElideElement extends HTMLElement {
+export class ElideElement extends Base {
   static readonly observedAttributes: readonly string[] = ATTRIBUTES;
 
   #binding: Binding | null = null;
@@ -179,8 +182,9 @@ export class ElideElement extends HTMLElement {
   }
 }
 
-/** Register `<elide-text>` (or `name`). Safe to call more than once. */
+/** Register `<elide-text>` (or `name`). Safe to call more than once, and on a server (where it does nothing). */
 export function define(name = 'elide-text'): void {
+  if (typeof customElements === 'undefined') return;
   if (!customElements.get(name)) customElements.define(name, ElideElement);
 }
 

@@ -252,6 +252,35 @@ import { vElide } from 'floating-ellipsis/vue';
 React (18+) is an optional peer dependency. In virtual lists, either recycle
 instances with `update({ text })` or mount one per row; both cost the same.
 
+### Next.js and shadcn/ui
+
+`floating-ellipsis/react` is a Client Component (`'use client'`), so Server
+Components render `<Elided>` as is. With `fallback.css` imported in the layout,
+static and server-rendered pages show the text cut at the end until they
+hydrate. Props from a Server Component must serialize: `keep` as a string, not
+a RegExp; set `snap`, `onChange`, `glyphs` and `suffix` in a Client Component.
+
+`<Elided>` passes its `ref` (React 19) and other props to its element, so it can be the
+child of a Radix `asChild` or a Base UI `render` prop:
+
+```tsx
+<Button variant="outline" className="w-72">
+  <FileText />
+  <Elided as="span" text={path} position="middle" className="min-w-0 flex-1 text-left" />
+</Button>
+
+<TooltipTrigger asChild>
+  <Elided ref={trigger} text={path} position="middle" />
+</TooltipTrigger>
+<TooltipTrigger render={<Elided ref={trigger} text={path} position="middle" />} />
+```
+
+In flex rows, give the text `min-w-0 flex-1`; in tables, use `table-fixed`. To
+open a tooltip only while the text is cut, check the trigger's `data-truncated`
+in `onOpenChange`. [`examples/next`](examples/next) has these as shadcn
+components (buttons, Radix and Base UI tooltips, a table), static and
+server-rendered.
+
 ## Transitions
 
 ```js

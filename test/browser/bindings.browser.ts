@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState } from 'react';
+import { type Ref, createElement, createRef, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Root, createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -107,6 +107,27 @@ describe('React', () => {
     );
     await frames(1);
     expect(container.querySelector('span.path')!.textContent).toContain('Short');
+  });
+
+  it('Elided hands its element to a ref, as asChild and render props pass', async () => {
+    const { root, container } = mount();
+    const object = createRef<HTMLElement>();
+    const render = (ref: Ref<HTMLElement>) =>
+      flushSync(() =>
+        root.render(createElement(Elided, { ref, text: PATH, position: 'middle', className: 'path', style: { width: 200 } })),
+      );
+    render(object);
+    const el = container.querySelector<HTMLElement>('.path')!;
+    expect(object.current).toBe(el);
+    const line = el.querySelector('[data-fp-text]');
+    expect(line).not.toBeNull();
+    // A new callback each render, as a parent composing refs inline gives.
+    const seen: (HTMLElement | null)[] = [];
+    for (let i = 0; i < 3; i++) render((e) => void seen.push(e));
+    await frames(1);
+    expect(seen.filter(Boolean).every((e) => e === el)).toBe(true);
+    expect(el.querySelector('[data-fp-text]')).toBe(line);
+    expect(el.hasAttribute('data-truncated')).toBe(true);
   });
 
   it('useElide keeps the instance in step, and only updates on real changes', async () => {

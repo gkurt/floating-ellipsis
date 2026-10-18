@@ -9,3 +9,5 @@ linker = "isolated"
 # Only re-print failing tests on reruns.
 [test]
 onlyFailures = true
+# Unit tests only: examples/next has Playwright's.
+root = "test"

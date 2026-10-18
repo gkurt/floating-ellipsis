@@ -33,3 +33,20 @@ jobs:
         with:
           name: failure-screenshots
           path: .vitest/attachments
+
+  next:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun i
+      - run: bunx playwright install --with-deps chromium firefox webkit
+      - run: bun run test:next
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: next-traces
+          path: examples/next/test-results

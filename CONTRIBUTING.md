@@ -5,6 +5,7 @@ bun i
 bun dev               # demo at http://localhost:4181
 bun run test          # unit tests (pure logic)
 bun run test:browser  # layout tests in Chromium, Firefox and WebKit
+bun run test:next     # the Next.js example, built and tested in real engines
 bun run bench         # main-thread time and layouts per scenario (Chromium)
 bun run build         # dist/ with type declarations
 bun run size          # gzipped size of each entry against its budget
@@ -29,6 +30,21 @@ from the console.
 starts at one). `bun run video` records it frame by frame into
 `out/video/floating-ellipsis.mp4` (1920×1080, 60fps, H.264, for sharing); it
 needs ffmpeg on the PATH.
+
+## Next.js example
+
+`examples/next` is a Next.js app (App Router) with shadcn/ui components that use
+the React binding: a button, tooltips on Radix and on Base UI, and a table. `/`
+is generated at build time, `/ssr?path=…` renders on each request. It resolves
+`floating-ellipsis` to the built `dist/` (tsconfig `paths`), so it runs what an
+app installs, `'use client'` included.
+
+`bun run test:next` builds the package, type-checks and builds the app, then
+runs Playwright (`examples/next/tests`) against `next start` in Chromium,
+Firefox and WebKit and against `next dev` in Chromium: the HTML carries the
+text for `fallback.css`, the page hydrates with nothing logged, every instance
+fits its box, and the tooltips open only while text is cut. It uses ports 4191
+and 4192.
 
 ## Releasing
 

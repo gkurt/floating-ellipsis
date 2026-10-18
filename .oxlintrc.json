@@ -10,7 +10,10 @@
     "correctness": "error",
     "suspicious": "warn"
   },
-  "ignorePatterns": ["**/.claude", "**/build", "**/*.gen.ts", "**/mockServiceWorker.js"],
+  // `examples/next/components/ui`: shadcn/ui's components, as its CLI writes them.
+  "ignorePatterns": ["**/.claude", "**/build", "**/*.gen.ts", "**/mockServiceWorker.js", "examples/next/components/ui"],
+  // Next.js reads named exports beside a page's component (`metadata`, `dynamic`).
+  "overrides": [{ "files": ["examples/next/app/**"], "rules": { "react/only-export-components": "off" } }],
   "rules": {
     "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true }],
     // Also bans inline `import('./x.ts').Type` annotations.

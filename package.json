@@ -29,6 +29,9 @@
     "type": "git",
     "url": "git+https://github.com/gkurt/floating-ellipsis.git"
   },
+  "workspaces": [
+    "examples/*"
+  ],
   "files": [
     "dist",
     "src"
@@ -139,6 +142,7 @@
     "fix": "oxlint --fix && oxfmt",
     "test": "bun test",
     "test:browser": "vitest run",
+    "test:next": "bun run build && bun run --cwd examples/next test",
     "bench": "vitest run --mode bench --silent=false",
     "checks": "bun check && bun typecheck && bun run test",
     "size": "bun scripts/size.ts",

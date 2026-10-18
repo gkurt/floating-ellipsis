@@ -20,4 +20,6 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   copy: ['src/fallback.css'],
+  // Rolldown keeps an entry's directive; it only can't promise to for the modules it inlines.
+  suppressWarnings: /"use client"/,
 });

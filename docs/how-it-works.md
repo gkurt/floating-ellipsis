@@ -203,6 +203,21 @@ with `data-elide-fallback`; the instance takes the element over when it mounts
 and marks it `data-elide`, which turns the fallback off. `elideOf(el)` from
 `floating-ellipsis/vue` gives the instance behind a `v-elide`.
 
+Every entry imports on a server without a DOM: nothing touches `document` until
+an instance is made, and `ElideElement` extends a stand-in class where
+`HTMLElement` doesn't exist (`define()` does nothing there). The React entry
+starts with `'use client'`, which the build keeps, so React Server Components
+(Next.js's App Router) treat `Elided` and `useElide` as a Client Component
+instead of failing on their hooks. A Server Component's props to it cross the
+network as React's serialized props, so functions and RegExps can't: a
+string `keep` can.
+
+`Elided` gives its element to a `ref` through `useImperativeHandle`, apart from
+the binding's own ref callback. Radix's `asChild` and Base UI's `render` merge
+their refs into the child's, and a parent may hand a new ref every render;
+folding that into the binding's callback would make React detach and attach
+it, remaking the instance each time.
+
 ## Transitions
 
 With `'merge'`, a leaving glyph shrinks into the nearest mark: glyphs on the

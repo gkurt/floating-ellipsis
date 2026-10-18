@@ -8,6 +8,7 @@ This file provides guidance to AI agents when working with code in this reposito
 bun dev            # Demo at http://localhost:4181 (Vite, serves demo/)
 bun run test       # Unit tests (pure logic, no DOM)
 bun run test:browser # Layout tests in Chromium, Firefox and WebKit (Vitest browser mode + Playwright)
+bun run test:next  # The Next.js example (examples/next): built, then Playwright on `next start` and `next dev`
 bun run bench      # Benchmarks in Chromium: main-thread time and layouts per scenario (BENCH_PROFILE=1 for CPU profiles)
 bun run tegami     # Write a changelog entry (.tegami/<slug>.md) interactively
 bun run size       # Gzipped size of each entry, as an app bundles it, against its budget (after build)
@@ -27,6 +28,7 @@ agent use. Before finishing, run `bun run fix` then `bun run checks` — the lin
 formatter and `tsc` own all mechanical style rules. Fix the code; don't disable rules.
 After touching `elide`, `justify`, `lines`, `marks`, `markup`, `highlight`, `geometry`, `glyphs`, `changes`, `suffix`, `tooltip`, `transitions`, `text` or a binding, also
 run `bun run test:browser` (first time: `bunx playwright install chromium firefox webkit`).
+After touching `react`, `bind`, `element`, `fallback.css` or anything a server imports, also run `bun run test:next`.
 
 ## Project Structure
 
@@ -58,7 +60,8 @@ run `bun run test:browser` (first time: `bunx playwright install chromium firefo
 - `src/text.ts` — optional add-on (`floating-ellipsis/text`): `elideText`, the same cuts as a string with no DOM (one line, canvas or custom `measure`).
 - `src/bind.ts` — `Binding`, shared by the framework bindings: keeps an instance in step with options handed over whole each time (compared by value, `onChange` as one subscription through `changes`).
 - `src/element.ts`, `src/react.ts`, `src/vue.ts`, `src/svelte.ts` — framework bindings (`floating-ellipsis/element|react|vue|svelte`): `<elide-text>` (`define()`), `useElide`/`Elided`, `vElide`, the `elide` action. React is an optional peer; Vue and Svelte bindings import nothing from them.
-- `test/` — `bun test` suites for `cut`, `metrics`, `lockstep` and `text` (`elideText` with a fake `measure`).
+- `examples/next/` — a Next.js app (App Router) with shadcn/ui components (Radix and Base UI) using the React binding, one page static and one rendered per request, and its Playwright tests (`tests/`). It resolves `floating-ellipsis` to `dist/` through tsconfig `paths`; shadcn's own components are in `components/ui/`.
+- `test/` — `bun test` suites for `cut`, `metrics`, `lockstep` and `text` (`elideText` with a fake `measure`), and `ssr` (every entry imported, and the React binding rendered, without a DOM).
 - `test/browser/` — Vitest browser-mode suites (`*.browser.ts`) for `elide`, highlights, `tooltip`, `transitions`, the bindings (with `elideText` against real fonts) and Unicode (scripts and emoji under many option combinations), run in Chromium, Firefox and WebKit through Playwright (`vitest.config.ts`). `helpers.ts` holds fixtures that clean up after each test and layout readings (content box, ink gaps, rendered text) and assertions (`expectFits`, `expectConsistent`, `expectFlush`, `sweep`). `vitest.config.ts` adds commands: `mouse` (real pointer at frame coordinates), `reducedMotion`, and in Chromium `layouts`, `metrics` and `profile` (DevTools protocol). `elide.bench.ts` holds the benchmarks (`bun run bench`, `--mode bench`), each scenario's median main-thread time and layouts.
 
 ## Architecture
