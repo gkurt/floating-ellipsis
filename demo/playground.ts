@@ -78,10 +78,21 @@ function ellipsisStyle(kind: string, n: number): EllipsisStyle {
 
 const byWords = words();
 // Registered first, so the panel shows them at the top.
-const viewDials = createDialKit('View', { breathe: false, inkGuides: true });
-viewDials.subscribe(({ inkGuides }) => {
+const viewDials = createDialKit('View', {
+  breathe: false,
+  inkGuides: true,
+  transition: { type: 'select', options: ['merge', 'fade', 'blur', 'none'], default: 'merge' },
+});
+let stopTransitions: () => void = () => {};
+let effect = '';
+viewDials.subscribe(({ inkGuides, transition }) => {
   if (!inkGuides) heroGuides.replaceChildren();
   animate();
+  if (transition === effect) return;
+  effect = transition;
+  stopTransitions();
+  // With no glyph effect the dots still glide.
+  stopTransitions = transitions(hero, { effect: transition as Effect });
 });
 
 const heroText = $('#hero').textContent;
@@ -90,23 +101,6 @@ const textDials = createDialKit('Text', {
   position: [0.5, 0, 1, 0.01],
   lines: [1, 1, 3, 1],
   keep: { type: 'text', default: '', placeholder: 'quiet, asked or /\\w+ly/g' },
-  ellipsis: {
-    style: {
-      type: 'select',
-      options: [
-        { value: 'glyph', label: '… (the font’s)' },
-        { value: 'periods', label: '... (periods)' },
-        'dot',
-        'bullet',
-        'ring',
-        'square',
-      ],
-      default: 'glyph',
-    },
-    dots: [3, 0, 7, 1],
-    gap: { type: 'select', options: ['dots', 'natural', 'none'], default: 'dots' },
-    justify: { type: 'select', options: ['dots', 'ellipsis', 'spread', 'off'], default: 'dots' },
-  },
   cutAt: {
     type: 'select',
     options: [
@@ -116,28 +110,33 @@ const textDials = createDialKit('Text', {
     default: 'glyph',
   },
 });
-textDials.subscribe(({ text, position, lines, keep, ellipsis, cutAt }) => {
+const ellipsisDials = createDialKit('Ellipsis', {
+  style: {
+    type: 'select',
+    options: [{ value: 'glyph', label: '… (the font’s)' }, { value: 'periods', label: '... (periods)' }, 'dot', 'bullet', 'ring', 'square'],
+    default: 'glyph',
+  },
+  dots: [3, 0, 7, 1],
+  gap: { type: 'select', options: ['dots', 'natural', 'none'], default: 'dots' },
+  justify: { type: 'select', options: ['dots', 'ellipsis', 'spread', 'off'], default: 'dots' },
+});
+
+function update() {
+  const { text, position, lines, keep, cutAt } = textDials.values;
+  const { style, dots, gap, justify } = ellipsisDials.values;
   hero.update({
     text,
     position,
     lines,
     keep: parseKeep(keep),
-    ellipsis: ellipsisStyle(ellipsis.style, ellipsis.dots),
-    gap: ellipsis.gap as Gap,
-    justify: ellipsis.justify === 'off' ? false : (ellipsis.justify as ElideOptions['justify']),
+    ellipsis: ellipsisStyle(style, dots),
+    gap: gap as Gap,
+    justify: justify === 'off' ? false : (justify as ElideOptions['justify']),
     snap: cutAt === 'words' ? byWords : null,
   });
-});
-
-const motionDials = createDialKit('Motion', {
-  transition: { type: 'select', options: ['merge', 'fade', 'blur', 'none'], default: 'merge' },
-});
-let stopTransitions: () => void = () => {};
-motionDials.subscribe(({ transition }) => {
-  stopTransitions();
-  // With no glyph effect the dots still glide.
-  stopTransitions = transitions(hero, { effect: transition as Effect });
-});
+}
+textDials.subscribe(update, false);
+ellipsisDials.subscribe(update);
 
 // Live readout of the instance state.
 const readout = $('#readout');

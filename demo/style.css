@@ -305,6 +305,11 @@ input[type='range'] {
   text-overflow: ellipsis;
 }
 
+/* The playground's dials have no use for dialkit's toolbar (saved versions, copying). */
+.dialkit-panel-section-toolbar-clip {
+  display: none;
+}
+
 /* ------------------------------------------------------------------------ */
 
 .file-list {
