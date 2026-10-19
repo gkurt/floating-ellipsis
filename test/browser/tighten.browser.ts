@@ -46,6 +46,25 @@ describe.each(FONTS)('tighten, in %s', (font) => {
     expect(cut).toBeGreaterThan(5);
   });
 
+  // Whether the full text was measured or judged in a pass depends on the
+  // pass before: neither may decide between setting it tighter and cutting it.
+  it.each(['Quarterly revenue forecast', TEXT, 'Invoice 2026-0412 for $12,345.67'])('decides the same whatever came before: %s', (text) => {
+    const full = natural(text);
+    const t = make(box(text, `font:${font};width:${full + 1}px`), { tighten: '0.05em' });
+    const now = () => (t.truncated ? 'cut' : t.state.tightened > 0 ? 'tight' : 'full');
+    let cut = false;
+    for (let width = full; width > full - 40; width -= 0.25) {
+      t.element.style.width = `${width}px`;
+      t.refresh();
+      const was = now();
+      if (cut) expect(was).toBe('cut');
+      cut = was === 'cut';
+      t.refresh();
+      expect(now()).toBe(was);
+    }
+    expect(cut).toBe(true);
+  });
+
   it('takes in no more than it may', () => {
     const full = natural(TEXT);
     const t = make(box(TEXT, `font:${font};width:${full - 2}px`), { tighten: 0 });

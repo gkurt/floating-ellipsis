@@ -1524,11 +1524,19 @@ export class Elide {
       const squeeze = function* (this: Elide): Generator<void, boolean, void> {
         const most = toPx(this.#settings.tighten, run.fontSize);
         if (!(most > 0)) return false;
-        // How far it runs over: measured, or as judged.
-        const over = tried?.length === 0 ? -fit.room : (predictor?.right([]) ?? Infinity) - run.right;
         // What tightening by a pixel takes in: a pixel after every letter, two after every space.
         let units = n;
         for (const g of this.#g) if (g === ' ' || g === ' ') units += 2;
+        // How far it runs over: measured, or as judged; or, with neither, measured now
+        // if the glyph widths say it may be close enough (with the leeway above). What
+        // happens to be known can't decide it: that depends on the pass before.
+        const judged = tried?.length === 0 ? null : (predictor?.right([]) ?? null);
+        let over = tried?.length === 0 ? -fit.room : judged === null ? null : judged - run.right;
+        if (over === null) {
+          const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
+          const room = (run.right - run.left) * (lines === 'fit' ? 1 : lines) - reserved;
+          over = run.sums[n]! - room > (most * units + 1) * 1.1 ? Infinity : -((yield* attempt.call(this, [])).room ?? Infinity);
+        }
         if (!(over > 0) || over > most * units) return false;
         const set = function* (this: Elide, by: number): Generator<void, boolean, void> {
           yield* phase.write();

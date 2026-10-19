@@ -200,7 +200,12 @@ lines, where wrapping makes the gain uneven, it tries the most it may and, if
 that fits, halves between the two three times, ending on the least that
 fits. It costs no layout unless the full text is within reach, and a
 tightened line isn't judged without rendering: its end isn't where the glyph
-widths say. Once cut, text is set as usual; tightening only ever saves a cut.
+widths say. How far the text runs over comes from the pass's own
+measurement, or from the line it starts from as judged, and when there is
+neither (after a tightened line, say), the full text is rendered to measure
+it: what a pass happens to know depends on the pass before, and deciding by
+it would flip a line between tightened and cut on every pass as the box
+shrinks. Once cut, text is set as usual; tightening only ever saves a cut.
 
 ## Snapping
 
