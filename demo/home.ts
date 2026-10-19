@@ -423,7 +423,8 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
     row.append(line, readout);
     box.insertBefore(row, $('.handle', box));
     elide(line, options).onRender(({ tightened, truncated }) => {
-      readout.textContent = truncated ? 'cut' : tightened > 0 ? `−${tightened.toFixed(2)}px` : '';
+      const by = tightened > 0 ? `−${tightened.toFixed(2)}px` : '';
+      readout.textContent = truncated ? `cut ${by}`.trim() : by;
     });
   }
   setCode('tightenCode', "elide(el, { tighten: «'0.05em'» }) // letters up to 0.05em closer, word spaces 0.1em");

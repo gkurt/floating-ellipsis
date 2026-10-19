@@ -1130,16 +1130,23 @@ export class Elide {
 
   /**
    * Set the line `by` px tighter per letter, and word spaces twice that (see
-   * `tighten`); or as the element sets it, with 0.
+   * `tighten`); or as the element sets it, with 0. The ellipses keep their
+   * spacing, and so the letters beside them (in their joins), and the gaps
+   * planned for them.
    */
   #tighten(run: Run | null, by: number) {
-    this.#tightened = run ? by : 0;
-    this.#lineEl.style.letterSpacing = run && by > 0 ? `${run.letterSpacing - by}px` : '';
-    this.#lineEl.style.wordSpacing = run && by > 0 ? `${run.wordSpacing - 2 * by}px` : '';
+    const tight = run !== null && by > 0;
+    this.#tightened = tight ? by : 0;
+    this.#lineEl.style.letterSpacing = tight ? `${run.letterSpacing - by}px` : '';
+    this.#lineEl.style.wordSpacing = tight ? `${run.wordSpacing - 2 * by}px` : '';
+    for (const { el } of this.#joins) {
+      el.style.letterSpacing = tight ? `${run.letterSpacing}px` : '';
+      el.style.wordSpacing = tight ? `${run.wordSpacing}px` : '';
+    }
   }
 
-  /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
-  #render(run: Run, hidden: readonly Range[]): GapPlan[] {
+  /** Put the text into the DOM with `hidden` ranges replaced by ellipses, set `by` px tighter (see `tighten`). */
+  #render(run: Run, hidden: readonly Range[], by = 0): GapPlan[] {
     const m = hidden.length;
     this.#tighten(null, 0);
     if (m === 0) {
@@ -1155,6 +1162,7 @@ export class Elide {
     // (Once on, it hides what the page says: it stays on while truncated.)
     if (run.rebreaks || this.#ungreedy !== null) this.#greedy(true);
     for (const { el, range, shown } of this.#layoutOf(hidden)) this.#fill(el, range[0], range[1], shown);
+    if (by > 0) this.#tighten(run, by);
 
     const layout = this.#markLayout(run);
     if (layout.css !== null) for (let j = 0; j < m; j++) styleMarks(this.#joins[j]!.marks, layout.css);
@@ -1515,63 +1523,120 @@ export class Elide {
         }
         return { fits: fit.ok, room: fit.room };
       };
-      /**
-       * The full text, which runs over, set tighter until it fits (see
-       * `tighten`), or not at all. On one line, by as much as it runs over,
-       * over its letters and twice over its word spaces, then once more by
-       * what that moved it; on more, by halving between that and the most.
-       */
-      const squeeze = function* (this: Elide): Generator<void, boolean, void> {
-        const most = toPx(this.#settings.tighten, run.fontSize);
-        if (!(most > 0)) return false;
-        // What tightening by a pixel takes in: a pixel after every letter, two after every space.
-        let units = n;
-        for (const g of this.#g) if (g === ' ' || g === ' ') units += 2;
-        // How far it runs over: measured, or as judged; or, with neither, measured now
-        // if the glyph widths say it may be close enough (with the leeway above). What
-        // happens to be known can't decide it: that depends on the pass before.
-        const judged = tried?.length === 0 ? null : (predictor?.right([]) ?? null);
-        let over = tried?.length === 0 ? -fit.room : judged === null ? null : judged - run.right;
-        if (over === null) {
-          const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
-          const room = (run.right - run.left) * (lines === 'fit' ? 1 : lines) - reserved;
-          over = run.sums[n]! - room > (most * units + 1) * 1.1 ? Infinity : -((yield* attempt.call(this, [])).room ?? Infinity);
-        }
-        if (!(over > 0) || over > most * units) return false;
-        const set = function* (this: Elide, by: number): Generator<void, boolean, void> {
-          yield* phase.write();
-          holdStill();
+      // How much tighter `tighten` may set the text, and what tightening by a
+      // pixel takes in up to each grapheme: a pixel after every letter, two
+      // after every space (null: none).
+      const most = toPx(this.#settings.tighten, run.fontSize);
+      const units = most > 0 ? new Float64Array(n + 1) : null;
+      if (units) for (let i = 0; i < n; i++) units[i + 1] = units[i]! + (this.#g[i] === ' ' || this.#g[i] === ' ' ? 3 : 1);
+      // Firefox rounds letter-spacing to 1/60 px: rounded up, it fits, if a little short of the edge.
+      const up = (by: number) => Math.ceil(by * 60 - 1e-6) / 60;
+      /** Render `cut` (the full text, if empty) set `by` px tighter, and measure it. Whether it fits. */
+      const set = function* (this: Elide, cut: Range[], by: number): Generator<void, boolean, void> {
+        yield* phase.write();
+        holdStill();
+        if (cut.length > 0) {
+          this.#render(run, cut, by);
+        } else {
           if (tried?.length !== 0) this.#renderFull(run);
-          tried = [];
           this.#tighten(run, by);
-          yield* phase.read();
-          fit = this.#measure(run);
-          return fit.ok;
-        };
-        // Firefox rounds letter-spacing to 1/60 px: rounded up, it fits, if a little short of the edge.
-        const up = (by: number) => Math.ceil(by * 60 - 1e-6) / 60;
+        }
+        tried = cut;
+        yield* phase.read();
+        fit = this.#measure(run);
+        return fit.ok;
+      };
+      /**
+       * Set `cut` (or the full text), which runs `over` the edge on one line
+       * set as usual, as little tighter as fits: by how far it runs over,
+       * over the `moving` units, then once more by how far that moved it.
+       * Whether it fits.
+       */
+      const least = function* (this: Elide, cut: Range[], over: number, moving: number): Generator<void, boolean, void> {
         // A quarter pixel inside the edge, like a justified line.
         const need = over + 0.25;
-        let by = need / units;
+        let by = need / moving;
         if (by > most) return false;
-        if (yield* set.call(this, by)) return true;
+        if (yield* set.call(this, cut, Math.max(0, by))) return true;
+        const moved = run.right + over - fit.end;
+        by = moved > 0 ? up((by * need) / moved) : Infinity;
+        return by <= most && (yield* set.call(this, cut, by));
+      };
+      /**
+       * The full text, which runs over, set tighter until it fits (see
+       * `tighten`), or not at all. On one line, as `least` does; on more, by
+       * as much as it runs over and then by halving between that and the most.
+       */
+      const squeeze = function* (this: Elide): Generator<void, boolean, void> {
+        if (!units) return false;
+        const all = units[n]!;
+        // How far it runs over, measured, if the glyph widths say it may be
+        // close enough (with the leeway above). Never as judged: near the most,
+        // a judgement and a measurement can fall either side of it, and which
+        // one a pass has depends on the pass before.
+        if (tried?.length !== 0) {
+          const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
+          const room = (run.right - run.left) * (lines === 'fit' ? 1 : lines) - reserved;
+          if (run.sums[n]! - room > (most * all + 1) * 1.1) return false;
+          // (Judged not to fit, it may yet.)
+          if (yield* set.call(this, [], 0)) return true;
+        }
+        const over = -fit.room;
+        if (!(over > 0) || over > most * all) return false;
+        const by = Math.min(most, (over + 0.25) / all);
         if (!wraps(lines)) {
-          const moved = run.right + over - fit.end;
-          by = moved > 0 ? up((by * need) / moved) : Infinity;
-          if (by <= most && (yield* set.call(this, by))) return true;
-        } else if (yield* set.call(this, most)) {
+          if (yield* least.call(this, [], over, all)) return true;
+        } else if (!(yield* set.call(this, [], by)) && (yield* set.call(this, [], most))) {
           let [lo, hi] = [by, most];
           for (let i = 0; i < 3; i++) {
             const mid = up((lo + hi) / 2);
             if (mid <= lo || mid >= hi) break;
-            if (yield* set.call(this, mid)) hi = mid;
+            if (yield* set.call(this, [], mid)) hi = mid;
             else lo = mid;
           }
-          return (fit.ok && this.#tightened === hi) || (yield* set.call(this, hi));
+          return (fit.ok && this.#tightened === hi) || (yield* set.call(this, [], hi));
         }
+        if (fit.ok) return true;
         yield* phase.write();
         this.#tighten(null, 0);
         return false;
+      };
+      /**
+       * With `tightenCuts`, on one line: past the `k` graphemes a cut keeps
+       * set as usual, as many more as fit set tighter by the most, by the
+       * glyph widths less that and then as rendered (the search above); then
+       * set as little tighter as they take (`least`). Null for the cut that
+       * keeps `k`, set as usual.
+       */
+      const snug = function* (this: Elide, k: number, mark: number, room: number): Generator<void, Range[] | null, void> {
+        const top = maxKept(cuts);
+        if (!units || !this.#settings.tightenCuts || wraps(lines) || this.#settings.justify === 'spread' || k >= top) return null;
+        const tight = run.sums.map((w, i) => w - most * units[i]!);
+        const kept = (width: number, near?: number) => estimateKept(cuts, tight, mark, width, near);
+        const search = steeredSteps(k, top, Math.min(top, Math.max(k, kept(room)) + 1), (j, left) =>
+          kept(keptWidth(tight, mark, at(j)) + left, j),
+        );
+        let step = search.next();
+        while (!step.done) {
+          yield* set.call(this, at(step.value), most);
+          step = search.next({ fits: fit.ok, room: fit.room });
+        }
+        const cut = at(step.value);
+        if (sameRanges(cut, at(k))) {
+          // (What showed last was set tighter: it's rendered again as usual.)
+          tried = null;
+          return null;
+        }
+        if (!(fit.ok && tried !== null && sameRanges(tried, cut))) yield* set.call(this, cut, most);
+        // Tightening moves the line by a pixel for each of these: not the
+        // letters either side of an ellipsis, which keep its spacing (see `tighten`).
+        const beside = cut.reduce(
+          (sum, [s, e]) => sum + (s > 0 ? units[s]! - units[s - 1]! : 0) + (e < n ? units[e + 1]! - units[e]! : 0),
+          0,
+        );
+        const moving = Math.max(1, keptWidth(units, 0, cut) - beside);
+        if (!(yield* least.call(this, cut, fit.end + most * moving - run.right, moving))) yield* set.call(this, cut, most);
+        return cut;
       };
       // A judgement shouldn't be wrong, but if the final measurement says
       // the model was off, the cut is found again without judging (and this
@@ -1614,7 +1679,7 @@ export class Elide {
           let step = search.next();
           while (!step.done) step = search.next(yield* attempt.call(this, at(step.value)));
           this.#bias = step.value - guess;
-          hidden = at(step.value);
+          hidden = (yield* snug.call(this, step.value, mark, room)) ?? at(step.value);
         }
         const measured = fit.ok && tried !== null && sameRanges(tried, hidden);
         const expected = measured ? null : (predictor?.right(hidden) ?? null);

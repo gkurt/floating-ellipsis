@@ -33,7 +33,7 @@ After touching `react`, `bind`, `element`, `fallback.css` or anything a server i
 ## Project Structure
 
 - `src/index.ts` — public entry; re-exports `elide`/`Elide`, cut helpers, metrics and types.
-- `src/elide.ts` — the `Elide` class: reads the element, fits the text (and `suffix`) to `lines`, or sets it tighter first (`tighten`, `squeeze` in the pass), renders ellipses, schedules passes (shared ResizeObserver/IntersectionObserver, microtask batches), expands in place (`expand()`, find in page, focus), and exposes state and `onRender`. Hands its internals to the add-ons below through `inside.ts`, and runs the hook `onChange` installs (`Tracker`) in each pass.
+- `src/elide.ts` — the `Elide` class: reads the element, fits the text (and `suffix`) to `lines`, or sets it tighter first (`tighten`, `squeeze` in the pass; with `tightenCuts`, `snug` sets a cut tighter to show more), renders ellipses, schedules passes (shared ResizeObserver/IntersectionObserver, microtask batches), expands in place (`expand()`, find in page, focus), and exposes state and `onRender`. Hands its internals to the add-ons below through `inside.ts`, and runs the hook `onChange` installs (`Tracker`) in each pass.
 - `src/options.ts` — the public option, state and change types, and the option defaults.
 - `src/lockstep.ts` — runs many passes so they share layouts: each pass is a generator that yields when it switches between reading and writing (`Phase`).
 - `src/justify.ts` — fills the lines holding ellipses to the edge (a pass step), first with more marks with `repeat`.

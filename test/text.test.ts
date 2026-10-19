@@ -102,6 +102,20 @@ describe('elideText', () => {
     expect(elideText(text, { width: 100, measure: mono, tighten: 0.2 }).truncated).toBe(true);
   });
 
+  it('shows more of a cut set tighter, with tightenCuts', () => {
+    const text = 'abcdefghijklmnopqrst';
+    expect(elideText(text, { width: 105, measure: mono, tighten: 0.5 })).toMatchObject({ text: 'abcdefghi…', tightened: 0 });
+    // 'abcdefghij…' is 110 wide in 105: 5 over its 11 graphemes, the ellipsis' too.
+    const r = elideText(text, { width: 105, measure: mono, tighten: 0.5, tightenCuts: true });
+    expect(r).toMatchObject({ text: 'abcdefghij…', truncated: true, width: 105 });
+    expect(r.tightened).toBeCloseTo(5 / 11);
+    // Not past the most: 'abcdefghijk…' would take 7 over 12.
+    expect(elideText(text, { width: 113, measure: mono, tighten: 0.5, tightenCuts: true })).toMatchObject({
+      text: 'abcdefghij…',
+      tightened: 0,
+    });
+  });
+
   it('counts letter-spacing and its own ellipsis', () => {
     const r = elideText(PATH, { width: 300, measure: mono, letterSpacing: 2, ellipsis: '...' });
     expect(r.text.endsWith('...')).toBe(true);

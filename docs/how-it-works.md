@@ -200,12 +200,25 @@ lines, where wrapping makes the gain uneven, it tries the most it may and, if
 that fits, halves between the two three times, ending on the least that
 fits. It costs no layout unless the full text is within reach, and a
 tightened line isn't judged without rendering: its end isn't where the glyph
-widths say. How far the text runs over comes from the pass's own
-measurement, or from the line it starts from as judged, and when there is
-neither (after a tightened line, say), the full text is rendered to measure
-it: what a pass happens to know depends on the pass before, and deciding by
-it would flip a line between tightened and cut on every pass as the box
-shrinks. Once cut, text is set as usual; tightening only ever saves a cut.
+widths say. How far the text runs over is always measured, never judged by
+the glyph widths: near the most, a judgement and a measurement can fall on
+either side of it, and which one a pass has depends on the pass before, so
+deciding by either would flip a line between tightened and cut from pass to
+pass as the box shrinks. Once cut, text is set as usual; tightening only
+ever saves a cut, unless `tightenCuts`.
+
+With `tightenCuts`, on one line, the search for the cut is followed by a
+second, upward from the cut it found: for as many more graphemes as fit
+with the line set as tight as it may. It aims by the glyph widths less
+`tighten` for every unit, as the first search aims by the glyph widths, and
+renders every probe set that tight. The cut it ends on is then set as
+little tighter as it takes, as the full text is (by how far it would run
+over, then once more by how far that moved it). The ellipses, and the
+graphemes beside them in their joins, keep the element's spacing, so the
+gaps planned around them hold. The second search costs a few layouts each
+pass, and a tightened line isn't judged, so the pass after it renders its
+probes too. On more lines, where wrapping makes the gain uneven, and with
+`justify: 'spread'`, which sets the spacing itself, cuts are set as usual.
 
 ## Snapping
 
@@ -412,7 +425,10 @@ It sums glyph widths to find the cut, then measures the result, so kerning is
 accounted for. It measures with a canvas in `font` (an `OffscreenCanvas` in
 workers) or with `measure`. `keep` classes are ignored, since a string has no
 room for them. `tighten` is in `measure`'s unit, and `tightened` is the
-letter-spacing to take off when drawing (twice that on spaces).
+letter-spacing to take off when drawing (twice that on spaces). With
+`tightenCuts`, that applies to the whole string, the ellipsis too: a cut
+fits if its width less `tighten` for each of its letters (three for a
+space) does.
 
 ## Frameworks
 

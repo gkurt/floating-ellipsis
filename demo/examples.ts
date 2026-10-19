@@ -278,6 +278,12 @@ export const tightRows: { label: string; text: string; options: ElideOptions }[]
   { label: 'tighten: 0.05em', text: 'Quarterly revenue forecast', options: { tighten: '0.05em' } },
   { label: 'tighten: 0', text: 'Bernoulli numbers, note G', options: { position: 'middle' } },
   { label: 'tighten: 0.05em', text: 'Bernoulli numbers, note G', options: { position: 'middle', tighten: '0.05em' } },
+  { label: 'tighten: 0.05em', text: 'Quarterly revenue forecast by region and channel', options: { tighten: '0.05em' } },
+  {
+    label: 'tightenCuts',
+    text: 'Quarterly revenue forecast by region and channel',
+    options: { tighten: '0.05em', tightenCuts: true },
+  },
 ];
 
 export const inputFields: { label: string; value: string; placeholder: string; options: InputOptions }[] = [

@@ -48,12 +48,13 @@ describe('<elide-text>', () => {
 
   it('takes context, wholes and tightening as attributes', () => {
     const el = make(
-      `<elide-text keep="herons" keep-context="Infinity" whole="/\\d+/g" tighten="0.05em" style="width:160px">${PROSE}</elide-text>`,
+      `<elide-text keep="herons" keep-context="Infinity" whole="/\\d+/g" tighten="0.05em" tighten-cuts style="width:160px">${PROSE}</elide-text>`,
     );
     const t = el.instance!;
     expect(t.options.keep).toEqual({ match: 'herons', class: undefined, context: Infinity });
     expect(t.options.whole).toEqual(/\d+/g);
     expect(t.options.tighten).toBe('0.05em');
+    expect(t.options.tightenCuts).toBe(true);
   });
 
   it('follows attribute and property changes', () => {

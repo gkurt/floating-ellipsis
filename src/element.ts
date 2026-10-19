@@ -20,6 +20,7 @@ const ATTRIBUTES = [
   'keep-context',
   'whole',
   'tighten',
+  'tighten-cuts',
   'ellipsis',
   'gap',
   'max-gap',
@@ -71,7 +72,7 @@ function parseSnap(value: string): Snap | null {
  * `slot="suffix"` is the `suffix`. Attributes: `lines` (a number or `fit`), `position`
  * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
  * `keep-class` (a class to highlight it with) and `keep-context` (words of
- * context around it), `whole` (a string or `/regex/flags`), `tighten`, `ellipsis`, `gap`, `max-gap`
+ * context around it), `whole` (a string or `/regex/flags`), `tighten` and `tighten-cuts`, `ellipsis`, `gap`, `max-gap`
  * (`none` for no limit), `justify` (`false` to turn it off), `repeat` (0 to 1, or `false`), `trim`
  * (`false`), `snap` (`words`, `paths`, or separator characters), `glyphs`,
  * `tooltip-title` (the `title` option), `copy`, `show-suffix`, `find`
@@ -174,6 +175,7 @@ export class ElideElement extends Base {
     if (whole !== null) options.whole = parseKeep(whole);
     const tighten = attr('tighten');
     if (tighten !== null) options.tighten = isLength(tighten) ? tighten : Number(tighten);
+    options.tightenCuts = flag('tighten-cuts');
     const ellipsis = attr('ellipsis');
     if (ellipsis !== null) options.ellipsis = ellipsis;
     const gap = attr('gap');

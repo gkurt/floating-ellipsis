@@ -8,7 +8,7 @@ packages:
 Fluid, balanced truncation for the DOM, for one line or many.
 
 - **Anywhere, any length.** Clamp to any number of lines, or as many as fit the element's height (`lines: 'fit'`), with the ellipsis at the start, middle, end, any position, or several at once: a share of the text, or a place along the line (`'50%'`, `'120px'`), so a column's ellipses line up.
-- **Balanced and flush.** Even ink gaps on both sides of the ellipsis, and lines that end exactly at the edge (`justify`: `'dots'`, `'ellipsis'` or `'spread'`), with justified gaps capped by `maxGap` and leftover room filled with more marks (`repeat`). Text a little too long can set tighter instead of being cut (`tighten`).
+- **Balanced and flush.** Even ink gaps on both sides of the ellipsis, and lines that end exactly at the edge (`justify`: `'dots'`, `'ellipsis'` or `'spread'`), with justified gaps capped by `maxGap` and leftover room filled with more marks (`repeat`). Text a little too long can set tighter instead of being cut (`tighten`), and a cut line tighter to show more (`tightenCuts`).
 - **Marks.** Any string, or drawn dots, bullets, rings and squares sized from the font.
 - **Keep what matters.** Words, patterns or ranges that stay visible (`keep`), optionally highlighted with a class, with words of context around them like a search result's snippet (`context`).
 - **Words, paths and numbers.** Cuts that snap to whole words (`words()`) or path segments (`separators()`), and never split a number, a date or any other part marked `whole`.

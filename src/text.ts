@@ -61,6 +61,8 @@ export interface ElideTextOptions {
    * twice that on word spaces. Default 0.
    */
   tighten?: number;
+  /** A cut is set tighter too, by up to `tighten`, to show as much more as that makes room for. Default false. */
+  tightenCuts?: boolean;
 }
 
 export interface ElideTextResult {
@@ -100,6 +102,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     trim = true,
     snap = null,
     tighten = 0,
+    tightenCuts = false,
   } = options;
   const raw = options.measure ?? (font ? (s: string) => advance(font, s) : null);
   if (!raw) throw new Error('elideText: pass a `font` or a `measure` function');
@@ -110,7 +113,8 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   const full = measure(text, n);
   if (full <= room) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
   // A pixel of tightening takes in one after every letter and two after every space.
-  const units = g.reduce((sum, s) => sum + (s === ' ' || s === ' ' ? 3 : 1), 0);
+  const unitsOf = (gs: readonly string[]) => gs.reduce((sum, s) => sum + (s === ' ' || s === ' ' ? 3 : 1), 0);
+  const units = unitsOf(g);
   if (full - room <= tighten * units)
     return { text, truncated: false, hidden: [], kept: [], width: room, tightened: (full - room) / units };
 
@@ -166,29 +170,40 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     }
     out += text.slice(offsets[at]);
     count += n - at + cuts.length * graphemes(ellipsis).length;
-    return { text: out, width: measure(out, count) };
+    const width = measure(out, count);
+    // How far it can be set tighter, with `tightenCuts`.
+    const give = tightenCuts ? tighten * unitsOf(graphemes(out)) : 0;
+    return { text: out, width, fits: width - give <= room };
   };
 
   // Kept parts that can't all fit give way, last first, as in `elide`.
-  while (c.pins.length > 0 && render(cutsFor(0)).width > room) c = cutting(c.pins.slice(0, -1));
+  while (c.pins.length > 0 && !render(cutsFor(0)).fits) c = cutting(c.pins.slice(0, -1));
   // The glyph widths' estimate, then measured, since a string isn't just
   // the sum of its glyphs (kerning).
   const most = maxKept(c);
   let k = estimateKept(c, sums, mark, room);
   let cuts = cutsFor(k);
   let shown = render(cuts);
-  while (shown.width > room && k > 0) {
+  while (!shown.fits && k > 0) {
     cuts = cutsFor(--k);
     shown = render(cuts);
   }
   while (k < most) {
     const more = cutsFor(k + 1);
     const wider = render(more);
-    if (wider.width > room) break;
+    if (!wider.fits) break;
     [k, cuts, shown] = [k + 1, more, wider];
   }
   if (cuts.length === 0) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
-  return { text: shown.text, truncated: true, hidden: cuts.map(part), kept: c.pins.map(part), width: shown.width, tightened: 0 };
+  const tightened = shown.width > room ? (shown.width - room) / unitsOf(graphemes(shown.text)) : 0;
+  return {
+    text: shown.text,
+    truncated: true,
+    hidden: cuts.map(part),
+    kept: c.pins.map(part),
+    width: Math.min(shown.width, room),
+    tightened,
+  };
 }
 
 export { separators, words } from './cut.ts';

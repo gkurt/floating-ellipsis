@@ -113,6 +113,7 @@ const textDials = createDialKit('Text', {
   },
   numbers: { type: 'select', options: ['cut', 'whole'], default: 'cut' },
   tighten: [0, 0, 0.1, 0.01],
+  tightenCuts: false,
 });
 const ellipsisDials = createDialKit('Ellipsis', {
   style: {
@@ -127,7 +128,7 @@ const ellipsisDials = createDialKit('Ellipsis', {
 });
 
 function update() {
-  const { text, position, lines, keep, context, cutAt, numbers, tighten } = textDials.values;
+  const { text, position, lines, keep, context, cutAt, numbers, tighten, tightenCuts } = textDials.values;
   const { style, dots, gap, justify, repeat } = ellipsisDials.values;
   hero.update({
     text,
@@ -136,6 +137,7 @@ function update() {
     keep: context > 0 ? parseKeep(keep).map((match) => ({ match, context })) : parseKeep(keep),
     whole: numbers === 'whole' ? NUMBERS : null,
     tighten: `${tighten}em`,
+    tightenCuts,
     ellipsis: ellipsisStyle(style, dots),
     gap: gap as Gap,
     justify: justify === 'off' ? false : (justify as ElideOptions['justify']),

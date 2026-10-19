@@ -102,10 +102,15 @@ export interface ElideOptions {
    * Text a little too long for its lines shows whole, set tighter, rather
    * than cut: letters closer by up to this much (px, or a string like
    * '0.02em'), and word spaces by up to twice as much. Only as much as it
-   * takes, so one line ends at the edge. Text that's cut is set as usual.
-   * Default 0: never.
+   * takes, so one line ends at the edge. Text that's cut is set as usual,
+   * unless `tightenCuts`. Default 0: never.
    */
   tighten?: Length;
+  /**
+   * On one line, a cut is set tighter too, by up to `tighten`, to show as
+   * much more of the text as that makes room for. Default false.
+   */
+  tightenCuts?: boolean;
   /**
    * Re-truncate when the element is resized and when web fonts load. An
    * element more than a screen away from the viewport waits until it comes
@@ -164,6 +169,7 @@ export const DEFAULTS: Settings = {
   snap: null,
   whole: null,
   tighten: 0,
+  tightenCuts: false,
   observe: true,
   glyphs: null,
   title: false,
@@ -275,7 +281,7 @@ export interface ElideState {
    * took it in, in px. Small values mean the text is tightly packed.
    */
   slack: number;
-  /** How much closer `tighten` set the letters so the full text fits, in px; 0 when it didn't. */
+  /** How much closer `tighten` set the letters so the text fits (with `tightenCuts`, the cut too), in px; 0 when it didn't. */
   tightened: number;
 }
 
