@@ -69,6 +69,7 @@ After touching `react`, `bind`, `element`, `fallback.css` or anything a server i
 
 ## Architecture
 
+- **Scope.** A feature belongs in the core only if it needs the cut: what's hidden, where an ellipsis lands, or a place in the layout pass. If another library could do it, enable that library instead (inline markup, `keep` classes, options that take functions, `onChange`, `geometry`) rather than building it in. Syntax highlighting, for example, is the highlighter's job; ours is that its markup survives the cut.
 - Pure logic (`cut`, the math in `metrics`) is DOM-free and unit-tested with `bun test`. Layout is tested in real engines (`test/browser/`) by invariants that hold whatever fonts an engine maps to: lines fit the content box, ellipsis lines end flush, gaps balance, a wider box never shows less, and the tooltip's glyphs land on the line's. The demo is for looking.
 - `test/browser/perf.browser.ts` counts layouts (Chromium, through the DevTools protocol) for creating and resizing a crowded grid and for scrolling a virtual list. A change that makes passes stop sharing layouts fails it.
 - The package ships `src/` beside `dist/` (sourcemaps resolve, and readers can inspect the source); keep `src/` free of anything that shouldn't be published.
@@ -77,7 +78,8 @@ After touching `react`, `bind`, `element`, `fallback.css` or anything a server i
 - Passes are generators run in lockstep (`lockstep.ts`): all instances read layout, then all write, so N instances share each layout instead of forcing their own. Never read layout in a write phase or write in a read phase; `yield* phase.read()` / `phase.write()` before each. Passes are queued and flushed in a microtask; public getters call `sync()` to flush first.
 - Measure performance with `bun run bench` (compare against the previous commit, alternating runs: timings vary from run to run) and on the demo's table page (`/table.html`), always with many instances; a single instance hides layout costs that grow with the page. `BENCH_PROFILE=1` prints the functions that took the most time and saves CPU profiles in `.vitest/profiles`.
 - Code only some pages use goes in its own entry, unreachable from `Elide`: the `glyphs`, `suffix` and `autoSize` options take objects that bring their code (as `snap` does), and add-ons take the instance and reach inside through `inside.ts`. `bun run size` checks that the core stays without them.
-- With `onChange` listening, each update emits an `ElideChange` (graphemes shown/hidden, previous boxes); `transitions` only consumes these and `geometry`, so it stays a separate entry point. `tooltip` likewise only uses the public instance API and `geometry`.
+- With `onChange` listening, each update emits an `ElideChange` (graphemes shown/hidden, previous boxes).
+- Add-ons (`tooltip`, `transitions`) are separate entries built only on the public API (`transitions` on `ElideChange`s and `geometry`, `tooltip` on the instance and `geometry`), so they can be swapped for other implementations. They're closely tied to how this library cuts, and they keep its hooks honest: an add-on that needs something the public API doesn't give means a hook is missing. Add the hook rather than reaching inside.
 - Imports from parent directories go through the `#src/` subpath alias (`package.json` `imports`), with `.ts` extensions.
 
 ## Coding Conventions

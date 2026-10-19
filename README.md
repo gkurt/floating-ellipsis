@@ -39,9 +39,9 @@ t.state.hidden; // [{ start, end, text }], one per ellipsis
 t.destroy(); // restore the original content
 ```
 
-The element's width must not depend on its content: use a block, or a flex or
-grid item with `min-width: 0`. For one whose width does (a chip, an
-inline-block), see [Sized by content](#sized-by-content).
+By default the element's width comes from its container, not its text: use a
+block, or a flex or grid item with `min-width: 0`. For one sized by its text
+(a chip, an inline-block, a float), add `autoSize()`: see [Sized by content](#sized-by-content).
 
 ## Options
 
