@@ -818,7 +818,7 @@ export type Keep =
 export type Whole = string | RegExp | { start: number; end: number };
 
 /** String ranges of one `keep` entry's matches. */
-function matches(text: string, k: Keep): Range[] {
+export function matches(text: string, k: Keep): Range[] {
   if (typeof k === 'object' && !(k instanceof RegExp) && !('match' in k))
     return k.end > k.start ? [[Math.max(0, k.start), Math.min(text.length, k.end)]] : [];
   const m = typeof k === 'string' || k instanceof RegExp ? k : k.match;

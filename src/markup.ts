@@ -15,6 +15,13 @@ export interface Unit {
   end: number;
 }
 
+/** A part of the text with a short form (`data-elide-short`): the code units of its text, and the form. */
+export interface Shortened {
+  start: number;
+  end: number;
+  to: string;
+}
+
 /** Elements whose text isn't text to show. */
 const SKIP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
 
@@ -39,15 +46,17 @@ function unitText(el: Element): string {
  * all of it when there are none). `skip` and what's inside it are left out.
  * Units (images, icons, `data-elide-unit`) stand as their text (see
  * `unitText`), listed in `units`; other elements without text add nothing.
- * `<br>` is a space.
+ * `<br>` is a space. Elements with `data-elide-short` are listed in `short`,
+ * with the text they hold and the form they show shortened.
  */
 export function readMarkup(
   nodes: Iterable<Node>,
   skip: Node | null = null,
-): { text: string; chains: (Chain | null)[] | null; units: Unit[] } {
+): { text: string; chains: (Chain | null)[] | null; units: Unit[]; short: Shortened[] } {
   let text = '';
   const chains: (Chain | null)[] = [];
   const units: Unit[] = [];
+  const short: Shortened[] = [];
   let marked = false;
   // The chain of a run of whitespace waiting to become one space.
   let gap: Chain | null | undefined;
@@ -89,14 +98,18 @@ export function readMarkup(
         return;
       }
       const inner = [...(chain ?? []), node];
+      const to = node.getAttribute('data-elide-short');
+      // (A space before it is put down by what comes next: it isn't its text.)
+      const start = text.length + (gap !== undefined && text !== '' ? 1 : 0);
       for (const child of node.childNodes) walk(child, inner);
+      if (to !== null && text.length > start) short.push({ start, end: text.length, to });
       marked = true;
       return;
     }
     for (const child of node.childNodes) walk(child, chain);
   };
   for (const node of nodes) walk(node, null);
-  return { text, chains: marked ? chains : null, units };
+  return { text, chains: marked ? chains : null, units, short };
 }
 
 /**
@@ -223,6 +236,8 @@ export function nest(
 }
 
 const SAY = 'data-fp-say';
+/** What a part in a short form shows (see `shortCopy`). */
+export const SHORT = 'data-fp-short';
 /** The cells an ellipsis takes (see `MarkStyle.cells`): ideographs nobody sees, nor finds, nor copies. */
 export const CELLS = 'data-fp-cells';
 let sheet: CSSStyleSheet | null | undefined;
@@ -238,7 +253,8 @@ export function adopt(node: Node): boolean {
     try {
       sheet = new CSSStyleSheet();
       sheet.replaceSync(
-        `[${SAY}]::before{content:attr(${SAY})}[${CELLS}]::before{content:attr(${CELLS});color:transparent;forced-color-adjust:none}`,
+        `[${SAY}]::before{content:attr(${SAY})}[${SHORT}]::before{content:attr(${SHORT})}` +
+          `[${CELLS}]::before{content:attr(${CELLS});color:transparent;forced-color-adjust:none}`,
       );
     } catch {
       sheet = null;

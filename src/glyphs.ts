@@ -9,6 +9,7 @@ import { inside } from './inside.ts';
 import { type Chain, type Placed, nest, unitCopy } from './markup.ts';
 import { inkOf } from './metrics.ts';
 import type { GlyphMode } from './options.ts';
+import type { ShortPart } from './shorten.ts';
 
 /** Glyph mode, for the `glyphs` option: `elide(el, { glyphs })`. */
 export const glyphs: GlyphMode = {
@@ -31,9 +32,26 @@ export const glyphs: GlyphMode = {
     ),
 };
 
-/** Put the glyph elements of `[from, to)` in `el`, inside copies of their elements. */
-function fillGlyphs(el: HTMLElement, glyphs: readonly HTMLElement[], chains: readonly (Chain | null)[], [from, to]: Range): void {
-  const want = glyphs.slice(from, to);
+/**
+ * Put the glyph elements of `[from, to)` in `el`, inside copies of their
+ * elements, and for a part of `short` the element `shortEl` makes for it.
+ */
+function fillGlyphs(
+  el: HTMLElement,
+  glyphs: readonly HTMLElement[],
+  chains: readonly (Chain | null)[],
+  [from, to]: Range,
+  short: readonly ShortPart[],
+  shortEl: (part: ShortPart) => Element,
+): void {
+  // Each grapheme's node: its glyph, or the first of a part's its short form (null for the rest).
+  const nodes: (Element | null)[] = glyphs.slice(from, to);
+  for (const part of short) {
+    if (part.end <= from || part.start >= to) continue;
+    nodes.fill(null, Math.max(0, part.start - from), part.end - from);
+    nodes[Math.max(0, part.start - from)] = shortEl(part);
+  }
+  const want = nodes.filter((node) => node !== null);
   if (chains.length === 0) {
     const have = el.childNodes;
     if (have.length !== want.length || want.some((g, i) => have[i] !== g)) el.replaceChildren(...want);
@@ -44,13 +62,15 @@ function fillGlyphs(el: HTMLElement, glyphs: readonly HTMLElement[], chains: rea
   filled.set(el, key);
   const placed: Placed[] = [];
   for (let i = from; i < to; i++) {
+    const node = nodes[i - from];
+    if (!node) continue;
     const chain = chains[i] ?? null;
     const last = placed.at(-1);
     if (last && last.chain === chain) {
-      last.nodes.push(glyphs[i]!);
+      last.nodes.push(node);
       last.end = i + 1;
     } else {
-      placed.push({ chain, nodes: [glyphs[i]!], start: i, end: i + 1 });
+      placed.push({ chain, nodes: [node], start: i, end: i + 1 });
     }
   }
   el.replaceChildren(...nest(placed, false));

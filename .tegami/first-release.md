@@ -12,6 +12,7 @@ Fluid, balanced truncation for the DOM, for one line or many.
 - **Marks.** Any string, or drawn dots, bullets, rings and squares sized from the font. Dots in brackets (`'[…]'`) mark words left out of a quotation, set like a word. `ellipsis: 'auto'` sets Chinese and Japanese text's ellipsis in the middle of the line, on as many of its cells as it takes, so the characters after it stay in their columns.
 - **Keep what matters.** Words, patterns or ranges that stay visible (`keep`), optionally highlighted with a class, with words of context around them like a search result's snippet (`context`).
 - **Words, paths and numbers.** Cuts that snap to whole words (`words()`) or path segments (`separators()`), and never split a number, a date or any other part marked `whole`.
+- **Short forms first.** Parts show shorter before anything is cut, a step at a time, as few as fit (`shorten`, or `data-elide-short` in markup): "Wednesday" as "Wed", "Christopher Robin" as "C. Robin". `dateForms` (`floating-ellipsis/dates`) writes a date from long to short as its locale does.
 - **Rich text.** Links and other inline elements survive the cut; images, icons and `data-elide-unit` elements show whole or not at all.
 - **Suffixes.** A "Read more" button, badge or time follows the text on its last line and is never cut (`floating-ellipsis/suffix`), with `expand()` and `collapse()`.
 - **Lists.** Items cut whole, with a label for the rest, joined as the list joins its last item: "Ada, Grace and 2 others" (`floating-ellipsis/list`).

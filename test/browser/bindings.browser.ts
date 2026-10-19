@@ -4,6 +4,7 @@ import { type Root, createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, h, nextTick, ref, withDirectives } from 'vue';
+import { dateForms } from '#src/dates.ts';
 import { ElideElement, define } from '#src/element.ts';
 import type { Elide } from '#src/elide.ts';
 import { Elided, useElide } from '#src/react.ts';
@@ -119,6 +120,33 @@ describe('React', () => {
     );
     await frames(1);
     expect(container.querySelector('span.path')!.textContent).toContain('Short');
+  });
+
+  it('Elided shows a date shorter as it narrows, and re-renders with it unchanged', async () => {
+    const { root, container } = mount();
+    let mutations = 0;
+    const show = (width: number) =>
+      flushSync(() =>
+        // A new date and forms on every render, as a component would make them.
+        root.render(
+          createElement(Elided, { ...dateForms(new Date(2026, 9, 14), { locale: 'en-US' }), className: 'when', style: { width } }),
+        ),
+      );
+    show(400);
+    await frames(1);
+    const el = container.querySelector<HTMLElement>('.when')!;
+    expect(el.hasAttribute('data-shortened')).toBe(false);
+    show(130);
+    await frames(1);
+    expect(el.hasAttribute('data-shortened')).toBe(true);
+    expect(el.hasAttribute('data-truncated')).toBe(false);
+    expect(spoken(el)).toBe('Wednesday, October 14, 2026');
+    const observer = new MutationObserver(() => mutations++);
+    observer.observe(el, { subtree: true, childList: true, attributes: true });
+    show(130);
+    await frames(1);
+    observer.disconnect();
+    expect(mutations).toBe(0);
   });
 
   it('Elided takes any React node as its suffix, events and all', async () => {

@@ -25,6 +25,7 @@ import {
   quote,
   river,
   sharedColumns,
+  shortRows,
   siblings,
   snapRows,
   snippetKeep,
@@ -449,7 +450,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
     elideInput(input, options);
   }
   setCode('inputCode', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
-  stage(box, [0.5, 1]);
+  stage(box, [0.5, 0.75]);
 }
 
 // ---------------------------------------------------------------------------
@@ -468,4 +469,26 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('marksCode', "elide(quote, { ellipsis: «'[…]'», snap: words() }); elide(chinese, { ellipsis: «'auto'» })");
   stage(box, [0.4, 0.75]);
+}
+
+// ---------------------------------------------------------------------------
+// 18 Shorter before it's cut
+
+{
+  const box = $('#shortBox');
+  const tips = tooltip({ reveal: 'grow' });
+  for (const { label, text, options } of shortRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    const readout = el('span', 'tightness');
+    row.append(line, readout);
+    box.insertBefore(row, $('.handle', box));
+    const t = elide(line, options);
+    t.onRender(({ short, truncated }) => {
+      readout.textContent = truncated ? 'cut' : short.length > 0 ? `${short.length} short` : '';
+    });
+    tips.attach(t, row);
+  }
+  setCode('shortCode', "shorten: [{ match: «'Wednesday'», to: [«'Wed'», «'W'»] }, { match: «' 2026'», to: «''» }]");
+  stage(box, [0.4, 0.85]);
 }

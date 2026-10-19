@@ -6,3 +6,4 @@ export type { EllipsisStyle, MarkStyle, Shape, Length } from './marks.ts';
 export { planGap, inkGap, inkRuns, dotSpacing, measure, fontOf, clearMetrics } from './metrics.ts';
 export type { Font, Gap, GapPlan, GlyphMetrics } from './metrics.ts';
 export { graphemes } from './graphemes.ts';
+export type { Shorten, ShortPart } from './shorten.ts';

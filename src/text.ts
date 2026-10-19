@@ -11,6 +11,7 @@ import {
   type Snap,
   type Whole,
   asArray,
+  bothEdges,
   contextOf,
   estimateKept,
   hiddenRanges,
@@ -27,6 +28,7 @@ import {
 import { graphemes, isCJK, isWhitespace } from './graphemes.ts';
 import { advance } from './metrics.ts';
 import type { Part } from './options.ts';
+import { type ShortPart, type Shorten, formsOf, shortAt, shortRanges, shownText, stepsOf, totals } from './shorten.ts';
 
 export interface ElideTextOptions {
   /** The room the text has, in px (or whatever unit `measure` returns). */
@@ -55,6 +57,8 @@ export interface ElideTextOptions {
   snap?: Snap | null;
   /** Parts shown whole or not at all, as in `elide`. */
   whole?: Whole | readonly Whole[] | null;
+  /** Parts that show shorter before any text is cut, as in `elide`. */
+  shorten?: Shorten | readonly Shorten[] | null;
   /**
    * Text that runs over by a little shows whole, set tighter, as in
    * `elide`: by up to this much letter-spacing (in `measure`'s unit), and
@@ -73,6 +77,8 @@ export interface ElideTextResult {
   hidden: Part[];
   /** Kept parts (from `keep`) that show while truncated. */
   kept: Part[];
+  /** The parts that show in a short form (see `shorten`), in grapheme indices of the full text. */
+  short: ShortPart[];
   /** The width of `text`, as measured (tightened, if it was). */
   width: number;
   /**
@@ -111,27 +117,43 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   const ellipsis = chosen === 'auto' ? (isCJK(g) ? '⋯' : '…') : chosen;
   const measure = (s: string, count: number) => raw(s) + letterSpacing * count;
 
-  const full = measure(text, n);
-  if (full <= room) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
-  // A pixel of tightening takes in one after every letter and two after every space.
-  const unitsOf = (gs: readonly string[]) => gs.reduce((sum, s) => sum + (s === ' ' || s === ' ' ? 3 : 1), 0);
-  const units = unitsOf(g);
-  if (full - room <= tighten * units)
-    return { text, truncated: false, hidden: [], kept: [], width: room, tightened: (full - room) / units };
-
   const offsets = [0];
   for (const s of g) offsets.push(offsets[offsets.length - 1]! + s.length);
+  // A pixel of tightening takes in one after every letter and two after every space.
+  const unitsOf = (gs: readonly string[]) => gs.reduce((sum, s) => sum + (s === ' ' || s === ' ' ? 3 : 1), 0);
+  // All of the text, with the fewest steps of short forms that fit, set tighter if it takes that.
+  const forms = formsOf(text, offsets, asArray(options.shorten));
+  const steps = stepsOf(forms);
+  for (let level = 0; level <= steps.length; level++) {
+    const short = shortAt(text, offsets, forms, steps, level);
+    const shown = shownText(g, short, 0, n);
+    const gs = short.length > 0 ? graphemes(shown) : g;
+    const width = measure(shown, gs.length);
+    if (width <= room) return { text: shown, truncated: false, hidden: [], kept: [], short, width, tightened: 0 };
+    const units = unitsOf(gs);
+    if (width - room <= tighten * units)
+      return { text: shown, truncated: false, hidden: [], kept: [], short, width: room, tightened: (width - room) / units };
+  }
+
+  // Cut with every part in its shortest form.
+  const short = shortAt(text, offsets, forms, steps, steps.length);
   const sizes = new Map<string, number>();
-  const sums = new Float64Array(n + 1);
-  g.forEach((s, i) => {
+  const size = (s: string) => {
     let w = sizes.get(s);
-    if (w === undefined) sizes.set(s, (w = measure(s, 1)));
-    sums[i + 1] = sums[i]! + w;
-  });
+    if (w === undefined) sizes.set(s, (w = measure(s, graphemes(s).length)));
+    return w;
+  };
+  const sums = totals(
+    n,
+    (i) => size(g[i]!),
+    short,
+    (p) => size(p.form),
+  );
   const mark = measure(ellipsis, graphemes(ellipsis).length);
   const graphemeRanges = (r: Range) => toGraphemeRanges([r], offsets);
   const contexts = keepContexts(text, asArray(keep)).flatMap(([r, words]) => graphemeRanges(r).map((x): [Range, number] => [x, words]));
-  const wholes = wholeEdges(n, keepRanges(text, asArray(options.whole)).flatMap(graphemeRanges));
+  const given = wholeEdges(n, keepRanges(text, asArray(options.whole)).flatMap(graphemeRanges));
+  const wholes = given ? bothEdges(given, wholeEdges(n, shortRanges(short))) : wholeEdges(n, shortRanges(short));
   const positions = asArray(position);
   // Places along the line: islands as long as fits before them (see `elide`).
   const em = Number(/(\d*\.?\d+)px/.exec(font ?? '')?.[1] ?? 16);
@@ -163,17 +185,15 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   const render = (cuts: readonly Range[]) => {
     let out = '';
     let at = 0;
-    let count = 0;
     for (const [s, e] of cuts) {
-      out += text.slice(offsets[at], offsets[s]) + ellipsis;
-      count += s - at;
+      out += shownText(g, short, at, s) + ellipsis;
       at = e;
     }
-    out += text.slice(offsets[at]);
-    count += n - at + cuts.length * graphemes(ellipsis).length;
-    const width = measure(out, count);
+    out += shownText(g, short, at, n);
+    const gs = graphemes(out);
+    const width = measure(out, gs.length);
     // How far it can be set tighter, with `tightenCuts`.
-    const give = tightenCuts ? tighten * unitsOf(graphemes(out)) : 0;
+    const give = tightenCuts ? tighten * unitsOf(gs) : 0;
     return { text: out, width, fits: width - give <= room };
   };
 
@@ -195,13 +215,16 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     if (!wider.fits) break;
     [k, cuts, shown] = [k + 1, more, wider];
   }
-  if (cuts.length === 0) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
+  const showing = short.filter((p) => !cuts.some(([s, e]) => s <= p.start && p.end <= e));
+  if (cuts.length === 0)
+    return { text: shown.text, truncated: false, hidden: [], kept: [], short: showing, width: shown.width, tightened: 0 };
   const tightened = shown.width > room ? (shown.width - room) / unitsOf(graphemes(shown.text)) : 0;
   return {
     text: shown.text,
     truncated: true,
     hidden: cuts.map(part),
     kept: c.pins.map(part),
+    short: showing,
     width: Math.min(shown.width, room),
     tightened,
   };
@@ -210,3 +233,4 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
 export { separators, words } from './cut.ts';
 export type { Keep, Place, Position, SeparatorOptions, Share, Snap, SnapContext, Whole } from './cut.ts';
 export type { Part } from './options.ts';
+export type { ShortPart, Shorten } from './shorten.ts';

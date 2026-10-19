@@ -13,6 +13,7 @@ describe('elideText', () => {
       truncated: false,
       hidden: [],
       kept: [],
+      short: [],
       width: 50,
       tightened: 0,
     });

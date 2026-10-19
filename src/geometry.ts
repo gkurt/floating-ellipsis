@@ -5,6 +5,7 @@
  */
 import type { Range } from './cut.ts';
 import type { Elide, Inside } from './elide.ts';
+import { FORM } from './highlight.ts';
 import { inside } from './inside.ts';
 import { lineBoxes } from './lines.ts';
 import { markInk } from './marks.ts';
@@ -78,6 +79,33 @@ export function markElements(instance: Elide, index = 0): HTMLElement[] {
   return index < (s.current?.hidden.length ?? 0) ? [...(s.joins[index]?.marks ?? [])] : [];
 }
 
+/**
+ * The element part `index` of `state.short` shows as in the line (its short
+ * form, see `shorten`), or null.
+ */
+export function shortElement(instance: Elide, index = 0): HTMLElement | null {
+  const s = inside(instance);
+  s.sync();
+  const part = s.current?.short[index];
+  if (!part) return null;
+  for (const el of s.line.querySelectorAll<HTMLElement>(`[${FORM}]`)) {
+    const [start] = formRange(el);
+    if (start === part.start && !el.closest('[data-fp-found]')) return el;
+  }
+  return null;
+}
+
+/** Box of part `index` of `state.short` as it shows, in its short form, or null. */
+export function shortRect(instance: Elide, index = 0): DOMRect | null {
+  return shortElement(instance, index)?.getBoundingClientRect() ?? null;
+}
+
+/** The graphemes a short form's element stands for (see `shortCopy`). */
+function formRange(el: Element): Range {
+  const [, start, end] = (el.getAttribute(FORM) ?? '').split(':').map(Number);
+  return [start ?? 0, end ?? 0];
+}
+
 /** One box per rendered line of visible text. */
 export function lineRects(instance: Elide): DOMRect[] {
   const s = inside(instance);
@@ -86,15 +114,17 @@ export function lineRects(instance: Elide): DOMRect[] {
 }
 
 /**
- * Box of grapheme `index` as laid out, or null when it is hidden. Works in
- * text mode too (measured with a Range), so a tooltip can line its own copy
- * of the text up with the original glyph by glyph.
+ * Box of grapheme `index` as laid out, or null when it is hidden, or in a
+ * part showing its short form (see `shortRect`). Works in text mode too
+ * (measured with a Range), so a tooltip can line its own copy of the text up
+ * with the original glyph by glyph.
  */
 export function graphemeRect(instance: Elide, index: number): DOMRect | null {
   const s = inside(instance);
   s.sync();
   const { current, offsets } = s;
   if (index < 0 || index >= instance.graphemes.length || !current || !isVisible(current, index)) return null;
+  if (current.short.some((p) => index >= p.start && index < p.end)) return null;
   if (s.settings.glyphs) {
     const el = s.glyphs[index];
     return el?.isConnected ? el.getBoundingClientRect() : null;
@@ -102,7 +132,7 @@ export function graphemeRect(instance: Elide, index: number): DOMRect | null {
   const piece = s.pieces().find(({ range: [a, b] }) => index >= a && index < b);
   if (!piece) return null;
   if (instance.unitOf(index)) return piece.el.querySelector(`[${UNIT_COPY}="${index}"]`)?.getBoundingClientRect() ?? null;
-  const found = textAt(piece.el, offsets[index]! - offsets[piece.range[0]]!, (i) => offsets[i + 1]! - offsets[i]!);
+  const found = textAt(piece.el, offsets[index]! - offsets[piece.range[0]]!, (a, b) => offsets[b]! - offsets[a]!);
   if (!found) return null;
   const [node, at] = found;
   const range = document.createRange();
@@ -159,6 +189,11 @@ function piecesOf(instance: Elide, s: Inside): Map<Node, Range> {
     map.set(join.el, [map.get(join.before)![0], map.get(join.after)![1]]);
   });
   if (glyphMode) s.glyphs.forEach((el, i) => map.set(el, [i, i + 1]));
+  // A short form stands for all of its part, whatever in it a position is in.
+  for (const el of s.line.querySelectorAll(`[${FORM}]`)) {
+    const range = formRange(el);
+    for (const node of [el, ...el.querySelectorAll('*')]) map.set(node, range);
+  }
   return map;
 }
 
@@ -195,9 +230,10 @@ function boundsOf(rects: readonly DOMRect[]): DOMRect | null {
 
 /**
  * The text node holding code unit `at` of a piece's text, and the offset in
- * it. A unit's copy stands for its grapheme's text, `length(i)` long.
+ * it. A unit's copy stands for its grapheme's text, and a short form for its
+ * part's, `length(start, end)` long.
  */
-function textAt(el: Element, at: number, length: (i: number) => number): [Text, number] | null {
+function textAt(el: Element, at: number, length: (start: number, end: number) => number): [Text, number] | null {
   const find = (node: Node): [Text, number] | null => {
     if (node instanceof Text) {
       if (at < node.data.length) return [node, at];
@@ -206,7 +242,11 @@ function textAt(el: Element, at: number, length: (i: number) => number): [Text, 
     }
     const unit = node instanceof Element ? node.getAttribute(UNIT_COPY) : null;
     if (unit !== null) {
-      at -= length(Number(unit));
+      at -= length(Number(unit), Number(unit) + 1);
+      return null;
+    }
+    if (node instanceof Element && node.hasAttribute(FORM)) {
+      at -= length(...formRange(node));
       return null;
     }
     for (const child of node.childNodes) {
@@ -231,6 +271,9 @@ function childRanges(el: HTMLElement, [from, to]: Range, offsets: readonly numbe
     if (node instanceof Element && node.hasAttribute(UNIT_COPY)) {
       i++;
       for (const inner of node.querySelectorAll('*')) out.push([inner, [start, i]]);
+    } else if (node instanceof Element && node.hasAttribute(FORM)) {
+      i = Math.max(i, formRange(node)[1]);
+      return;
     } else if (node instanceof Text) {
       const end = offsets[start]! + node.data.length;
       while (i < to && offsets[i]! < end) i++;

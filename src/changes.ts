@@ -105,7 +105,12 @@ function changeOf(
   glyphsBefore: Boxes,
   marksBefore: DOMRect[][],
 ): ElideChange | null {
-  const same = previous && !reset && sameParts(previous.hidden, state.hidden);
+  const same =
+    previous &&
+    !reset &&
+    sameParts(previous.hidden, state.hidden) &&
+    sameParts(previous.short, state.short) &&
+    previous.short.every((p, i) => p.form === state.short[i]!.form);
   if (same && (reason === 'resize' || reason === 'refresh')) return null;
   const shown: number[] = [];
   const hidden: number[] = [];

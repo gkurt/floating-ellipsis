@@ -8,6 +8,7 @@ export default defineConfig({
     'src/changes.ts',
     'src/suffix.ts',
     'src/list.ts',
+    'src/dates.ts',
     'src/input.ts',
     'src/autosize.ts',
     'src/transitions.ts',

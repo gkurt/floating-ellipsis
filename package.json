@@ -79,6 +79,13 @@
       },
       "source": "./src/suffix.ts"
     },
+    "./dates": {
+      "import": {
+        "types": "./dist/dates.d.ts",
+        "default": "./dist/dates.js"
+      },
+      "source": "./src/dates.ts"
+    },
     "./list": {
       "import": {
         "types": "./dist/list.d.ts",

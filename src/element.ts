@@ -68,7 +68,8 @@ function parseSnap(value: string): Snap | null {
 
 /**
  * Truncates its content to fit, like `elide(this, options)`: its text, with
- * inline elements (links, code, emphasis) kept. A child with
+ * inline elements (links, code, emphasis) kept, and those with
+ * `data-elide-short` shown in their short form first. A child with
  * `slot="suffix"` is the `suffix`. Attributes: `lines` (a number or `fit`), `position`
  * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
  * `keep-class` (a class to highlight it with) and `keep-context` (words of

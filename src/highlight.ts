@@ -6,7 +6,8 @@
  * through these.
  */
 import type { Range } from './cut.ts';
-import { type Chain, type Placed, nest, unitCopy } from './markup.ts';
+import { type Chain, type Placed, SHORT, nest, unitCopy } from './markup.ts';
+import type { ShortPart } from './shorten.ts';
 
 /** How each grapheme is marked up: the classes `keep` gives it, the elements around it, and what find in page found. */
 export interface Marking {
@@ -22,20 +23,56 @@ export interface Marking {
   /** The whole text, and where each grapheme starts in it (length n + 1). */
   text: string;
   offsets: readonly number[];
+  /** The parts showing in a short form, in order (see `shorten`); empty for none. */
+  short: readonly ShortPart[];
+  /** The element a part of `short` shows as (see `shortCopy`). */
+  shortEl: (part: ShortPart) => Element;
 }
 
 /** Whether graphemes `[from, to)` are plain text, with nothing to wrap them in. */
-const plainIn = ({ plain, match }: Marking, from: number, to: number) => plain && (!match || match[1] <= from || match[0] >= to);
+const plainIn = ({ plain, match, short }: Marking, from: number, to: number) =>
+  plain && (!match || match[1] <= from || match[0] >= to) && !short.some((p) => p.start < to && p.end > from);
+
+/** The part of `short` grapheme `i` is in, or null. */
+export const shortOf = (short: readonly ShortPart[], i: number): ShortPart | null => short.find((p) => i >= p.start && i < p.end) ?? null;
+
+/** Marks a short form's element in the line with the instance and the graphemes it stands for: `id:start:end`. */
+export const FORM = 'data-fp-form';
+
+/**
+ * The element `part` shows as in the line of instance `id`: its short form,
+ * kept on one line, and its long form where find in page (`find`) can find
+ * it, hidden until found. The short form is generated content where it can
+ * be (`drawn`), so find in page doesn't find it, nor a search for it count
+ * twice, the second time in the long form.
+ */
+export function shortCopy(part: ShortPart, id: string, find: boolean, drawn: boolean): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.setAttribute(FORM, `${id}:${part.start}:${part.end}`);
+  el.setAttribute(SHORT, drawn ? part.form : '');
+  el.style.whiteSpace = 'nowrap';
+  if (!drawn) el.append(part.form);
+  if (!find) return el;
+  const found = document.createElement('span');
+  found.dataset.fpFound = `${id}:s${part.start}`;
+  // Out of the flow and blockified, as an ellipsis' hidden text is (see `createJoin`).
+  found.style.position = 'absolute';
+  found.setAttribute('hidden', 'until-found');
+  found.textContent = part.text;
+  el.append(found);
+  return el;
+}
 
 /**
  * Graphemes `[from, to)` as stretches that share their class, elements and
  * being found. A unit is a stretch of its own.
  */
-function stretches(graphemes: readonly string[], { classes, chains, units, match }: Marking, from: number, to: number) {
+function stretches(graphemes: readonly string[], { classes, chains, units, match, short }: Marking, from: number, to: number) {
   const out: {
     cls: string | null;
     chain: Chain | null;
     unit: Element | null;
+    short: ShortPart | null;
     found: boolean;
     start: number;
     end: number;
@@ -46,12 +83,20 @@ function stretches(graphemes: readonly string[], { classes, chains, units, match
     const chain = chains[i] ?? null;
     const unit = units[i] ?? null;
     const found = !!match && i >= match[0] && i < match[1];
+    const part = short.length > 0 ? shortOf(short, i) : null;
+    if (part) {
+      // A short form is a stretch of its own, all of its part.
+      const end = Math.min(to, part.end);
+      out.push({ cls, chain, unit: null, short: part, found, start: i, end, text: graphemes.slice(i, end).join('') });
+      i = end - 1;
+      continue;
+    }
     const last = out.at(-1);
-    if (last && !unit && !last.unit && last.cls === cls && last.chain === chain && last.found === found) {
+    if (last && !unit && !last.unit && !last.short && last.cls === cls && last.chain === chain && last.found === found) {
       last.end = i + 1;
       last.text += graphemes[i]!;
     } else {
-      out.push({ cls, chain, unit, found, start: i, end: i + 1, text: graphemes[i]! });
+      out.push({ cls, chain, unit, short: null, found, start: i, end: i + 1, text: graphemes[i]! });
     }
   }
   return out;
@@ -84,11 +129,15 @@ export function besideEllipsis(
 ): number {
   if (a >= b) return 0;
   if (plainIn(marking, edge, edge + 1)) return 1;
-  const { classes, chains, match } = marking;
+  const { classes, chains, match, short } = marking;
+  // A part in a short form goes with the ellipsis whole.
+  const part = shortOf(short, edge);
+  if (part) return edge === a ? Math.min(b, part.end) - a : b - Math.max(a, part.start);
   const words = wordsOf();
-  const mark = (i: number) => `${classes[i] ?? ''}|${chainId(chains[i] ?? null)}|${!!match && i >= match[0] && i < match[1]}`;
+  const mark = (i: number) =>
+    `${classes[i] ?? ''}|${chainId(chains[i] ?? null)}|${!!match && i >= match[0] && i < match[1]}|${shortOf(short, i)?.start ?? ''}`;
   const own = mark(edge);
-  if (own === '|0|false') return 1;
+  if (own === '|0|false|') return 1;
   const step = edge === a ? 1 : -1;
   let k = 1;
   for (let i = edge + step; i >= a && i < b && mark(i) === own; i += step) {
@@ -112,7 +161,7 @@ export const filled = new WeakMap<HTMLElement, string>();
  */
 export function fillPiece(el: HTMLElement, graphemes: readonly string[], marking: Marking, [from, to]: Range, shown: Range): void {
   const runs = plainIn(marking, from, to) ? null : stretches(graphemes, marking, from, to);
-  if (!runs || runs.every((r) => r.cls === null && r.chain === null && r.unit === null && !r.found)) {
+  if (!runs || runs.every((r) => r.cls === null && r.chain === null && r.unit === null && r.short === null && !r.found)) {
     filled.delete(el);
     const text = marking.text.slice(marking.offsets[from], marking.offsets[to]);
     const node = el.firstChild;
@@ -124,7 +173,7 @@ export function fillPiece(el: HTMLElement, graphemes: readonly string[], marking
     return;
   }
   const { classes, chains } = marking;
-  const key = JSON.stringify([shown, runs.map((r) => [r.cls, chainId(r.chain), chainId(r.unit), r.found, r.text])]);
+  const key = JSON.stringify([shown, runs.map((r) => [r.cls, chainId(r.chain), chainId(r.unit), r.short?.form ?? null, r.found, r.text])]);
   if (filled.get(el) === key) return;
   filled.set(el, key);
   // Whether what's at `[start, end)` goes on into the graphemes beside it.
@@ -132,8 +181,8 @@ export function fillPiece(el: HTMLElement, graphemes: readonly string[], marking
     const sides = [start > shown[0] && same(start - 1) ? 'start' : '', end < shown[1] && same(end) ? 'end' : ''].filter(Boolean);
     if (sides.length > 0) el.setAttribute('data-fp-open', sides.join(' '));
   };
-  const placed = runs.map(({ cls, chain, unit, found, start, end, text }): Placed => {
-    const content = unit ? unitCopy(unit, start) : document.createTextNode(text);
+  const placed = runs.map(({ cls, chain, unit, short, found, start, end, text }): Placed => {
+    const content = short ? marking.shortEl(short) : unit ? unitCopy(unit, start) : document.createTextNode(text);
     if (cls === null && !found) return { chain, nodes: [content], start, end };
     const span = document.createElement('span');
     span.append(content);

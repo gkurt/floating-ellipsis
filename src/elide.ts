@@ -5,6 +5,7 @@ import {
   type Range,
   type Tried,
   asArray,
+  bothEdges,
   contextOf,
   estimateKept,
   hiddenRanges,
@@ -29,8 +30,8 @@ import {
   wordsOf,
 } from './cut.ts';
 import { byId, forgetFound, hookDocument, instances } from './document.ts';
-import { isCJK, isWhitespace } from './graphemes.ts';
-import { type Marking, besideEllipsis, fillPiece } from './highlight.ts';
+import { graphemes, isCJK, isWhitespace } from './graphemes.ts';
+import { type Marking, besideEllipsis, fillPiece, shortCopy, shortOf } from './highlight.ts';
 import { openUp } from './inside.ts';
 import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space, spellCells } from './join.ts';
 import { type Justified, justify } from './justify.ts';
@@ -47,7 +48,18 @@ import {
   styleMarks,
   toPx,
 } from './marks.ts';
-import { type Chain, UNIT_COPY, adopt, extentOf, graphemesWith, markCopies, originals, readMarkup, speak } from './markup.ts';
+import {
+  type Chain,
+  type Shortened,
+  UNIT_COPY,
+  adopt,
+  extentOf,
+  graphemesWith,
+  markCopies,
+  originals,
+  readMarkup,
+  speak,
+} from './markup.ts';
 import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
   type AutoSizeSlot,
@@ -64,6 +76,7 @@ import {
   wraps,
 } from './options.ts';
 import { Predictor, advanceSums, kerningOf, marginFor } from './predict.ts';
+import { type Form, type ShortPart, formsOf, shortAt, shortRanges, stepsOf, totals } from './shorten.ts';
 
 /** What a pass knows about the element and how its text is set. */
 export interface Run extends Typeset {
@@ -74,8 +87,13 @@ export interface Run extends Typeset {
   right: number;
   width: number;
   marks: MarkLayout | null;
-  /** Running total of advances: `sums[i]` is the width of graphemes [0, i). */
+  /**
+   * Running total of advances: `sums[i]` is the width of graphemes [0, i),
+   * a part showing in a short form as wide as that, on its first grapheme.
+   */
   sums: Float64Array;
+  /** `sums` with every part in its long form. */
+  long: Float64Array;
   /** The width of the suffix, as it shows when the pass starts. */
   suffix: number;
   /** The element's word-spacing and font size, in px. */
@@ -220,6 +238,14 @@ export class Elide {
   #wholes: Edges | null = null;
   /** The letter-spacing `tighten` took off the full text showing, in px (0: none). */
   #tightened = 0;
+  /** Parts that may show shorter (see `shorten`): `data-elide-short` markup's, then the option's. */
+  #forms: Form[] = [];
+  /** The text's `data-elide-short` elements (see `readMarkup`). */
+  #marked: Shortened[] = [];
+  /** The parts showing in a short form now, in order. */
+  #short: ShortPart[] = [];
+  /** In glyph mode, the element each part showing short is, so filling a piece again keeps it. */
+  readonly #shortEls = new Map<string, Element>();
   /** The classes `keep` gives each grapheme, or null; empty when none has any. */
   #classes: (string | null)[] = [];
   /** The elements around each grapheme, or null; empty for plain text. */
@@ -328,7 +354,9 @@ export class Elide {
     byId.set(this.#id, {
       instance: this,
       hidden: () => this.#current?.hidden ?? [],
+      short: () => this.#current?.short ?? [],
       found: (part, word) => this.#foundIn(part, word),
+      foundShort: (start) => this.#foundShort(start),
       unfound: () => {
         if (this.#opener === 'find') this.collapse();
         if (this.#sought?.by === 'find') this.#seek(null);
@@ -457,7 +485,7 @@ export class Elide {
     this.#sync();
     if (this.#revealed || !this.#current) return;
     this.#reveal(true);
-    this.#current = { ...this.#current, expanded: true };
+    this.#current = { ...this.#current, expanded: true, shortened: false, short: [] };
     for (const fn of this.#renderListeners) fn(this.#current);
   }
 
@@ -486,6 +514,14 @@ export class Elide {
     const range = word ?? (hidden ? wordAround(wordsOf(this.#g), hidden.start) : null);
     for (const join of this.#joins) forgetWords(join);
     requestAnimationFrame(() => this.#seek(range, 'find'));
+  }
+
+  /** Find in page found the long form of the part showing short from `start`: expand, or show it long for now. */
+  #foundShort(start: number) {
+    const form = this.#forms.find((f) => f.start === start);
+    if (!form) return;
+    if (this.#settings.find === 'expand') return this.#open('find');
+    requestAnimationFrame(() => this.#seek([form.start, form.end], 'find'));
   }
 
   /** Keep `range` in sight for now (see `sought`), or stop (null). */
@@ -536,7 +572,7 @@ export class Elide {
       this.#fresh = true;
       this.#pendingReset = true;
     } else {
-      if (s.keep !== before.keep || s.whole !== before.whole) this.#setPins();
+      if (s.keep !== before.keep || s.whole !== before.whole || s.shorten !== before.shorten) this.#setPins();
       if (s.position !== before.position) this.#setLayout();
     }
     this.#setSizer();
@@ -569,6 +605,7 @@ export class Elide {
     this.#clip(false);
     this.#greedy(false);
     this.element.removeAttribute('data-truncated');
+    this.element.removeAttribute('data-shortened');
     this.element.removeAttribute('data-elide');
     this.element.removeAttribute('data-fp-expanded');
     if (this.#titled) this.element.removeAttribute('title');
@@ -653,11 +690,14 @@ export class Elide {
   #setText(source: string | Node | undefined) {
     this.#source = source;
     const suffix = this.#settings.suffix?.content;
-    const { text, chains, units } =
+    const { text, chains, units, short } =
       typeof source === 'string'
-        ? { text: source, chains: null, units: [] }
+        ? { text: source, chains: null, units: [], short: [] }
         : readMarkup(source === undefined ? this.#original : [source], typeof suffix === 'object' ? suffix : null);
     this.#text = text;
+    this.#marked = short;
+    this.#short = [];
+    this.#shortEls.clear();
     this.#even = !/^\s|\s$|\s\s|[\t\n\r\f]/.test(text);
     this.#misjudged = null;
     ({ graphemes: this.#g, units: this.#units } = graphemesWith(text, units));
@@ -701,7 +741,7 @@ export class Elide {
     }
     this.#sizer ??= autoSize.place(this.element);
     const n = this.#g.length;
-    fillPiece(this.#sizer.text, this.#g, { ...this.#marking, match: null }, [0, n], [0, n]);
+    fillPiece(this.#sizer.text, this.#g, { ...this.#longMarking, match: null }, [0, n], [0, n]);
     this.#sizer.suffix(this.#suffix && this.#settings.suffix?.show === 'always' ? this.#suffix.el : null);
   }
 
@@ -709,10 +749,12 @@ export class Elide {
   #setPins() {
     const keep = asArray(this.#settings.keep);
     // Each on its own: wholes that touch are still two.
-    const graphemes = (r: Range) => toGraphemeRanges([r], this.#offsets);
+    const ranges = (r: Range) => toGraphemeRanges([r], this.#offsets);
     this.#pins = toGraphemeRanges(keepRanges(this.#text, keep), this.#offsets);
-    this.#contexts = keepContexts(this.#text, keep).flatMap(([r, words]) => graphemes(r).map((g): [Range, number] => [g, words]));
-    this.#wholes = wholeEdges(this.#g.length, keepRanges(this.#text, asArray(this.#settings.whole)).flatMap(graphemes));
+    this.#contexts = keepContexts(this.#text, keep).flatMap(([r, words]) => ranges(r).map((g): [Range, number] => [g, words]));
+    this.#wholes = wholeEdges(this.#g.length, keepRanges(this.#text, asArray(this.#settings.whole)).flatMap(ranges));
+    const marked = this.#marked.map(({ start, end, to }) => ({ start, end, to }));
+    this.#forms = formsOf(this.#text, this.#offsets, [...marked, ...asArray(this.#settings.shorten)]);
     const classes = keepClasses(this.#text, keep);
     this.#classes = classes.length > 0 ? graphemeClasses(classes, this.#offsets) : [];
     this.#plain = this.#chains.length === 0 && this.#units.length === 0 && this.#classes.every((c) => c === null);
@@ -861,6 +903,7 @@ export class Elide {
   #prepare(cs: CSSStyleDeclaration, box: DOMRect): Run {
     const { left, right } = contentEdges(this.element, cs, box);
     const typeset = typesetOf(cs);
+    const sums = this.#sumsOf(typeset);
     return {
       ...typeset,
       box,
@@ -869,7 +912,8 @@ export class Elide {
       // As a ResizeObserver reports it.
       width: right - left,
       marks: null,
-      sums: this.#sumsOf(typeset),
+      sums,
+      long: sums,
       suffix: this.#suffix?.measure() ?? 0,
       wordSpacing: finite(parseFloat(cs.wordSpacing)),
       fontSize: parseFloat(cs.fontSize),
@@ -945,8 +989,17 @@ export class Elide {
     return { group: groupMetrics(layout, layout.inner), target };
   }
 
-  /** The glyph at `i` as an ellipsis' neighbour: null for none, or whitespace (it has no ink). A unit is inked edge to edge. */
+  /**
+   * The glyph at `i` as an ellipsis' neighbour: null for none, or whitespace
+   * (it has no ink). A unit is inked edge to edge; a part showing short is
+   * its short form, as one glyph.
+   */
   #neighbour(run: Run, i: number): GlyphMetrics | null {
+    const part = this.#short.length > 0 ? shortOf(this.#short, i) : null;
+    if (part) {
+      if (part.form.trim() === '') return null;
+      return { ...glyphIn(run, part.form), advance: run.sums[part.start + 1]! - run.sums[part.start]! };
+    }
     const g = this.#g[i];
     if (g === undefined || isWhitespace(g)) return null;
     if (!this.#units[i]) return glyphIn(run, g);
@@ -1031,7 +1084,7 @@ export class Elide {
   /** `shown`: the visible run it's part of, which a highlight may go on into. */
   #fill(el: HTMLElement, from: number, to: number, shown: Range = [0, this.#g.length]) {
     const glyphs = this.#settings.glyphs;
-    if (glyphs) glyphs.fill(el, this.#glyphEls, this.#chains, [from, to]);
+    if (glyphs) glyphs.fill(el, this.#glyphEls, this.#chains, [from, to], this.#short, (part) => this.#shortEl(part));
     else fillPiece(el, this.#g, this.#marking, [from, to], shown);
   }
 
@@ -1045,17 +1098,41 @@ export class Elide {
       plain: this.#plain,
       text: this.#text,
       offsets: this.#offsets,
+      short: this.#short,
+      shortEl: (part) => this.#shortEl(part),
     };
   }
 
-  /** Mark the element truncated (or not) for CSS, and give it the full text as its title when asked to. */
-  #label(truncated: boolean) {
+  /** The marking with every part in its long form: for what an ellipsis hides, and the copy `autoSize` sizes by. */
+  get #longMarking(): Marking {
+    return { ...this.#marking, short: [] };
+  }
+
+  /** The element `part`, showing short, is in the line (see `shortCopy`); in glyph mode, the same one each time. */
+  #shortEl(part: ShortPart): Element {
+    const find = this.#settings.find !== false;
+    if (!this.#settings.glyphs) return shortCopy(part, this.#id, find, adopt(this.element));
+    const key = `${part.start}:${part.end}:${part.form}:${find}`;
+    let el = this.#shortEls.get(key);
+    if (!el) this.#shortEls.set(key, (el = shortCopy(part, this.#id, find, adopt(this.element))));
+    return el;
+  }
+
+  /**
+   * Mark the element truncated (or not) and shortened (or not) for CSS, and
+   * give it the full text as its title when asked to.
+   */
+  #label(hidden: readonly Range[]) {
     const host = this.element;
+    const truncated = hidden.length > 0;
+    const shortened = this.#short.some((p) => !hidden.some(([s, e]) => s <= p.start && p.end <= e));
     host.toggleAttribute('data-truncated', truncated);
-    if (!this.#settings.title || truncated === this.#titled) return;
-    if (truncated) host.title = this.#text.replaceAll('\uFFFC', '');
+    host.toggleAttribute('data-shortened', shortened);
+    const titled = truncated || shortened;
+    if (!this.#settings.title || titled === this.#titled) return;
+    if (titled) host.title = this.#text.replaceAll('\uFFFC', '');
     else host.removeAttribute('title');
-    this.#titled = truncated;
+    this.#titled = titled;
   }
 
   /** Show the suffix as the text is (or isn't) truncated, `hidden` cut. */
@@ -1074,7 +1151,7 @@ export class Elide {
       const part = hidden[j] ?? [0, 0];
       setFindable(join, find !== false);
       if (find === 'keep') fillWords(join, this.#g, wordsOf(this.#g), part);
-      else fillPiece(join.found, this.#g, this.#marking, part, [0, this.#g.length]);
+      else fillPiece(join.found, this.#g, this.#longMarking, part, [0, this.#g.length]);
     });
   }
 
@@ -1090,13 +1167,19 @@ export class Elide {
   #reveal(on: boolean, hidden: readonly Range[] = this.#cut) {
     if (on) this.#catchUp();
     this.#revealed = on;
+    // All of the text shows: every part in its long form too.
+    if (on && this.#short.length > 0) {
+      this.#short = [];
+      for (const { el, range, shown } of this.#layoutOf(hidden)) this.#fill(el, range[0], range[1], shown);
+      this.#label(hidden);
+    }
     this.#joins.forEach((join, j) => {
       const part = hidden[j];
       const shown = on && !!part;
       // Found word by word: shown, it's as the text would show.
       if (shown && this.#settings.find === 'keep') {
         forgetWords(join);
-        fillPiece(join.found, this.#g, this.#marking, part, [0, this.#g.length]);
+        fillPiece(join.found, this.#g, this.#longMarking, part, [0, this.#g.length]);
       }
       showHidden(join, shown, this.#settings.find !== false);
     });
@@ -1228,7 +1311,14 @@ export class Elide {
       right: run.right,
       layout: run.marks!,
       plans,
-      characters: shownLength(this.#offsets, hidden, markCount(this.#style)),
+      characters: Math.max(
+        1,
+        shownLength(this.#offsets, hidden, markCount(this.#style)) -
+          this.#short.reduce(
+            (sum, p) => sum + (hidden.some(([s, e]) => s <= p.start && p.end <= e) ? 0 : p.text.length - p.form.length),
+            0,
+          ),
+      ),
       known: end !== null,
       boxes,
       lineOf: (j, boxes) => (end === null ? this.#lineOf(j, boxes) : 0),
@@ -1435,6 +1525,7 @@ export class Elide {
       this.#suffix === null &&
       !this.#revealed &&
       this.#tightened === 0 &&
+      this.#forms.length === 0 &&
       this.#misjudged !== run.glyphs &&
       (this.#plain || this.#uniform(run));
     let base: { cut: Range[]; end: number } | null = null;
@@ -1519,13 +1610,20 @@ export class Elide {
       // The predictor has measured a cut of this pass: it judges the ones
       // around it as well as rendering them would, if it is close enough.
       let probed = false;
+      // Short forms (see `shorten`): the steps the parts that may show shorter
+      // take, how many show (`level`), and the edges that keep them whole. Not
+      // while expanded, nor for a part find in page or focus keeps in sight.
+      const sought = this.#sought?.range;
+      const steps = this.#opener !== null ? [] : stepsOf(this.#forms, (f) => !!sought && f.start < sought[1] && sought[0] < f.end);
+      let level = 0;
+      let shortWholes: Edges | null = null;
       const cutting = (pins: readonly Range[]): Cutting => ({
         graphemes: this.#g,
         layout: islands,
         pins,
         snap,
         trim,
-        wholes: this.#wholes,
+        wholes: this.#wholes ? bothEdges(this.#wholes, shortWholes) : shortWholes,
         context: contextOf(this.#g, this.#contexts, pins),
       });
       let cuts = cutting(pins);
@@ -1561,7 +1659,7 @@ export class Elide {
       // pixel takes in up to each grapheme: a pixel after every letter, two
       // after every space (null: none).
       const most = toPx(this.#settings.tighten, run.fontSize);
-      const units = most > 0 ? new Float64Array(n + 1) : null;
+      let units: Float64Array | null = most > 0 ? new Float64Array(n + 1) : null;
       if (units) for (let i = 0; i < n; i++) units[i + 1] = units[i]! + (this.#g[i] === ' ' || this.#g[i] === ' ' ? 3 : 1);
       // Firefox rounds letter-spacing to 1/60 px: rounded up, it fits, if a little short of the edge.
       const up = (by: number) => Math.ceil(by * 60 - 1e-6) / 60;
@@ -1644,8 +1742,9 @@ export class Elide {
        */
       const snug = function* (this: Elide, k: number, mark: number, room: number): Generator<void, Range[] | null, void> {
         const top = maxKept(cuts);
-        if (!units || !this.#settings.tightenCuts || wraps(lines) || this.#settings.justify === 'spread' || k >= top) return null;
-        const tight = run.sums.map((w, i) => w - most * units[i]!);
+        const each = units;
+        if (!each || !this.#settings.tightenCuts || wraps(lines) || this.#settings.justify === 'spread' || k >= top) return null;
+        const tight = run.sums.map((w, i) => w - most * each[i]!);
         const kept = (width: number, near?: number) => estimateKept(cuts, tight, mark, width, near);
         const search = steeredSteps(k, top, Math.min(top, Math.max(k, kept(room)) + 1), (j, left) =>
           kept(keptWidth(tight, mark, at(j)) + left, j),
@@ -1664,13 +1763,42 @@ export class Elide {
         if (!(fit.ok && tried !== null && sameRanges(tried, cut))) yield* set.call(this, cut, most);
         // Tightening moves the line by a pixel for each of these: not the
         // letters either side of an ellipsis, which keep its spacing (see `tighten`).
-        const beside = cut.reduce(
-          (sum, [s, e]) => sum + (s > 0 ? units[s]! - units[s - 1]! : 0) + (e < n ? units[e + 1]! - units[e]! : 0),
-          0,
-        );
-        const moving = Math.max(1, keptWidth(units, 0, cut) - beside);
+        const beside = cut.reduce((sum, [s, e]) => sum + (s > 0 ? each[s]! - each[s - 1]! : 0) + (e < n ? each[e + 1]! - each[e]! : 0), 0);
+        const moving = Math.max(1, keptWidth(each, 0, cut) - beside);
         if (!(yield* least.call(this, cut, fit.end + most * moving - run.right, moving))) yield* set.call(this, cut, most);
         return cut;
+      };
+      const longUnits = units;
+      // A short form's width by its glyph widths, and how much tightening by a pixel takes it in.
+      const formWidth = (form: string) => graphemes(form).reduce((sum, g) => sum + glyphIn(run, g).advance, 0);
+      const formUnits = (form: string) => graphemes(form).reduce((sum, g) => sum + (isWhitespace(g) ? 3 : 1), 0);
+      const sumsAt = (short: readonly ShortPart[]) =>
+        short.length > 0
+          ? totals(
+              n,
+              (i) => run.long[i + 1]! - run.long[i]!,
+              short,
+              (p) => formWidth(p.form),
+            )
+          : run.long;
+      /** Show the forms of the first `k` steps in what is rendered next, and size and cut the text as they show. */
+      const toLevel = (k: number) => {
+        level = k;
+        const short = shortAt(this.#text, this.#offsets, this.#forms, steps, k);
+        this.#short = short;
+        run.sums = sumsAt(short);
+        units =
+          longUnits && short.length > 0
+            ? totals(
+                n,
+                (i) => longUnits[i + 1]! - longUnits[i]!,
+                short,
+                (p) => formUnits(p.form),
+              )
+            : longUnits;
+        shortWholes = short.length > 0 ? wholeEdges(n, shortRanges(short)) : null;
+        tried = null;
+        outcomes.clear();
       };
       // A judgement shouldn't be wrong, but if the final measurement says
       // the model was off, the cut is found again without judging (and this
@@ -1686,11 +1814,44 @@ export class Elide {
         const width = run.right - run.left;
         // (A suffix that only shows while truncated doesn't show with it.)
         const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
-        const full =
-          ((lines === 'fit' || run.sums[n]! <= (width * lines - reserved) * 1.1 + 1) && (yield* attempt.call(this, [])).fits) ||
-          (n > 0 && (yield* squeeze.call(this)));
+        /** Whether all of the text fits, as it shows now: set as usual, or tighter (see `tighten`). */
+        const fitsWhole = function* (this: Elide): Generator<void, boolean, void> {
+          return (
+            ((lines === 'fit' || run.sums[n]! <= (width * lines - reserved) * 1.1 + 1) && (yield* attempt.call(this, [])).fits) ||
+            (n > 0 && (yield* squeeze.call(this)))
+          );
+        };
+        /**
+         * The fewest steps of short forms that let all of the text fit,
+         * showing: searched by halves, from the first whose glyph widths fit.
+         * Whether any does; if none, every part shows its shortest form, to be cut.
+         */
+        const shorten = function* (this: Elide): Generator<void, boolean, void> {
+          const top = steps.length;
+          const fits = width * (lines === 'fit' ? fit.max : lines) - reserved;
+          let k = 1;
+          while (k < top && sumsAt(shortAt(this.#text, this.#offsets, this.#forms, steps, k))[n]! > fits) k++;
+          // The most steps known not to fit, and the fewest known to (past the last: none).
+          let [lo, hi] = [0, top + 1];
+          while (hi - lo > 1) {
+            toLevel(k);
+            if (yield* fitsWhole.call(this)) hi = k;
+            else lo = k;
+            k = (lo + hi) >> 1;
+          }
+          if (hi <= top) {
+            if (level === hi) return true;
+            toLevel(hi);
+            if (yield* fitsWhole.call(this)) return true;
+          }
+          if (level !== top) toLevel(top);
+          return false;
+        };
+        if (level !== 0 || this.#short.length > 0) toLevel(0);
+        const full = (yield* fitsWhole.call(this)) || (n > 0 && steps.length > 0 && (yield* shorten.call(this)));
         const room = width * (lines === 'fit' ? fit.max : lines) - run.suffix;
         if (!full && n > 0) {
+          cuts = cutting(pins);
           // Kept parts that can't all fit give way, last first.
           while (pins.length > 0 && !(yield* attempt.call(this, at(0))).fits) {
             pins = giveWay(pins, this.#sought?.range ?? null);
@@ -1731,7 +1892,7 @@ export class Elide {
           yield* phase.write();
           if (expected === null) holdStill();
           plans = this.#render(run, hidden);
-          this.#label(hidden.length > 0);
+          this.#label(hidden);
         }
         // On one line, which can't wrap, a cut measured or judged is justified
         // from where it ends, in the same write: a check, if any, is then the
@@ -1763,7 +1924,7 @@ export class Elide {
       }
       if (hidden.length > 0 && !ahead) ({ gaps, slack } = yield* justify(this.#justified(run, plans, fit.lines, hidden), phase));
       yield* phase.write();
-      this.#label(hidden.length > 0);
+      this.#label(hidden);
       if (this.#sought !== null || this.#opener !== null) this.#fillFound(hidden);
       else unfound.add(this);
       if (this.#opener !== null) this.#reveal(true, hidden);
@@ -1809,7 +1970,16 @@ export class Elide {
     slack = 0,
     tightened = 0,
   ): ElideState {
-    return stateOf(this.#text, this.#offsets, { hidden, pins, lines, gaps, slack, expanded: this.#revealed, tightened });
+    return stateOf(this.#text, this.#offsets, {
+      hidden,
+      pins,
+      lines,
+      gaps,
+      slack,
+      expanded: this.#revealed,
+      tightened,
+      short: this.#short,
+    });
   }
 
   static {

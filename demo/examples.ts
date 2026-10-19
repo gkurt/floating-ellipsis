@@ -1,3 +1,4 @@
+import { dateForms } from '#src/dates.ts';
 import { type Elide, type ElideOptions, type Keep, separators, words } from '#src/index.ts';
 import type { InputOptions } from '#src/input.ts';
 import { list, split } from '#src/list.ts';
@@ -317,4 +318,28 @@ export const markRows: { label: string; text: string; lang?: string; options: El
   { label: "'…', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: '…' } },
   { label: "'auto', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: 'auto' } },
   { label: "'auto', 1 line", text: japanese, lang: 'ja', options: { ellipsis: 'auto' } },
+];
+
+const due = dateForms(new Date(2026, 9, 14, 15, 30), { locale: 'en-US', time: true });
+
+/** Parts that show shorter before anything is cut: names and days, a date as its locale writes it, and markup's own. */
+export const shortRows: { label: string; text: string; options: ElideOptions }[] = [
+  {
+    label: 'shorten',
+    text: 'Design review with Christopher Robin on Wednesday, 14 October 2026',
+    options: {
+      shorten: [
+        { match: 'Christopher Robin', to: ['C. Robin', 'C. R.'] },
+        { match: 'Wednesday', to: ['Wed', 'W'] },
+        { match: 'October', to: 'Oct' },
+        { match: ' 2026', to: '' },
+      ],
+    },
+  },
+  { label: 'dateForms', text: `Due ${due.text}`, options: { shorten: due.shorten } },
+  {
+    label: 'data-elide-short',
+    text: 'Lantern fixture: <span data-elide-short="Ada">Ada Lovelace</span> and <span data-elide-short="Grace">Grace Hopper</span> reviewing, <b data-elide-short="Thu">Thursday</b>',
+    options: { position: 'middle' },
+  },
 ];

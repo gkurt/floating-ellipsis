@@ -3,6 +3,7 @@ import type { Keep, Position, Range, Snap, Whole } from './cut.ts';
 import type { EllipsisStyle, Length } from './marks.ts';
 import type { Chain } from './markup.ts';
 import type { Gap, GapPlan } from './metrics.ts';
+import type { Shorten, ShortPart } from './shorten.ts';
 
 export interface ElideOptions {
   /**
@@ -116,6 +117,17 @@ export interface ElideOptions {
    */
   tightenCuts?: boolean;
   /**
+   * Parts that show shorter before any text is cut: `{ match, to }` (a
+   * string's first match, or every match of a global RegExp) or
+   * `{ start, end, to }` (string offsets), with `to` the short form, or
+   * several from longer to shorter. Forms are taken a step at a time, the
+   * fewest that let the text fit: every part takes its first before any
+   * takes its second, and the last entry goes first. A part showing short is
+   * never cut; copying, find in page, the title and screen readers get its
+   * long form. Default null.
+   */
+  shorten?: Shorten | readonly Shorten[] | null;
+  /**
    * Re-truncate when the element is resized and when web fonts load. An
    * element more than a screen away from the viewport waits until it comes
    * near, when what it shows meanwhile can't change its height. Default true.
@@ -128,7 +140,7 @@ export interface ElideOptions {
    * Default null.
    */
   glyphs?: GlyphMode | null;
-  /** Put the full text in the element's `title` while truncated. Default false. */
+  /** Put the full text in the element's `title` while truncated or shortened. Default false. */
   title?: boolean;
   /**
    * What a copied selection contains where it crosses an ellipsis:
@@ -174,6 +186,7 @@ export const DEFAULTS: Settings = {
   whole: null,
   tighten: 0,
   tightenCuts: false,
+  shorten: null,
   observe: true,
   glyphs: null,
   title: false,
@@ -187,8 +200,19 @@ export const DEFAULTS: Settings = {
 export interface GlyphMode {
   /** One element per grapheme, holding a copy of the unit (an image, an icon) it is, if any. */
   create(graphemes: readonly string[], units: readonly (Element | null)[]): HTMLSpanElement[];
-  /** Put the glyph elements of `range` in `el`, inside copies of their elements. */
-  fill(el: HTMLElement, glyphs: readonly HTMLElement[], chains: readonly (Chain | null)[], range: Range): void;
+  /**
+   * Put the glyph elements of `range` in `el`, inside copies of their
+   * elements; a part showing in a short form as the element `short` makes
+   * for it, in place of its glyphs.
+   */
+  fill(
+    el: HTMLElement,
+    glyphs: readonly HTMLElement[],
+    chains: readonly (Chain | null)[],
+    range: Range,
+    short: readonly ShortPart[],
+    shortEl: (part: ShortPart) => Element,
+  ): void;
   /** Give the glyph elements of graphemes in `ranges` `attribute`, and take it from the rest. */
   mark(glyphs: readonly HTMLElement[], attribute: string, ranges: readonly Range[]): void;
 }
@@ -287,6 +311,10 @@ export interface ElideState {
   slack: number;
   /** How much closer `tighten` set the letters so the text fits (with `tightenCuts`, the cut too), in px; 0 when it didn't. */
   tightened: number;
+  /** Some part shows in a short form (see `shorten`). */
+  shortened: boolean;
+  /** The parts showing in a short form, in order: `text` is the long form, `form` what shows. */
+  short: ShortPart[];
 }
 
 export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
@@ -306,10 +334,11 @@ export function stateOf(
     slack: number;
     expanded: boolean;
     tightened: number;
+    short: readonly ShortPart[];
   },
 ): ElideState {
   const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
-  const { hidden, pins, lines, gaps, slack, expanded, tightened } = cut;
+  const { hidden, pins, lines, gaps, slack, expanded, tightened, short } = cut;
   return {
     text,
     length: offsets.length - 1,
@@ -321,7 +350,14 @@ export function stateOf(
     gaps,
     slack,
     tightened,
+    ...shownShort(short, hidden),
   };
+}
+
+/** The parts of `short` showing, with none of them in a part of `hidden`. */
+function shownShort(short: readonly ShortPart[], hidden: readonly Range[]): Pick<ElideState, 'short' | 'shortened'> {
+  const shown = short.filter((p) => !hidden.some(([s, e]) => s <= p.start && p.end <= e));
+  return { shortened: shown.length > 0, short: shown };
 }
 
 /** Whether grapheme `i` is showing in `state`. */

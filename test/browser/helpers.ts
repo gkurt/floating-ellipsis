@@ -95,21 +95,29 @@ export function content(el: HTMLElement): { left: number; right: number; top: nu
   };
 }
 
-/** The visible graphemes, joined, as the state describes them. */
+/** The visible graphemes, joined, as the state describes them: a part showing short as its short form. */
 export function visible(t: Elide): string {
   const state = t.state;
-  return t.graphemes.filter((_, i) => isVisible(state, i)).join('');
+  return t.graphemes
+    .map((g, i) => {
+      if (!isVisible(state, i)) return '';
+      const part = state.short.find((p) => i >= p.start && i < p.end);
+      return !part ? g : i === part.start ? part.form : '';
+    })
+    .join('');
 }
 
 /**
  * The text actually rendered, without the ellipses (or the text they hide,
- * for find in page), each unit's copy (an image, an icon) as its grapheme.
+ * for find in page), each unit's copy (an image, an icon) as its grapheme,
+ * and each short form as it's drawn.
  */
 export function rendered(t: Elide): string {
   const line = t.element.querySelector('[data-fp-text]')!.cloneNode(true);
   if (!(line instanceof Element)) return '';
   for (const e of line.querySelectorAll('[data-fp-ellipsis], [data-fp-ghosts], [data-fp-found]')) e.remove();
   for (const e of line.querySelectorAll('[data-fp-unit]')) e.replaceWith(t.graphemes[Number(e.getAttribute('data-fp-unit'))]!);
+  for (const e of line.querySelectorAll('[data-fp-form]')) e.replaceWith(`${e.getAttribute('data-fp-short') ?? ''}${e.textContent ?? ''}`);
   return line.textContent ?? '';
 }
 

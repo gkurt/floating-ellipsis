@@ -12,6 +12,8 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   result's snippet.
 - **Words, paths and numbers.** Cuts can snap to whole words or path
   segments, and never split a number, a date or anything else you mark whole.
+- **Short forms first.** Parts can show shorter before anything is cut:
+  "Wednesday" as "Wed", a date down to "10/14/26".
 - **Rich text.** Links and inline markup survive the cut; a suffix ("Read
   more", a badge) follows the text and is never cut.
 - **Native behaviour.** Find in page finds hidden text, copying gives the full
@@ -61,9 +63,10 @@ block, or a flex or grid item with `min-width: 0`. For one sized by its text
 | `whole`       | `null`          | Parts shown whole or not at all, never cut: a string, a RegExp, `{ start, end }`, or an array. See [Wholes](#wholes).                                                                |
 | `tighten`     | `0`             | Letters may set this much closer (px or `'0.05em'`, word spaces twice that) so text a little too long shows whole. See [Tightening](#tightening).                                    |
 | `tightenCuts` | `false`         | On one line, set a cut tighter too, by up to `tighten`, to show more of the text.                                                                                                    |
+| `shorten`     | `null`          | Parts that show shorter before anything is cut: `{ match, to }` or `{ start, end, to }`, `to` a form or several, or an array. See [Short forms](#short-forms).                       |
 | `observe`     | `true`          | Re-truncate on resize and when web fonts load.                                                                                                                                       |
 | `glyphs`      | `null`          | `glyphs` from `floating-ellipsis/glyphs`: each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.                                             |
-| `title`       | `false`         | Put the full text in `title` while truncated.                                                                                                                                        |
+| `title`       | `false`         | Put the full text in `title` while truncated or shortened.                                                                                                                           |
 | `copy`        | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                                                    |
 | `suffix`      | `null`          | `suffix(content)` from `floating-ellipsis/suffix`. See [Suffixes](#suffixes).                                                                                                        |
 | `find`        | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).                                      |
@@ -190,6 +193,51 @@ With `tightenCuts`, a cut on one line is set tighter too, by up to
 `tighten`, to show as many more letters as that makes room for. The
 ellipsis and the letters beside it keep their spacing.
 
+### Short forms
+
+```js
+elide(el, {
+  shorten: [
+    { match: 'Christopher Robin', to: ['C. Robin', 'C. R.'] },
+    { match: 'Wednesday', to: 'Wed' },
+    { match: ' 2026', to: '' }, // the year goes first
+  ],
+});
+```
+
+Parts show shorter, a step at a time, before any text is cut: only as many
+steps as it takes to fit. Every part takes its first form before any takes
+its second, and the last entry goes first, so list them from most to least
+important, as with `keep`. Text set tighter (`tighten`) counts as fitting.
+Past the last step, the text is cut with every part at its shortest. A part
+showing short is never cut, only hidden whole. Copying, find in page, the
+`title` and screen readers get the long form, and `expand()` shows it; a
+search for a long form shows it until a press elsewhere, as `find` does for
+hidden text.
+
+`match` finds parts as `keep` does: a string's first match, every match of
+a global RegExp; `{ start, end }` takes string offsets. In markup,
+`data-elide-short` gives an element's text a form:
+
+```html
+<p>Due <span data-elide-short="Wed">Wednesday</span>, 14 <span data-elide-short="Oct">October</span></p>
+```
+
+`floating-ellipsis/dates` writes a date from long to short, as the locale
+does, as plain data that a server can make too:
+
+```js
+import { dateForms } from 'floating-ellipsis/dates';
+
+elide(el, dateForms(event.start, { locale: 'en-US' })); // Wednesday, October 14, 2026 … Oct 14, 2026 … 10/14/26
+const due = dateForms(deadline);
+elide(el, { text: `Due ${due.text}`, shorten: due.shorten });
+```
+
+It takes `locale`, `timeZone`, `year` and `weekday` (both shown by default)
+and `time` (hours and minutes). The element gets `data-shortened`, and
+`state.short` lists the parts showing short, each `{ start, end, text, form }`.
+
 ### Markup
 
 ```js
@@ -290,15 +338,17 @@ Either lasts until a press outside the text or a match elsewhere.
 
 ## Instance API
 
-- `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack, tightened }`.
-  `hidden` and `kept` are `{ start, end, text }` lists in grapheme indices.
+- `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack, tightened, shortened, short }`.
+  `hidden` and `kept` are `{ start, end, text }` lists in grapheme indices;
+  `short` adds the `form` showing.
 - `truncated`, `expanded`, `graphemes`, `options`, `markStyle`, `classOf(i)`,
   `unitOf(i)` (the image or element grapheme `i` stands for, or null).
 - `ellipsisElement` (the first, stable for the instance's life), `ellipses`.
 - `onRender(fn)`: after every layout pass. Returns an unsubscribe function.
 - `expand()`, `collapse()`, `refresh()`, `update(options)`, `destroy()`.
 
-The element gets `data-truncated`, and `data-fp-expanded` while expanded.
+The element gets `data-truncated`, `data-shortened` while a part shows a
+short form, and `data-fp-expanded` while expanded.
 Passes are batched in a microtask; reading anything from an instance flushes
 its pending pass first.
 
@@ -317,6 +367,8 @@ const stop = onChange(t, ({ shown, hidden }) => {}); // when the visible text ch
   `ellipsisArea(t, i)`, `markInks(t, i)`, `markElements(t, i)`: boxes of an
   ellipsis and its marks. `graphemeRect(t, i)`, `graphemeAt(t, node, offset, side?)`,
   `lineRects(t)`, `ellipsisIndex(t, node)`, `ellipsisAt(t, x, y, slop?)`.
+  `shortRect(t, i)` and `shortElement(t, i)`: a short form, part `i` of
+  `state.short`.
 - `floating-ellipsis/changes`: `onChange(t, fn)`, with `shown`/`hidden`
   indices and where glyphs and marks were painted before. Bindings take it as
   the `onChange` option.
@@ -347,9 +399,9 @@ elideText(path, { width: 180, font: '13px Inter', position: 'middle', keep: /\.[
 The same cuts as a string, on one line, for canvas, SVG, workers or the server.
 It takes `width`, `font` or your own `measure(text)`, `letterSpacing`, and
 `position`, `keep`, `ellipsis` (a string; `'auto'` is the midline `⋯` for
-Chinese and Japanese), `trim`, `snap`, `whole`,
+Chinese and Japanese), `trim`, `snap`, `whole`, `shorten`,
 `tighten` (in `measure`'s unit) and `tightenCuts` as in `elide`. It returns
-`{ text, truncated, hidden, kept, width, tightened }`.
+`{ text, truncated, hidden, kept, short, width, tightened }`.
 
 ## Frameworks
 
@@ -368,7 +420,8 @@ empty. Create a `snap` once, not inline.
 `<elide-text>` takes most options as kebab-case attributes (`tooltip-title`
 for `title`, `keep-class` to highlight `keep` and `keep-context` for words
 around it, `whole="/\d+/g"`, `snap="words|paths"`, `auto-size`), or all of
-them through its `options` property. A child with `slot="suffix"` is its suffix. It exposes
+them through its `options` property. A child with `slot="suffix"` is its suffix, and
+children with `data-elide-short` show short forms. It exposes
 `instance` and fires `elidechange`.
 
 ```jsx
@@ -427,7 +480,8 @@ static and server-rendered pages show the text cut at the end until they
 hydrate. Props from a Server Component must serialize: `keep` as a string, not
 a RegExp; set `snap`, `onChange`, `glyphs` and `instanceRef` in a Client
 Component. A `suffix` can come from the server as a string or an element (a
-Client Component's, for one with handlers).
+Client Component's, for one with handlers). `shorten` with string matches
+serializes, so `<Elided {...dateForms(date)} />` works in a Server Component.
 
 `<Elided>` passes its `ref` (React 19) and other props to its element, so it can be the
 child of a Radix `asChild` or a Base UI `render` prop:

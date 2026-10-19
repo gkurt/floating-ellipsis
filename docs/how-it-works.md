@@ -142,7 +142,9 @@ demo's table page shows both.
 ## Entry points
 
 What only some pages use lives in its own entry, so the rest don't ship it:
-geometry, glyph mode, suffixes, lists, auto-sizing and `onChange`. Their code isn't reachable
+geometry, glyph mode, suffixes, lists, dates, auto-sizing and `onChange`. (Short forms
+themselves are in the core: `shorten` is plain data, so a server can hand it
+over, and it can't bring code with it.) Their code isn't reachable
 from the `Elide` class, so bundlers leave it out. The `glyphs`, `suffix` and `autoSize`
 options take an object that brings the code with it, as `snap` does.
 Geometry and `onChange` take the instance. They reach its internals through
@@ -262,6 +264,49 @@ gaps planned around them hold. The second search costs a few layouts each
 pass, and a tightened line isn't judged, so the pass after it renders its
 probes too. On more lines, where wrapping makes the gain uneven, and with
 `justify: 'spread'`, which sets the spacing itself, cuts are set as usual.
+
+## Short forms
+
+`shorten` turns into a list of steps, each one part taking its next form:
+every part takes its first before any takes its second, and within a round
+the last given goes first. A part that overlaps one found before it is left
+out. A level is how many steps are taken, so the text is set one way at each
+level, and the search is for the lowest level at which all of it fits, set
+as usual or tighter (`tighten` is tried at every level, so a line a hair too
+long tightens rather than loses a word). It starts at the first level whose
+glyph widths fit, then halves between the highest level known not to fit and
+the lowest known to, each probe a layout shared with other passes. Past the
+last level, the text is cut with every part at its shortest.
+
+A part showing short is a whole: no cut starts or ends inside it, so a cut
+beside it slides off it, or hides it all at an end of the text (a date alone
+in a box too narrow for its shortest form is hidden whole, rather than shown
+as `10/1…`). For the search it's as wide as its form, all on its first
+grapheme, and next to an ellipsis its form is the glyph whose ink the gap is
+planned from. Grapheme indices stay those of the full text: `state.short`
+says which ranges show short, and `graphemeRect` has no box for a grapheme
+inside one (`shortRect` has the form's).
+
+In the line, a part showing short is an element of its own, kept on one
+line. Its form is generated content (`::before`), so find in page doesn't
+find it; beside it, its long form is hidden until found. So a search for
+"Wed" or "Wednesday" finds the long form once, and the part shows it, long,
+kept in sight as a word `find: 'keep'` found is, until a press elsewhere
+(with `find: 'expand'`, the text expands). Copying swaps each form in the
+selection for its long one (its form, with `copy: 'visible'`), the screen-
+reader copy is the full text, and expanding shows every long form.
+
+On one line, text with short forms isn't judged from glyph widths without
+rendering: each level would need its own measurement to judge from. That
+costs a layout or two more per pass, still shared in lockstep.
+
+Known gaps:
+
+- Transitions don't animate a part changing form; it changes at once. A
+  growing tooltip fades the forms out and the long forms in where they land.
+- A selection highlight doesn't paint generated content, so a selected form
+  looks unselected, though copying gives it.
+- `data-elide-short` gives one form; more need the option.
 
 ## Snapping
 

@@ -1,5 +1,6 @@
 import type { Elide } from './elide.ts';
-import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements } from './geometry.ts';
+import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements, shortElement } from './geometry.ts';
+
 import { isWhitespace } from './graphemes.ts';
 import type { ElideState } from './options.ts';
 
@@ -108,10 +109,14 @@ const DEFAULTS: Settings = {
 /** Where the tip's text is before it grows: each grapheme's box on screen (the line's, for a hidden one). */
 interface Origin {
   from: DOMRect[];
-  /** The ellipsis hiding each grapheme, or -1. */
+  /** The ellipsis hiding each grapheme, past them the part showing a short form it's in, or -1. */
   part: number[];
+  /** The marks of every ellipsis, and the short forms, which fade where they are. */
   dots: { el: HTMLElement; rect: DOMRect }[];
 }
+
+/** Whether some of `instance`'s text doesn't show as it is: cut, or shortened (and not expanded). */
+const cut = (instance: Elide) => (instance.truncated || instance.state.shortened) && !instance.expanded;
 
 const OPEN = 'data-fp-tip-open';
 
@@ -259,7 +264,7 @@ export class Tooltip {
   #triggerAt(node: EventTarget | null): { trigger: Element; instance: Elide } | null {
     for (let el = node instanceof Element ? node : null; el; el = el.parentElement) {
       const instance = this.#triggers.get(el);
-      if (instance) return instance.truncated && !instance.expanded ? { trigger: el, instance } : null;
+      if (instance) return cut(instance) ? { trigger: el, instance } : null;
     }
     return null;
   }
@@ -284,7 +289,7 @@ export class Tooltip {
     this.#cancel();
     if (this.#holding) return;
     this.#close(false, true);
-    if (!target.instance.truncated || target.instance.expanded) return;
+    if (!cut(target.instance)) return;
     const { reveal, respectReducedMotion } = this.#settings;
     const still = respectReducedMotion && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const shown = reveal === 'peek' ? this.#peek(target) : this.#full(target, reveal === 'grow' && !still);
@@ -501,8 +506,12 @@ export class Tooltip {
     const from = t.graphemes.map((_, i) => graphemeRect(t, i));
     const part = t.graphemes.map(() => -1);
     const line = lineRects(t)[0]!;
-    t.state.hidden.forEach(({ start, end }, j) => part.fill(j, start, end));
-    const dots = t.state.hidden.flatMap((_, j) => markElements(t, j).map((el) => ({ el, rect: el.getBoundingClientRect() })));
+    const { hidden, short } = t.state;
+    hidden.forEach(({ start, end }, j) => part.fill(j, start, end));
+    // A long form fades in as the hidden text does, where its short form fades out.
+    short.forEach(({ start, end }, j) => part.fill(hidden.length + j, start, end));
+    const shortEls = short.map((_, j) => shortElement(t, j)).filter((el) => el !== null);
+    const dots = [...hidden.flatMap((_, j) => markElements(t, j)), ...shortEls].map((el) => ({ el, rect: el.getBoundingClientRect() }));
     return { from: from.map((r) => r ?? line), part, dots };
   }
 
@@ -890,6 +899,8 @@ function sameLayout(a: ElideState, b: ElideState): boolean {
     near(a.tightened, b.tightened) &&
     a.hidden.length === b.hidden.length &&
     a.hidden.every((h, i) => h.start === b.hidden[i]!.start && h.end === b.hidden[i]!.end) &&
+    a.short.length === b.short.length &&
+    a.short.every((p, i) => p.start === b.short[i]!.start && p.form === b.short[i]!.form) &&
     a.gaps.length === b.gaps.length &&
     a.gaps.every((g, i) => {
       const o = b.gaps[i]!;

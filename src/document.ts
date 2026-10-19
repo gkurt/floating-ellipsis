@@ -5,9 +5,11 @@
  */
 import type { Range } from './cut.ts';
 import type { Elide } from './elide.ts';
+import { FORM } from './highlight.ts';
 import { ellipsisText } from './marks.ts';
 import { clearMetrics } from './metrics.ts';
 import type { Part } from './options.ts';
+import type { ShortPart } from './shorten.ts';
 
 /**
  * Live instances, and each by the id its ellipses carry in `data-fp-ellipsis`,
@@ -20,8 +22,12 @@ export const byId = new Map<
   {
     instance: Elide;
     hidden: () => readonly Part[];
+    /** The parts showing in a short form, as rendered. */
+    short: () => readonly ShortPart[];
     /** Find in page found text ellipsis `part` hides, starting in `word` when that's known. */
     found: (part: number, word: Range | null) => void;
+    /** Find in page found the long form of the part showing short from grapheme `start`. */
+    foundShort: (start: number) => void;
     /** Undo that: collapse, or stop keeping it in sight. */
     unfound: () => void;
   }
@@ -47,9 +53,10 @@ export function hookDocument(): void {
 }
 
 /**
- * When a selection crosses an ellipsis, copy what it stands for. The
- * selection is cloned, each ellipsis in it replaced by its hidden text, and
- * the result laid out offscreen so `innerText` keeps the page's line breaks.
+ * When a selection crosses an ellipsis or a part in a short form, copy what
+ * it stands for. The selection is cloned, each ellipsis in it replaced by its
+ * hidden text and each short form by its long one, and the result laid out
+ * offscreen so `innerText` keeps the page's line breaks.
  */
 function onCopy(event: ClipboardEvent) {
   const selection = document.getSelection();
@@ -68,6 +75,14 @@ function onCopy(event: ClipboardEvent) {
     touched = true;
     const { copy } = entry.instance.options;
     el.replaceWith(copy === 'full' || entry.instance.state.expanded ? part.text : ellipsisText(entry.instance.markStyle));
+  }
+  for (const el of fragment.querySelectorAll(`[${FORM}]`)) {
+    const [id, start] = (el.getAttribute(FORM) ?? '').split(':');
+    const entry = byId.get(id ?? '');
+    const part = entry?.short().find((p) => p.start === Number(start));
+    touched = true;
+    if (!entry || !part) el.remove();
+    else el.replaceWith(entry.instance.options.copy === 'full' ? part.text : part.form);
   }
   if (!touched) return;
 
@@ -111,12 +126,14 @@ function onBeforeMatch(event: Event) {
     word = null;
     return;
   }
-  const [id, part] = (el.dataset.fpFound ?? '').split(':');
+  const [id, part = ''] = (el.dataset.fpFound ?? '').split(':');
   const entry = byId.get(id ?? '');
   if (!entry) return;
   if (found && found.instance !== entry.instance) found.unfound();
   const range = target.dataset.fpWord?.split(':').map(Number);
-  entry.found(Number(part), range?.length === 2 ? [range[0]!, range[1]!] : null);
+  // The long form of a part showing short (`s` and where it starts), or what an ellipsis hides.
+  if (part.startsWith('s')) entry.foundShort(Number(part.slice(1)));
+  else entry.found(Number(part), range?.length === 2 ? [range[0]!, range[1]!] : null);
   found = entry;
 }
 
