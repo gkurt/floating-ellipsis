@@ -185,6 +185,10 @@ describe('ellipses on cells', () => {
     expect(t.ellipsisElement.querySelectorAll('[data-fp-mark]')).toHaveLength(6);
     t.update({ text: PROSE });
     expect(t.markStyle).toEqual(plain.markStyle);
+    // Text set while another ellipsis is drawn is judged once 'auto' asks.
+    plain.update({ text: CHINESE });
+    plain.update({ ellipsis: 'auto' });
+    expect(plain.markStyle).toMatchObject({ cells: 1, align: 'middle' });
   });
 
   it('decides text with no letters by its language', () => {

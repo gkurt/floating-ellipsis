@@ -133,7 +133,9 @@ export function markStyleFor(
 ): EllipsisStyle {
   const e = settings.ellipsis === 'auto' ? autoStyle(cjk, wraps(settings.lines)) : settings.ellipsis;
   const split = settings.justify === 'dots' || repeatRatio(settings.repeat) > 0;
-  if (split && typeof e === 'string' && graphemes(e).length === 1) return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
+  // (One code unit is one grapheme: '…' needn't be segmented.)
+  if (split && typeof e === 'string' && (e.length === 1 || graphemes(e).length === 1))
+    return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
 
   return e;
 }

@@ -305,8 +305,8 @@ export class Elide {
   #titled = false;
   #destroyed = false;
   #style: EllipsisStyle = '…';
-  /** The text is Chinese or Japanese, for `ellipsis: 'auto'` (see `isCJK`). */
-  #cjk = false;
+  /** The text is Chinese or Japanese, for `ellipsis: 'auto'` (see `isCJK`); null until it asks. */
+  #cjk: boolean | null = null;
   /** Gives the element its own inline height back, while we hold it. */
   #heightLock: (() => void) | null = null;
   /** How many lines the text was on when its height was held. */
@@ -558,8 +558,7 @@ export class Elide {
     this.#settings = { ...before, ...defined(rest) };
     const s = this.#settings;
     const restyled =
-      markStyleFor(s, this.#cjk) !== this.#style &&
-      (s.ellipsis !== before.ellipsis || s.justify !== before.justify || s.repeat !== before.repeat);
+      (s.ellipsis !== before.ellipsis || s.justify !== before.justify || s.repeat !== before.repeat) && this.#markStyle() !== this.#style;
     if (restyled || wraps(s.lines) !== wraps(before.lines)) this.#restyle();
     if (s.observe !== before.observe) this.#observe(s.observe);
     if (s.lines !== before.lines) this.#bias = null;
@@ -701,11 +700,9 @@ export class Elide {
     this.#even = !/^\s|\s$|\s\s|[\t\n\r\f]/.test(text);
     this.#misjudged = null;
     ({ graphemes: this.#g, units: this.#units } = graphemesWith(text, units));
-    const cjk = isCJK(this.#g, this.element.closest('[lang]')?.getAttribute('lang') ?? '');
-    if (cjk !== this.#cjk) {
-      this.#cjk = cjk;
-      if (this.#settings.ellipsis === 'auto') this.#restyle();
-    }
+    const cjk = this.#cjk;
+    this.#cjk = null;
+    if (cjk !== null && this.#settings.ellipsis === 'auto' && this.#isCJK() !== cjk) this.#restyle();
     this.#unitWidths.clear();
     this.#offsets = [0];
     for (const s of this.#g) this.#offsets.push(this.#offsets[this.#offsets.length - 1]! + s.length);
@@ -820,8 +817,18 @@ export class Elide {
     return this.#style;
   }
 
+  /** Whether the text is Chinese or Japanese (see `isCJK`), judged once per text, and only for `ellipsis: 'auto'`. */
+  #isCJK(): boolean {
+    return (this.#cjk ??= isCJK(this.#g, this.element.closest('[lang]')?.getAttribute('lang') ?? ''));
+  }
+
+  /** The marks the settings draw (see `markStyleFor`). */
+  #markStyle(): EllipsisStyle {
+    return markStyleFor(this.#settings, this.#settings.ellipsis === 'auto' && this.#isCJK());
+  }
+
   #fillMarks(join: Join) {
-    this.#style = markStyleFor(this.#settings, this.#cjk);
+    this.#style = this.#markStyle();
     // Only text that can wrap needs gluing: Firefox letter-spaces the joiners.
     drawMarks(join, this.#style, wraps(this.#settings.lines));
   }
@@ -1242,8 +1249,10 @@ export class Elide {
    */
   #tighten(run: Run | null, by: number) {
     const tight = run !== null && by > 0;
-    this.#tightened = tight ? by : 0;
+    // (`justify: 'spread'` sets the line's letter-spacing too: cleared either way.)
     this.#lineEl.style.letterSpacing = tight ? `${run.letterSpacing - by}px` : '';
+    if (!tight && this.#tightened === 0) return;
+    this.#tightened = tight ? by : 0;
     this.#lineEl.style.wordSpacing = tight ? `${run.wordSpacing - 2 * by}px` : '';
     for (const { el } of this.#joins) {
       el.style.letterSpacing = tight ? `${run.letterSpacing}px` : '';
