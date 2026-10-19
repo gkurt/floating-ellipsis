@@ -19,8 +19,11 @@ export interface ElideOptions {
    */
   lines?: number | 'fit';
   /**
-   * Where the ellipsis goes: 'start' | 'middle' | 'end' or 0..1. Default 'end'.
-   * An array places several ellipses, e.g. `[0.33, 0.67]`.
+   * Where the ellipsis goes: a share of the text, 'start' | 'middle' | 'end'
+   * or 0..1, or on one line, a place along it for the ellipsis' middle: a
+   * share of the content box's width ('50%') or a length from its start
+   * ('120px', '8em'). Default 'end'. An array places several ellipses, e.g.
+   * `[0.33, 0.67]`; in one with a place, a number is a share of the line too.
    */
   position?: Position | readonly Position[];
   /**

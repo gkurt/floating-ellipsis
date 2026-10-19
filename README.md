@@ -45,7 +45,7 @@ inline-block), see [Sized by content](#sized-by-content).
 | ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `text`     | element content | A string, or a node whose text and inline elements are shown.                                                                                       |
 | `lines`    | `1`             | Maximum number of lines, or `'fit'`: as many as fit the element's height (capped by `height`, `max-height`, or a flex or grid track).               |
-| `position` | `'end'`         | `'start'`, `'middle'`, `'end'`, a number from 0 to 1, or an array of them for several ellipses.                                                     |
+| `position` | `'end'`         | A share of the text: `'start'`, `'middle'`, `'end'` or 0 to 1. Or a place along the line: `'50%'`, `'120px'`, `'8em'`. An array for several.        |
 | `keep`     | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. `{ match, class }` / `{ start, end, class }` also highlight them.       |
 | `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
 | `gap`      | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                            |
@@ -63,6 +63,24 @@ inline-block), see [Sized by content](#sized-by-content).
 | `autoSize` | `null`          | `autoSize()` from `floating-ellipsis/autosize`, for an element whose width comes from its content. See [Sized by content](#sized-by-content).       |
 
 `instance.update(options)` changes any option, including `text`.
+
+### Places along the line
+
+```js
+elide(cell, { position: '50%' }); // the ellipsis in the middle of the cell
+elide(cell, { position: '120px' }); // or 120px from the start of the line
+```
+
+A number puts the ellipsis that share of the way through the text, so where
+it lands depends on the text. A place puts it along the line instead: a share
+of the content box's width (`'50%'`) or a length from its start (`'120px'`,
+`'8em'`), for the ellipsis' middle, as far in as it needs. The text before it
+shows as much as fits before the place, and the text after it the rest, so
+the cells of a column put theirs within about a glyph of each other. It's
+still cut, spaced and justified as usual, so the text around it and its
+gaps move it that much. In an array with a place, a number is a share of the
+line too; on more than one line, `'50%'` is half the text, and a length the
+middle. `elideText` takes places too, along its `width`.
 
 ### Drawn marks
 

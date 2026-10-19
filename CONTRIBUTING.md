@@ -27,7 +27,7 @@ drag. `/playground.html` is one line with every option on [dialkit](https://gith
 panels, ink guides and a readout of its state; `window.hero` is the instance,
 to try from the console. `/table.html` is a crowded table
 (up to 2,500 rows, four truncated cells each, as a `<table>` or grid rows) with
-tooltips and a search that keeps and highlights matches. `/autosize.html` shows elements sized by their content (a
+tooltips, a search that keeps and highlights matches, and a switch between ellipses at half the text and in the middle of the cell (unjustified, without repeated marks or snapping: what keeps them nearest their place). `/autosize.html` shows elements sized by their content (a
 chip, a flex item, an inline-block) with and without `autoSize`, under a
 slider for the room they have. `/justify.html` shows each `justify` mode with
 `repeat: false`, `0.75` (the default) and `1`, on cuts that leave a lot of room (whole words, path

@@ -5,7 +5,7 @@
 import { autoSize } from './autosize.ts';
 import { type BindingOptions, Binding } from './bind.ts';
 import type { ElideChange } from './changes.ts';
-import { type Position, type Snap, separators, words } from './cut.ts';
+import { type Position, type Snap, isPlace, separators, words } from './cut.ts';
 import type { Elide } from './elide.ts';
 import { glyphs } from './glyphs.ts';
 import type { Length } from './marks.ts';
@@ -40,9 +40,10 @@ const isLength = (v: string): v is Exclude<Length, number> => /^-?[\d.]+(em|px)$
 const isGap = (v: string): v is Extract<Gap, string> => v === 'dots' || v === 'natural' || v === 'none' || isLength(v);
 const isJustify = (v: string): v is 'dots' | 'ellipsis' | 'spread' => v === 'dots' || v === 'ellipsis' || v === 'spread';
 
-/** `'middle'`, `'0.3'`, or several: `'0.33 0.67'`. */
+/** `'middle'`, `'0.3'`, `'50%'`, `'8em'`, or several: `'0.33 0.67'`. */
 function parsePosition(value: string): Position | Position[] {
-  const one = (v: string): Position => (v === 'start' || v === 'middle' || v === 'end' ? v : Number(v));
+  const one = (v: string): Position =>
+    v === 'start' || v === 'middle' || v === 'end' || isPlace(v as Position) ? (v as Position) : Number(v);
   const parts = value.trim().split(/[\s,]+/);
   return parts.length > 1 ? parts.map(one) : one(parts[0] ?? 'end');
 }

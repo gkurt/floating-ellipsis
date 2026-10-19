@@ -5,6 +5,9 @@ import {
   asArray,
   estimateKept,
   hiddenRanges,
+  isPlace,
+  placedLayout,
+  placesOf,
   graphemeClasses,
   keepClasses,
   keepRanges,
@@ -217,6 +220,8 @@ export class Elide {
   /** The element (in the original) of the focused link in the screen-reader copy. */
   #focused: Element | null = null;
   #layout: Layout = layoutFor(0, ['end']);
+  /** Some position is a place along the line (see `Place`). */
+  #placing = false;
   readonly #original: Node[];
   readonly #srEl: HTMLSpanElement;
   readonly #lineEl: HTMLSpanElement;
@@ -680,8 +685,44 @@ export class Elide {
   }
 
   #setLayout() {
-    this.#layout = layoutFor(this.#g.length, asArray(this.#settings.position));
+    const positions = asArray(this.#settings.position);
+    this.#layout = layoutFor(this.#g.length, positions);
+    this.#placing = positions.some(isPlace);
     this.#bias = null;
+  }
+
+  /**
+   * The islands for positions with places along the line (see
+   * `placedLayout`): what fits before each place, as its glyph widths (with
+   * kerning) say, with the ellipsis in the middle of it and the gap it wants
+   * either side. Reads nothing.
+   */
+  #placed(run: Run): Layout {
+    const g = this.#g;
+    const { group, target } = this.#spacing(run);
+    const kerns = kerningOf(g, run);
+    const { sums, left, right } = run;
+    const size = typeof target === 'number' ? group.left + group.right + 2 * target : group.advance;
+    const places = placesOf(asArray(this.#settings.position), left, right, right - run.suffix, size, run.marks!.fontSize);
+    // The ink of graphemes [s, e), but white space a cut would trim.
+    const ink = (s: number, e: number) => {
+      if (this.#settings.trim) {
+        while (s < e && isWhitespace(g[s])) s++;
+        while (e > s && isWhitespace(g[e - 1])) e--;
+      }
+      if (e <= s) return 0;
+      const last = this.#neighbour(run, e - 1);
+      return (
+        sums[e]! - sums[s]! + kerns[e]! - kerns[s + 1]! + (this.#neighbour(run, s)?.left ?? 0) + (last ? last.right - last.advance : 0)
+      );
+    };
+    return placedLayout(
+      g.length,
+      places,
+      left,
+      right,
+      (i, s, e) => ink(s, e) <= places[i]! - size / 2 - (i === 0 ? left : places[i - 1]! + size / 2),
+    );
   }
 
   /** The join (ellipsis with its neighbouring glyphs) at `index`, created on demand. */
@@ -1378,6 +1419,8 @@ export class Elide {
     };
     try {
       const layout = run.marks;
+      // Places along the line, on one line: islands as long as fits before them.
+      const islands = this.#placing && layout && !wraps(lines) ? this.#placed(run) : this.#layout;
       let predictor: Predictor | null = null;
       if (base && layout) {
         const model = {
@@ -1398,7 +1441,7 @@ export class Elide {
       // The predictor has measured a cut of this pass: it judges the ones
       // around it as well as rendering them would, if it is close enough.
       let probed = false;
-      const at = (k: number) => this.#worthCutting(run, hiddenRanges(this.#g, this.#layout, k, pins, snap, trim));
+      const at = (k: number) => this.#worthCutting(run, hiddenRanges(this.#g, islands, k, pins, snap, trim));
       // What each cut tried so far did: different probes can come to the same cut.
       const outcomes = new Map<string, Tried>();
       const attempt = function* (this: Elide, cut: Range[]): Generator<void, Tried, void> {
@@ -1451,7 +1494,7 @@ export class Elide {
           // aims at what the room it left (or lacked) says fits, by the same
           // widths: the room wrapping wastes changes little from one to the next.
           const mark = layout ? groupMetrics(layout, layout.inner).advance : 0;
-          const kept = (width: number, near?: number) => estimateKept(this.#g, this.#layout, pins, snap, trim, run.sums, mark, width, near);
+          const kept = (width: number, near?: number) => estimateKept(this.#g, islands, pins, snap, trim, run.sums, mark, width, near);
           const guess = kept(room);
           // One past the expected answer first: when the expectation holds,
           // the last probe is the answer, already rendered and measured.

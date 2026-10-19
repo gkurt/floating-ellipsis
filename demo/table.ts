@@ -1,4 +1,4 @@
-import { type Elide, type Keep, elide, separators } from '#src/index.ts';
+import { type Elide, type ElideOptions, type Keep, type Snap, elide, separators } from '#src/index.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { $, resizable, segmented } from './ui.ts';
 
@@ -115,6 +115,18 @@ const bySlash = separators('/');
 let markup: 'table' | 'grid' = 'grid';
 let count = 1000;
 let lines = 1;
+/** Whether the cells cut in the middle put the ellipsis in the middle of the cell, rather than at half of the text. */
+let placed = false;
+/**
+ * The options of a cell cut in the middle, snapped by `snap` at half of the
+ * text. In the middle of the cell, the ellipsis stays where the text before
+ * it ends: no room is spread around it and no marks added beside it (what's
+ * left stays at the line's end), and paths aren't snapped, which would move
+ * the cut off its place.
+ */
+const middle = (snap: Snap | null = null): ElideOptions =>
+  placed ? { position: '50%', justify: false, repeat: false, snap: null } : { position: 0.5, justify: 'dots', repeat: 0.75, snap };
+let folders: Elide[] = [];
 let instances: Elide[] = [];
 let messages: Elide[] = [];
 /** Each truncated cell: its instance, its text, what it always keeps, and its row. */
@@ -168,6 +180,7 @@ function build() {
   tips.hide();
   instances = [];
   messages = [];
+  folders = [];
   cells = [];
   [...host.querySelectorAll('tbody tr, [role="rowgroup"] > .row')].forEach((row, r) => {
     const [file, folder, message, hash] = [...row.querySelectorAll<HTMLElement>('.cell')];
@@ -175,10 +188,10 @@ function build() {
     messages.push(m);
     const extension = [/\.[^.]+$/];
     const made: [Elide, Keep[]][] = [
-      [elide(file!, { position: 0.5, keep: extension }), extension],
-      [elide(folder!, { position: 0.5, snap: bySlash }), []],
+      [elide(file!, { ...middle(), keep: extension }), extension],
+      [folders[folders.push(elide(folder!, middle(bySlash))) - 1]!, []],
       [m, []],
-      [elide(hash!, { position: 0.5 }), []],
+      [elide(hash!, middle()), []],
     ];
     made.forEach(([instance, keep], i) => {
       tips.attach(instance);
@@ -316,6 +329,10 @@ segmented('rows', (v) => {
 segmented('markup', (v) => {
   markup = v === 'grid' ? 'grid' : 'table';
   build();
+});
+segmented('position', (v) => {
+  placed = v === '50%';
+  for (const instance of instances) if (!messages.includes(instance)) instance.update(middle(folders.includes(instance) ? bySlash : null));
 });
 segmented('lines', (v) => {
   lines = Number(v);

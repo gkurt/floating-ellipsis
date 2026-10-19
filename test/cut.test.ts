@@ -11,6 +11,8 @@ import {
   keepClasses,
   keepRanges,
   layoutFor,
+  placedLayout,
+  placesOf,
   positionValue,
   sameRanges,
   searchMax,
@@ -44,6 +46,35 @@ describe('positionValue', () => {
     expect(positionValue('end')).toBe(1);
     expect(positionValue(2)).toBe(1);
     expect(positionValue(-1)).toBe(0);
+  });
+});
+
+describe('places', () => {
+  it('reads a share of the line or a length from its start, as far in as the ellipsis needs', () => {
+    expect(placesOf(['50%'], 100, 300, 300, 20, 16)).toEqual([200]);
+    expect(placesOf(['0%', '100%'], 100, 300, 300, 20, 16)).toEqual([110, 290]);
+    expect(placesOf(['40px', '2em', '1px'], 100, 300, 300, 20, 16)).toEqual([110, 132, 140]);
+    // Clear of a suffix, and a share alongside places is a share of the line.
+    expect(placesOf(['100%', 0.5], 0, 200, 150, 20, 16)).toEqual([100, 140]);
+  });
+
+  it('gives each island but the last what fits before its place, in turn', () => {
+    // Every grapheme 10 wide: 7 fit before 75, and 3 centred between 105 and 145.
+    const fits = (places: number[]) => (i: number, s: number, e: number) => (e - s) * 10 <= places[i]! - (i === 0 ? 0 : places[i - 1]!);
+    const one = placedLayout(20, [75], 0, 200, fits([75]));
+    expect(islands(one, 7)).toEqual([[0, 7]]);
+    expect(islands(one, 10)).toEqual([
+      [0, 7],
+      [17, 20],
+    ]);
+    const two = placedLayout(20, [75, 105, 145], 0, 200, fits([75, 105, 145]));
+    expect(islands(two, 7)).toEqual([[0, 7]]);
+    expect(islands(two, 8 + 3)[0]).toEqual([0, 7]);
+    // The islands before the last (7, 3 and 4 long) never start in the one before.
+    for (let k = 0; k <= 14; k++) {
+      const parts = islands(two, k);
+      parts.slice(1).forEach(([s], i) => expect(s).toBeGreaterThanOrEqual(parts[i]![1]));
+    }
   });
 });
 

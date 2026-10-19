@@ -27,6 +27,18 @@ describe('elideText', () => {
     }
   });
 
+  it('puts the ellipsis at a place along the width, whatever the text', () => {
+    for (const text of [PATH, 'The quick brown fox jumps over the lazy dog by the old mill', 'x'.repeat(80)]) {
+      const r = elideText(text, { width: 200, measure: mono, position: '50%' });
+      // The ellipsis is 10 wide: what's before it ends at 95, and it at 105.
+      expect(r.text.indexOf('…')).toBe(9);
+      expect(r.width).toBeLessThanOrEqual(200);
+      expect(r.width).toBeGreaterThan(190);
+    }
+    expect(elideText(PATH, { width: 200, measure: mono, position: '60px' }).text.indexOf('…')).toBe(5);
+    expect(elideText(PATH, { width: 200, font: '10px monospace', measure: mono, position: '4em' }).text.indexOf('…')).toBe(3);
+  });
+
   it('places several ellipses', () => {
     const r = elideText(PATH, { width: 300, measure: mono, position: [0.33, 0.67] });
     expect(r.hidden).toHaveLength(2);

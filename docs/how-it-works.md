@@ -103,6 +103,22 @@ Implementation details behind the behaviour described in the
    its text a second time.) A resize that leaves plain text on as many lines
    keeps the height it holds without measuring it again.
 
+## Places along the line
+
+A share of the text hands kept graphemes to the islands by count, so the
+ellipsis lands wherever the text before it ends. A place (`'50%'`,
+`'120px'`, `'8em'`) sizes the islands by width instead: on one line, the
+first is as long as its glyph widths (with kerning, and the ink of its last
+glyph) keep it short of the place, less half the ellipsis and the gap it
+wants; one between two places is centred where it sits in the text, as long
+as fits between them; the last takes the rest. The search fills them in
+turn, so it only looks for how much of the end fits, and judging cuts from
+glyph widths works as on any line. Where the place falls inside a glyph, the
+text before it stops a glyph short, and the ellipsis follows it there; white
+space beside the cut goes with it. `keep`, `snap` and `justify` work as
+usual, so they can move the ellipsis further: a snapped cut by a segment, the
+room `justify` spreads by a part of a glyph.
+
 ## Batching
 
 Reading layout after changing the DOM forces a layout, and in a long list each

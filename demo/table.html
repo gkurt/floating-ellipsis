@@ -17,8 +17,10 @@
       <p class="eyebrow"><a href="./">floating-ellipsis</a> <span>/ table</span></p>
       <h1>A crowded <em>table.</em></h1>
       <p class="lede">
-        Every row truncates four cells its own way: file names keep their extension, paths are cut at a separator, hashes in the middle.
-        Hover a cut-off cell for its full text. Drag a column's edge, or let the table sweep, and watch the timings.
+        Every row truncates four cells its own way: file names keep their extension, paths are cut at a separator, hashes in the middle. Put
+        the ellipses at half the text, or in the middle of the cell (<code>'50%'</code>, not justified, paths not snapped), where they line
+        up down a column within a glyph. Hover a cut-off cell for its full text. Drag a column's edge, or let the table sweep, and watch the
+        timings.
       </p>
     </header>
 
@@ -41,6 +43,13 @@
           <span id="lines-label">Message lines</span>
           <div class="seg" data-name="lines" role="group" aria-labelledby="lines-label">
             <button aria-pressed="true" value="1">1</button><button value="2">2</button>
+          </div>
+        </div>
+        <div class="control">
+          <span id="position-label">Ellipsis at</span>
+          <div class="seg" data-name="position" role="group" aria-labelledby="position-label">
+            <button aria-pressed="true" value="0.5" title="position: 0.5, half of the text">Half the text</button
+            ><button value="50%" title="position: '50%', justify: false, repeat: false, no snap">The cell's middle</button>
           </div>
         </div>
         <div class="control">

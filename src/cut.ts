@@ -28,18 +28,90 @@ export interface SnapContext {
  */
 export type Snap = (ctx: SnapContext) => Cut;
 
-export type Position = number | 'start' | 'middle' | 'end';
+/** Where an ellipsis goes as a share of the text: 0 (the start) to 1 (the end). */
+export type Share = number | 'start' | 'middle' | 'end';
+
+/**
+ * Where an ellipsis' middle goes along the line: a share of the content
+ * box's width (`'50%'`), or how far from its start (`'120px'`, `'8em'`).
+ */
+export type Place = `${number}%` | `${number}px` | `${number}em`;
+
+export type Position = Share | Place;
+
+/** Whether `p` is a place along the line, not a share of the text. */
+export const isPlace = (p: Position): p is Place => typeof p === 'string' && /\d(%|px|em)$/.test(p);
 
 const isList = <T>(v: T | readonly T[]): v is readonly T[] => Array.isArray(v);
 
 /** One option value or several, as a list. */
 export const asArray = <T>(v: T | readonly T[] | null | undefined): readonly T[] => (v == null ? [] : isList(v) ? v : [v]);
 
+/** `p` as a share, 0 to 1: of the text, or for a place, of the line (a length: its middle, until it's placed). */
 export function positionValue(p: Position): number {
   if (p === 'start') return 0;
   if (p === 'middle') return 0.5;
   if (p === 'end') return 1;
+  if (typeof p === 'string') return p.endsWith('%') ? Math.min(1, Math.max(0, parseFloat(p) / 100)) : 0.5;
   return Math.min(1, Math.max(0, p));
+}
+
+/**
+ * Where the middle of each ellipsis goes on a line from `left` to `right`,
+ * whose room ends at `end`, for an ellipsis `size` wide with its gaps, in
+ * order: a length from `left` (`em` px to an em), or a share of the line
+ * (a '%' place, and a share of the text alongside places), each as far in as
+ * the ellipsis needs.
+ */
+export function placesOf(positions: readonly Position[], left: number, right: number, end: number, size: number, em: number): number[] {
+  return positions
+    .map((p) => {
+      const at =
+        isPlace(p) && !p.endsWith('%')
+          ? left + parseFloat(p) * (p.endsWith('em') ? em : 1)
+          : left + size / 2 + positionValue(p) * (right - left - size);
+      return Math.max(left + size / 2, Math.min(end - size / 2, at));
+    })
+    .sort((a, b) => a - b);
+}
+
+/**
+ * The islands for ellipses at `places` along a line from `left` to `right`
+ * (see `placesOf`): each but the last as long as `fits(i, start, end)` says
+ * graphemes [start, end) fit before place `i` (and after place `i - 1`),
+ * the first from the start and the ones between centred where they sit in
+ * the text, apart from the island before; the last takes the rest. So the
+ * search, filling them in turn, only looks for how much of the end fits.
+ */
+export function placedLayout(
+  n: number,
+  places: readonly number[],
+  left: number,
+  right: number,
+  fits: (i: number, start: number, end: number) => boolean,
+): Layout {
+  const positions = places.map((x) => (right > left ? Math.min(1, Math.max(0, (x - left) / (right - left))) : 0.5));
+  const sizes: number[] = [];
+  let before = 0;
+  positions.forEach((p, i) => {
+    const center = i === 0 ? 0 : (n * (positions[i - 1]! + p)) / 2;
+    const startOf = (size: number) => (i === 0 ? 0 : Math.min(n - size, Math.max(0, Math.round(center - size / 2))));
+    const room = (size: number) => (i === 0 || startOf(size) > before) && fits(i, startOf(size), startOf(size) + size);
+    let size = 0;
+    while (size < n - before && room(size + 1)) size++;
+    sizes.push(size);
+    if (size > 0) before = startOf(size) + size;
+  });
+  const order = new Int32Array(n);
+  let k = 0;
+  sizes.forEach((size, i) => order.fill(i, k, (k += size)));
+  order.fill(places.length, k);
+  const counts = Array.from({ length: places.length + 1 }, () => 0);
+  for (const i of order) counts[i]!++;
+  const steps = counts.map((count) => new Int32Array(count));
+  counts.fill(0);
+  order.forEach((i, step) => (steps[i]![counts[i]!++] = step));
+  return { length: n, positions, order, steps };
 }
 
 // ---------------------------------------------------------------------------

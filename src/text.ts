@@ -12,10 +12,13 @@ import {
   estimateKept,
   hiddenRanges,
   keepRanges,
+  isPlace,
   layoutFor,
+  placedLayout,
+  placesOf,
   toGraphemeRanges,
 } from './cut.ts';
-import { graphemes } from './graphemes.ts';
+import { graphemes, isWhitespace } from './graphemes.ts';
 import { advance } from './metrics.ts';
 import type { Part } from './options.ts';
 
@@ -34,7 +37,7 @@ export interface ElideTextOptions {
   measure?: (text: string) => number;
   /** Space after every grapheme, as CSS `letter-spacing` adds. Default 0. */
   letterSpacing?: number;
-  /** Where the ellipsis goes, as in `elide`. Default 'end'. */
+  /** Where the ellipsis goes, as in `elide`: a place is along `width` ('%', px, or em of `font`'s size). Default 'end'. */
   position?: Position | readonly Position[];
   /** Parts that always stay visible, as in `elide`. */
   keep?: Keep | readonly Keep[] | null;
@@ -88,7 +91,20 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   });
   const mark = measure(ellipsis, graphemes(ellipsis).length);
   let pins = toGraphemeRanges(keepRanges(text, asArray(keep)), offsets);
-  const layout = layoutFor(n, asArray(position));
+  const positions = asArray(position);
+  // Places along the line: islands as long as fits before them (see `elide`).
+  const em = Number(/(\d*\.?\d+)px/.exec(font ?? '')?.[1] ?? 16);
+  const places = positions.some(isPlace) ? placesOf(positions, 0, room, room, mark, em) : null;
+  const span = (s: number, e: number) => {
+    if (trim) {
+      while (s < e && isWhitespace(g[s])) s++;
+      while (e > s && isWhitespace(g[e - 1])) e--;
+    }
+    return e > s ? sums[e]! - sums[s]! : 0;
+  };
+  const layout = places
+    ? placedLayout(n, places, 0, room, (i, s, e) => span(s, e) <= places[i]! - mark / 2 - (i === 0 ? 0 : places[i - 1]! + mark / 2))
+    : layoutFor(n, positions);
   const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
 
   // A cut no wider than the ellipsis standing in for it only adds an ellipsis.
@@ -129,5 +145,5 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
 }
 
 export { separators, words } from './cut.ts';
-export type { Keep, Position, SeparatorOptions, Snap, SnapContext } from './cut.ts';
+export type { Keep, Place, Position, SeparatorOptions, Share, Snap, SnapContext } from './cut.ts';
 export type { Part } from './options.ts';
