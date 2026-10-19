@@ -235,7 +235,7 @@ export const sharedColumns: { label: string; baseline?: boolean; options: (path:
   { label: "position: 'middle'", baseline: true, options: () => ({ position: 'middle' }) },
   {
     label: 'keep: differing(…)',
-    options: (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/', { fragment: false }) }),
+    options: (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/') }),
   },
 ];
 
