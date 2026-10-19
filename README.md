@@ -5,17 +5,21 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
 - **Anywhere, any length.** Clamp to any number of lines (or as many as fit the height), with the ellipsis at
   the start, middle, end, any position, or several at once.
 - **Balanced and flush.** Even spacing on both sides of the ellipsis, and lines
-  that end exactly at the edge, so resizing flows instead of stepping.
+  that end exactly at the edge, so resizing flows instead of stepping. Text a
+  hair too long can set tighter instead of being cut.
 - **Keep what matters.** Pin words, patterns or ranges so they stay visible,
-  and highlight them.
-- **Words and paths.** Cuts can snap to whole words or path segments.
+  highlight them, and show words of context around them, like a search
+  result's snippet.
+- **Words, paths and numbers.** Cuts can snap to whole words or path
+  segments, and never split a number, a date or anything else you mark whole.
 - **Rich text.** Links and inline markup survive the cut; a suffix ("Read
   more", a badge) follows the text and is never cut.
 - **Native behaviour.** Find in page finds hidden text, copying gives the full
   text, screen readers read it all.
 - **Lists.** Whole items, and a label for the rest: "Ada, Grace and 2 others".
-- **Add-ons.** Headless tooltips, glyph transitions, a DOM-free `elideText`, a
-  CSS fallback, and bindings for custom elements, React, Vue and Svelte.
+- **Add-ons.** Headless tooltips, glyph transitions, text fields cut until
+  you edit them, a DOM-free `elideText`, a CSS fallback, and bindings for
+  custom elements, React, Vue and Svelte.
 - **Fast in bulk.** Thousands of instances share a few layouts.
 
 ```bash
@@ -41,26 +45,28 @@ inline-block), see [Sized by content](#sized-by-content).
 
 ## Options
 
-| Option     | Default         |                                                                                                                                                     |
-| ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `text`     | element content | A string, or a node whose text and inline elements are shown.                                                                                       |
-| `lines`    | `1`             | Maximum number of lines, or `'fit'`: as many as fit the element's height (capped by `height`, `max-height`, or a flex or grid track).               |
-| `position` | `'end'`         | A share of the text: `'start'`, `'middle'`, `'end'` or 0 to 1. Or a place along the line: `'50%'`, `'120px'`, `'8em'`. An array for several.        |
-| `keep`     | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. `{ match, class }` / `{ start, end, class }` also highlight them.       |
-| `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.          |
-| `gap`      | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                            |
-| `justify`  | `'dots'`        | Where leftover room goes so lines end flush: `'dots'` (all gaps equal), `'ellipsis'` (the two outer gaps), `'spread'` (letter-spacing), or `false`. |
-| `repeat`   | `0.75`          | Fill leftover room with more marks: this share (0 to 1) of as many as fit at their own spacing. `1` adds one wherever it fits; `false` adds none.   |
-| `maxGap`   | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                            |
-| `trim`     | `true`          | Drop whitespace next to an ellipsis.                                                                                                                |
-| `snap`     | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                        |
-| `observe`  | `true`          | Re-truncate on resize and when web fonts load.                                                                                                      |
-| `glyphs`   | `null`          | `glyphs` from `floating-ellipsis/glyphs`: each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.            |
-| `title`    | `false`         | Put the full text in `title` while truncated.                                                                                                       |
-| `copy`     | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                   |
-| `suffix`   | `null`          | `suffix(content)` from `floating-ellipsis/suffix`. See [Suffixes](#suffixes).                                                                       |
-| `find`     | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).     |
-| `autoSize` | `null`          | `autoSize()` from `floating-ellipsis/autosize`, for an element whose width comes from its content. See [Sized by content](#sized-by-content).       |
+| Option     | Default         |                                                                                                                                                               |
+| ---------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`     | element content | A string, or a node whose text and inline elements are shown.                                                                                                 |
+| `lines`    | `1`             | Maximum number of lines, or `'fit'`: as many as fit the element's height (capped by `height`, `max-height`, or a flex or grid track).                         |
+| `position` | `'end'`         | A share of the text: `'start'`, `'middle'`, `'end'` or 0 to 1. Or a place along the line: `'50%'`, `'120px'`, `'8em'`. An array for several.                  |
+| `keep`     | `null`          | Parts that stay visible: a string, a RegExp, `{ start, end }`, or an array. The object forms take `class` to highlight them, `context` for words around them. |
+| `ellipsis` | `'…'`           | A string (each character is a mark), or drawn marks: `{ shape: 'dot' \| 'bullet' \| 'ring' \| 'square', count?, size?, spacing?, like? }`.                    |
+| `gap`      | `'dots'`        | Ink gap beside the ellipsis: `'dots'` (its own dot spacing), `'natural'`, `'none'`, px, or a CSS length.                                                      |
+| `justify`  | `'dots'`        | Where leftover room goes so lines end flush: `'dots'` (all gaps equal), `'ellipsis'` (the two outer gaps), `'spread'` (letter-spacing), or `false`.           |
+| `repeat`   | `0.75`          | Fill leftover room with more marks: this share (0 to 1) of as many as fit at their own spacing. `1` adds one wherever it fits; `false` adds none.             |
+| `maxGap`   | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                                      |
+| `trim`     | `true`          | Drop whitespace next to an ellipsis.                                                                                                                          |
+| `snap`     | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                                  |
+| `whole`    | `null`          | Parts shown whole or not at all, never cut: a string, a RegExp, `{ start, end }`, or an array. See [Wholes](#wholes).                                         |
+| `tighten`  | `0`             | Letters may set this much closer (px or `'0.05em'`, word spaces twice that) so text a little too long shows whole. See [Tightening](#tightening).             |
+| `observe`  | `true`          | Re-truncate on resize and when web fonts load.                                                                                                                |
+| `glyphs`   | `null`          | `glyphs` from `floating-ellipsis/glyphs`: each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.                      |
+| `title`    | `false`         | Put the full text in `title` while truncated.                                                                                                                 |
+| `copy`     | `'full'`        | What copying across an ellipsis gives: `'full'` (the hidden text) or `'visible'`.                                                                             |
+| `suffix`   | `null`          | `suffix(content)` from `floating-ellipsis/suffix`. See [Suffixes](#suffixes).                                                                                 |
+| `find`     | `'keep'`        | Find in page on hidden text: `'keep'` reveals the matched word, `'expand'` expands the text, `false` leaves it out (lighter in crowded tables).               |
+| `autoSize` | `null`          | `autoSize()` from `floating-ellipsis/autosize`, for an element whose width comes from its content. See [Sized by content](#sized-by-content).                 |
 
 `instance.update(options)` changes any option, including `text`.
 
@@ -111,6 +117,15 @@ Matches stay visible and are wrapped in a `<span>` with the class (and
 }
 ```
 
+With `context`, words around every match show before any other text, a word
+at a time after each match and then before it, so each gets a word before
+any gets two: a search result's snippet. `Infinity` shows as many as fit; a
+number stops there, and the rest of the room goes where `position` says.
+
+```js
+elide(el, { keep: { match: /lantern/gi, class: 'hit', context: Infinity } }); // …by dusk the lantern by the gate…
+```
+
 ### Snapping
 
 ```js
@@ -125,6 +140,28 @@ elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/d
 side of a path cut keeps a piece of its segment (`fragment: 'head'`, or
 `'tail'`), so the cut shows about as much as a plain one; with `false` only
 whole segments go, as with `words()`.
+
+### Wholes
+
+```js
+elide(el, { position: 'middle', whole: /[$€£]?\d[\d,.:/-]*\d%?/g }); // Invoice…ref 88412093, never Invoice 20…
+```
+
+A cut that would split a match of `whole` slides off it, hiding as much just
+beside it, or hides all of it at an end of the text. It's the same rule
+`words()` follows (where a cut may start and end), so the two combine:
+`{ snap: words(), whole: … }` keeps to both.
+
+### Tightening
+
+```js
+elide(el, { tighten: '0.05em' });
+```
+
+Text that runs over by a little shows whole, set tighter rather than cut,
+word spaces by twice what letters are, and only as much as it takes, so a
+line ends at the edge. Past `tighten`, it's cut, and set as
+usual. `state.tightened` says by how much (px per letter).
 
 ### Markup
 
@@ -226,7 +263,7 @@ Either lasts until a press outside the text or a match elsewhere.
 
 ## Instance API
 
-- `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack }`.
+- `state`: `{ text, length, truncated, expanded, hidden, kept, lines, gaps, slack, tightened }`.
   `hidden` and `kept` are `{ start, end, text }` lists in grapheme indices.
 - `truncated`, `expanded`, `graphemes`, `options`, `markStyle`, `classOf(i)`,
   `unitOf(i)` (the image or element grapheme `i` stands for, or null).
@@ -282,8 +319,9 @@ elideText(path, { width: 180, font: '13px Inter', position: 'middle', keep: /\.[
 
 The same cuts as a string, on one line, for canvas, SVG, workers or the server.
 It takes `width`, `font` or your own `measure(text)`, `letterSpacing`, and
-`position`, `keep`, `ellipsis` (a string), `trim` and `snap` as in `elide`. It
-returns `{ text, truncated, hidden, kept, width }`.
+`position`, `keep`, `ellipsis` (a string), `trim`, `snap`, `whole` and
+`tighten` (in `measure`'s unit) as in `elide`. It returns
+`{ text, truncated, hidden, kept, width, tightened }`.
 
 ## Frameworks
 
@@ -300,7 +338,8 @@ empty. Create a `snap` once, not inline.
 ```
 
 `<elide-text>` takes most options as kebab-case attributes (`tooltip-title`
-for `title`, `keep-class` to highlight `keep`, `snap="words|paths"`, `auto-size`), or all of
+for `title`, `keep-class` to highlight `keep` and `keep-context` for words
+around it, `whole="/\d+/g"`, `snap="words|paths"`, `auto-size`), or all of
 them through its `options` property. A child with `slot="suffix"` is its suffix. It exposes
 `instance` and fires `elidechange`.
 
@@ -453,6 +492,27 @@ has `data-held`; the open trigger has `data-fp-tip-open`.
 }
 ```
 
+## Text fields
+
+```js
+import { elideInput } from 'floating-ellipsis/input';
+
+const field = elideInput(document.querySelector('input[name=path]'), { position: 'middle', keep: /[^/]+$/ });
+```
+
+A text field shows its value cut while it isn't being edited, and its
+placeholder cut while it's empty. Press it anywhere, even on an ellipsis,
+and the whole value appears with the glyph you pressed still under the
+pointer and the caret beside it; dragging selects as usual. The value, the
+field and what a form submits stay as they are: a copy of the cut text lies
+over the field's own, which is hidden while the copy shows. It follows the
+value as you type, as a framework sets it, and as a form resets it.
+
+It takes `elide`'s options, but those about lines, suffixes and find in page,
+and returns `{ instance, update(options), refresh(), destroy() }`. A password
+field never shows its value cut, including one whose type a "show" button
+flips.
+
 ## Accessibility
 
 Screen readers get the full text, links included, from a visually hidden copy.
@@ -468,6 +528,8 @@ and transitions respect reduced motion.
   showing needs `refresh()`.
 - Find in page can't find a word an ellipsis cuts in two, and with
   `find: 'keep'` moving past a kept match takes a second Enter.
+- `elideInput` is for one-line `<input>`s, and lines the pressed glyph up
+  only in fields set from the left.
 
 More in [How it works](docs/how-it-works.md). To work on the library, see
 [CONTRIBUTING.md](CONTRIBUTING.md).

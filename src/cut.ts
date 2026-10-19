@@ -19,6 +19,12 @@ export interface SnapContext {
   /** Where the cut may move without running into the cuts either side: `[min, max)`. */
   min: number;
   max: number;
+  /**
+   * Where the cut may start and end so as not to split a whole (see
+   * `ElideOptions.whole`), or undefined for anywhere. A cut that splits one
+   * anyway is widened to hide all of it.
+   */
+  edges?: Edges | null;
 }
 
 /**
@@ -27,6 +33,52 @@ export interface SnapContext {
  * fits relies on what's shown growing as `ctx`'s range shrinks.
  */
 export type Snap = (ctx: SnapContext) => Cut;
+
+// ---------------------------------------------------------------------------
+// Edges
+//
+// Snapping to words and keeping parts whole are the same thing: rules for
+// where a cut may start and end. `words()` lets one start where a word
+// starts and end where one ends; `whole` lets one start and end anywhere but
+// inside its matches. Rules combine by both holding, and one search
+// (`shortestRun`) finds the run that keeps to them nearest the cut.
+
+/** Where a cut may start and end: edge `i` is just before grapheme `i`. */
+export interface Edges {
+  start(i: number): boolean;
+  end(i: number): boolean;
+}
+
+/** Edges at the boundaries of segments, which separators part: a cut starts where one begins, and ends where one ends. */
+export function segmentEdges(isSep: (i: number) => boolean): Edges {
+  return { start: (i) => !isSep(i) && isSep(i - 1), end: (i) => !isSep(i - 1) && isSep(i) };
+}
+
+/** Edges anywhere but inside `wholes` (grapheme ranges), so no cut splits one; null with none. */
+export function wholeEdges(n: number, wholes: readonly Range[]): Edges | null {
+  if (wholes.length === 0) return null;
+  const inside = new Uint8Array(n + 1);
+  for (const [s, e] of wholes) inside.fill(1, Math.max(0, s + 1), Math.min(n + 1, e));
+  const at = (i: number) => inside[i] !== 1;
+  return { start: at, end: at };
+}
+
+/** The edges both `a` and `b` allow (either may be null, for anywhere). */
+export function bothEdges(a: Edges, b: Edges | null | undefined): Edges {
+  return b ? { start: (i) => a.start(i) && b.start(i), end: (i) => a.end(i) && b.end(i) } : a;
+}
+
+/** `cuts` widened until none splits a whole (`edges`), never into `pins`. */
+export function widen(n: number, cuts: readonly Range[], edges: Edges, pins: readonly Range[]): Range[] {
+  const pinned = (i: number) => pins.some(([a, b]) => i >= a && i < b);
+  return union(
+    cuts.map(([s, e]): Range => {
+      while (s > 0 && !edges.start(s) && !pinned(s - 1)) s--;
+      while (e < n && !edges.end(e) && !pinned(e)) e++;
+      return [s, e];
+    }),
+  );
+}
 
 /** Where an ellipsis goes as a share of the text: 0 (the start) to 1 (the end). */
 export type Share = number | 'start' | 'middle' | 'end';
@@ -247,28 +299,59 @@ export function subtract(ranges: readonly Range[], cutouts: readonly Range[]): R
   return out;
 }
 
+/** Everything that decides where a text is cut, but how much of it is kept. */
+export interface Cutting {
+  graphemes: readonly string[];
+  layout: Layout;
+  /** Parts that always show. */
+  pins: readonly Range[];
+  snap: Snap | null;
+  trim: boolean;
+  /** Where cuts may start and end so as not to split a whole (see `wholeEdges`); null for anywhere. */
+  wholes: Edges | null;
+  /** Context that shows around kept parts before the islands get any (see `contextOf`); null for none. */
+  context: Context | null;
+}
+
+/** The most graphemes a cut can keep (see `hiddenRanges`): one short of all, and the context on top. */
+export const maxKept = (c: Cutting): number => c.graphemes.length - 1 + (c.context?.costs.at(-1) ?? 0);
+
+/** What shows with `kept` graphemes to give out: context, word by word, and once it's all showing, the islands. */
+function shownFor(c: Cutting, kept: number): Range[] {
+  const context = c.context;
+  if (!context) return islands(c.layout, kept);
+  const { steps, costs } = context;
+  let lo = 0;
+  let hi = steps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (costs[mid]! <= kept) lo = mid + 1;
+    else hi = mid;
+  }
+  const shown = steps.slice(0, lo);
+  if (lo === steps.length) shown.push(...islands(c.layout, kept - (costs.at(-1) ?? 0)));
+  return shown;
+}
+
 /**
- * The ranges to hide when `kept` graphemes go to the islands and `pins`
- * always stay visible. Snapping and whitespace trimming grow the hidden
- * ranges; pins are carved back out last, so they always win. Slivers left
- * between a pin and the text around it are shown (see `showSlivers`).
+ * The ranges to hide when `kept` graphemes go to the context and the
+ * islands, and the pins always stay visible. Snapping and whitespace
+ * trimming grow the hidden ranges; pins are carved back out last, so they
+ * always win. Slivers left between a pin and the text around it are shown
+ * (see `showSlivers`). No cut splits a whole.
  */
-export function hiddenRanges(
-  graphemes: readonly string[],
-  layout: Layout,
-  kept: number,
-  pins: readonly Range[],
-  snap: Snap | null,
-  trim: boolean,
-): Range[] {
+export function hiddenRanges(c: Cutting, kept: number): Range[] {
+  const { graphemes, layout, pins, snap, trim, wholes } = c;
   const n = graphemes.length;
-  const raw = complement(n, [...islands(layout, kept), ...pins]);
+  const raw = complement(n, [...shownFor(c, kept), ...pins]);
   const m = layout.positions.length;
   const grown = raw.map(([s, e], j): Range => {
-    if (snap) {
-      const min = raw[j - 1]?.[1] ?? 0;
-      const max = raw[j + 1]?.[0] ?? n;
-      const r = snap({ graphemes, start: s, end: e, position: layout.positions[Math.min(j, m - 1)]!, min, max });
+    const min = raw[j - 1]?.[1] ?? 0;
+    const max = raw[j + 1]?.[0] ?? n;
+    const r = snap
+      ? snap({ graphemes, start: s, end: e, position: layout.positions[Math.min(j, m - 1)]!, min, max, edges: wholes })
+      : wholes && shortestRun(wholes, n, s, e, min, max);
+    if (r) {
       const rs = Math.max(0, r.start);
       const re = Math.min(n, r.end);
       if (rs < re) [s, e] = [rs, re];
@@ -279,7 +362,8 @@ export function hiddenRanges(
     }
     return [s, e];
   });
-  return showSlivers(graphemes, subtract(grown, pins), pins);
+  const cuts = showSlivers(graphemes, subtract(grown, pins), pins);
+  return wholes ? widen(n, cuts, wholes, pins) : cuts;
 }
 
 /**
@@ -289,19 +373,8 @@ export function hiddenRanges(
  * what fits, as layout will tell, but a cheap one. A `hint` near the
  * answer makes it cheaper still.
  */
-export function estimateKept(
-  graphemes: readonly string[],
-  layout: Layout,
-  pins: readonly Range[],
-  snap: Snap | null,
-  trim: boolean,
-  sums: ArrayLike<number>,
-  mark: number,
-  room: number,
-  hint?: number,
-): number {
-  const n = graphemes.length;
-  return searchMax(0, n - 1, (k) => keptWidth(sums, mark, hiddenRanges(graphemes, layout, k, pins, snap, trim)) <= room, hint);
+export function estimateKept(c: Cutting, sums: ArrayLike<number>, mark: number, room: number, hint?: number): number {
+  return searchMax(0, maxKept(c), (k) => keptWidth(sums, mark, hiddenRanges(c, k)) <= room, hint);
 }
 
 /** The width of the graphemes `hidden` leaves (`sums`: as for `estimateKept`), with `mark` for each cut. */
@@ -585,26 +658,28 @@ export function wordAround(ids: Int32Array, i: number): Range {
 
 /**
  * How many graphemes a cut may move for each grapheme of room it saves:
- * `fewestSegments` takes a run further away only when it leaves less room.
+ * `shortestRun` takes a run further away only when it leaves less room.
  */
 const DRIFT = 6;
 
 /**
- * The run of whole segments, from a segment's start to a segment's end, that
- * hides at least as many graphemes as `[start, end)` and leaves the least
- * room over, counting each `DRIFT` graphemes it moves away from the cut as
- * one more. It stays within `[min, max)`. A cut at an end of the text stays
- * there, and one that isn't never takes that end, so no island disappears.
- * Null when there's no such run.
+ * The run from an edge a cut may start at to one it may end at (`edges`)
+ * that hides at least as many graphemes as `[start, end)` and leaves the
+ * least room over, counting each `DRIFT` graphemes it moves away from the
+ * cut as one more. With segment edges, that's the fewest whole segments that
+ * hide enough; with a whole's, the cut slides off it rather than grow. It
+ * stays within `[min, max)`. A cut at an end of the text stays there, and
+ * one that isn't never takes that end, so no island disappears. Null when
+ * there's no such run.
  */
-export function fewestSegments(isSep: (i: number) => boolean, n: number, start: number, end: number, min = 0, max = n): Cut | null {
+export function shortestRun(edges: Edges, n: number, start: number, end: number, min = 0, max = n): Cut | null {
   const need = end - start;
   const starts: number[] = [];
   const ends: number[] = [];
   if (start === 0) starts.push(0);
-  else for (let i = Math.max(1, min); i < max; i++) if (!isSep(i) && isSep(i - 1)) starts.push(i);
+  else for (let i = Math.max(1, min); i < max; i++) if (edges.start(i)) starts.push(i);
   if (end === n) ends.push(n);
-  else for (let i = min + 1; i <= Math.min(max, n - 1); i++) if (!isSep(i - 1) && isSep(i)) ends.push(i);
+  else for (let i = min + 1; i <= Math.min(max, n - 1); i++) if (edges.end(i)) ends.push(i);
   let best: Cut | null = null;
   let lowest = Infinity;
   let k = 0;
@@ -626,10 +701,12 @@ export function fewestSegments(isSep: (i: number) => boolean, n: number, start: 
 /** A snap that moves cuts to the boundaries of segments, which `separating` tells apart. */
 function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
   const { fragment = 'head', min = 3 } = options;
-  return ({ graphemes: g, start, end, min: low, max: high }) => {
+  return ({ graphemes: g, start, end, min: low, max: high, edges: wholes }) => {
     const n = g.length;
     const sep = separating(g);
     const isSep = (i: number) => i >= 0 && i < n && sep(i);
+    // Whole segments, none of them inside a whole.
+    const edges = bothEdges(segmentEdges(isSep), wholes);
     // The head's segment runs from `h0` to the separator at `h1`; the tail's
     // from just after the separator at `t0 - 1` to `t1`.
     let h0 = start;
@@ -705,7 +782,7 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
       // unless the cut takes the start or end of the text: it keeps it.
       const from = start > 0 && isSep(start) && start + 1 < end ? start + 1 : start;
       const to = end < n && isSep(end - 1) && end - 1 > from ? end - 1 : end;
-      const fewest = fewestSegments(isSep, n, from, to, low, high);
+      const fewest = shortestRun(edges, n, from, to, low, high);
       if (fewest) return fewest;
     }
     // Unless showing that separator leaves nothing to hide.
@@ -713,7 +790,7 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
       const cut = place(giveBack);
       if (cut.start >= cut.end) continue;
       const { whole } = cut;
-      const fewest = whole && whole.start < whole.end ? fewestSegments(isSep, n, whole.start, whole.end, low, high) : null;
+      const fewest = whole && whole.start < whole.end ? shortestRun(edges, n, whole.start, whole.end, low, high) : null;
       return fewest ?? { start: cut.start, end: cut.end };
     }
     return { start, end };
@@ -726,9 +803,19 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
 /**
  * A part to keep visible: the first match of a string, every match of a
  * global RegExp (else the first), or string offsets. The object forms can
- * give it a `class` too, to highlight it.
+ * give it a `class` too, to highlight it, and `context`: how many words
+ * either side of it show (as room allows, a word at a time around every
+ * match) before the text the ellipses are placed in; `Infinity` for as many
+ * as fit.
  */
-export type Keep = string | RegExp | { match: string | RegExp; class?: string } | { start: number; end: number; class?: string };
+export type Keep =
+  | string
+  | RegExp
+  | { match: string | RegExp; class?: string; context?: number }
+  | { start: number; end: number; class?: string; context?: number };
+
+/** A part to show whole or not at all (see `ElideOptions.whole`): found as a `Keep` is. */
+export type Whole = string | RegExp | { start: number; end: number };
 
 /** String ranges of one `keep` entry's matches. */
 function matches(text: string, k: Keep): Range[] {
@@ -750,6 +837,84 @@ function matches(text: string, k: Keep): Range[] {
 /** String ranges of the parts to keep, in the order given. */
 export function keepRanges(text: string, keep: readonly Keep[]): Range[] {
   return keep.flatMap((k) => matches(text, k));
+}
+
+/** String ranges `keep` gives context, with how many words either side. */
+export function keepContexts(text: string, keep: readonly Keep[]): [Range, number][] {
+  return keep.flatMap((k) => {
+    const words = typeof k === 'object' && !(k instanceof RegExp) ? k.context : undefined;
+    return words !== undefined && words > 0 ? matches(text, k).map((r): [Range, number] => [r, words]) : [];
+  });
+}
+
+/** Context around kept parts, in the order it shows. */
+export interface Context {
+  /** What each step shows: a word and what's between it and the part, after it or before. */
+  steps: Range[];
+  /** How many graphemes that weren't showing the steps up to each show. */
+  costs: Int32Array;
+}
+
+/**
+ * The context `parts` (grapheme ranges, with words either side) get as
+ * room grows, for those of them still in `pins` (the rest gave way): a word
+ * at a time, after each part and then before it, round after round, so every
+ * match gets a word of context before any gets two. A part cut inside a word
+ * first gets the rest of it. Context that runs into other context or a pin
+ * costs nothing more, and the windows merge. Null with none.
+ */
+export function contextOf(g: readonly string[], parts: readonly (readonly [Range, number])[], pins: readonly Range[]): Context | null {
+  const live = parts.filter(([[s, e]]) => pins.some(([a, b]) => a <= s && e <= b));
+  if (live.length === 0) return null;
+  const n = g.length;
+  const ids = wordsOf(g);
+  const shown = new Uint8Array(n);
+  for (const [s, e] of pins) shown.fill(1, s, e);
+  const steps: Range[] = [];
+  const costs: number[] = [];
+  let total = 0;
+  const take = (s: number, e: number) => {
+    for (let i = s; i < e; i++) {
+      if (shown[i] === 1) continue;
+      shown[i] = 1;
+      total++;
+    }
+    steps.push([s, e]);
+    costs.push(total);
+  };
+  const windows = live.map(([[s, e], words]) => ({ s, e, before: words, after: words }));
+  for (let more = true; more;) {
+    more = false;
+    for (const w of windows) {
+      if (w.after > 0) {
+        let i = w.e;
+        while (i < n && ids[i]! < 0) i++;
+        if (i < n) {
+          const end = wordAround(ids, i)[1];
+          take(w.e, end);
+          w.e = end;
+          w.after--;
+          more = true;
+        } else {
+          w.after = 0;
+        }
+      }
+      if (w.before > 0) {
+        let i = w.s - 1;
+        while (i >= 0 && ids[i]! < 0) i--;
+        if (i >= 0) {
+          const start = wordAround(ids, i)[0];
+          take(start, w.s);
+          w.s = start;
+          w.before--;
+          more = true;
+        } else {
+          w.before = 0;
+        }
+      }
+    }
+  }
+  return steps.length > 0 ? { steps, costs: Int32Array.from(costs) } : null;
 }
 
 /** String ranges `keep` gives a class, with the class. */

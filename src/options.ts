@@ -1,5 +1,5 @@
 /** An instance's options and their defaults, and its state. */
-import type { Keep, Position, Range, Snap } from './cut.ts';
+import type { Keep, Position, Range, Snap, Whole } from './cut.ts';
 import type { EllipsisStyle, Length } from './marks.ts';
 import type { Chain } from './markup.ts';
 import type { Gap, GapPlan } from './metrics.ts';
@@ -30,7 +30,9 @@ export interface ElideOptions {
    * Parts that always stay visible: a string (first match), a RegExp (every
    * match if global, else the first) or `{ start, end }` string offsets. Text
    * hidden on both sides of a kept part gets an ellipsis on each side.
-   * Earlier entries win when not all of them fit.
+   * Earlier entries win when not all of them fit. `{ match, context: 3 }`
+   * shows up to three words either side of every match, as room allows,
+   * before any other text: a search result's snippet.
    */
   keep?: Keep | readonly Keep[] | null;
   /**
@@ -89,6 +91,22 @@ export interface ElideOptions {
   /** Move cuts to nicer boundaries: `words()`, or `separators()` for paths. */
   snap?: Snap | null;
   /**
+   * Parts shown whole or not at all, never cut: numbers, dates, versions,
+   * hashes. A string (first match), a RegExp (every match if global) or
+   * `{ start, end }` string offsets, or an array. A cut that would split one
+   * slides off it, hiding as much elsewhere, or hides all of it at an end.
+   * Combines with `snap`. Default null.
+   */
+  whole?: Whole | readonly Whole[] | null;
+  /**
+   * Text a little too long for its lines shows whole, set tighter, rather
+   * than cut: letters closer by up to this much (px, or a string like
+   * '0.02em'), and word spaces by up to twice as much. Only as much as it
+   * takes, so one line ends at the edge. Text that's cut is set as usual.
+   * Default 0: never.
+   */
+  tighten?: Length;
+  /**
    * Re-truncate when the element is resized and when web fonts load. An
    * element more than a screen away from the viewport waits until it comes
    * near, when what it shows meanwhile can't change its height. Default true.
@@ -144,6 +162,8 @@ export const DEFAULTS: Settings = {
   maxGap: '0.75em',
   trim: true,
   snap: null,
+  whole: null,
+  tighten: 0,
   observe: true,
   glyphs: null,
   title: false,
@@ -255,6 +275,8 @@ export interface ElideState {
    * took it in, in px. Small values mean the text is tightly packed.
    */
   slack: number;
+  /** How much closer `tighten` set the letters so the full text fits, in px; 0 when it didn't. */
+  tightened: number;
 }
 
 export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
@@ -266,10 +288,18 @@ export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
 export function stateOf(
   text: string,
   offsets: readonly number[],
-  cut: { hidden: readonly Range[]; pins: readonly Range[]; lines: number; gaps: GapInfo[]; slack: number; expanded: boolean },
+  cut: {
+    hidden: readonly Range[];
+    pins: readonly Range[];
+    lines: number;
+    gaps: GapInfo[];
+    slack: number;
+    expanded: boolean;
+    tightened: number;
+  },
 ): ElideState {
   const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
-  const { hidden, pins, lines, gaps, slack, expanded } = cut;
+  const { hidden, pins, lines, gaps, slack, expanded, tightened } = cut;
   return {
     text,
     length: offsets.length - 1,
@@ -280,6 +310,7 @@ export function stateOf(
     lines,
     gaps,
     slack,
+    tightened,
   };
 }
 

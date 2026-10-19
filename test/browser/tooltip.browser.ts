@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { commands, server, userEvent } from 'vitest/browser';
 import type { Elide } from '#src/elide.ts';
 import { ellipsisArea, ellipsisInk, graphemeRect } from '#src/geometry.ts';
@@ -28,10 +28,14 @@ beforeAll(() => {
   document.head.append(style);
 });
 
+// The page's one mouse: other files' tests wait while these use it.
+beforeEach(() => commands.pointer('take'));
+
 afterEach(async () => {
   for (const tip of tips.splice(0)) tip.destroy();
   getSelection()?.removeAllRanges();
   await commands.mouse('move', 0, innerHeight - 1);
+  await commands.pointer('give');
 });
 
 /** The tip's graphemes, one span each, in order. */
@@ -266,6 +270,19 @@ describe('tooltip', () => {
     await frames();
     expect(tip.target).toBeNull();
     expect(t.element.hasAttribute('data-fp-tip-open')).toBe(false);
+  });
+
+  it('stays open through a pass that leaves the text as it was', async () => {
+    const t = make(box(PROSE, 'width:260px'), { position: 'middle' });
+    const tip = make_tip({ reveal: 'expand' });
+    tip.attach(t);
+    tip.show(t);
+    // As when a font the text doesn't use finishes loading.
+    t.refresh('fonts');
+    void t.state;
+    await frames();
+    expect(tip.target?.instance).toBe(t);
+    expect(t.element.hasAttribute('data-fp-tip-open')).toBe(true);
   });
 
   it('lines up inside a container that holds fixed elements', () => {

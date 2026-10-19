@@ -4,14 +4,20 @@
  * a `measure` function of your own.
  */
 import {
+  type Cutting,
   type Keep,
   type Position,
   type Range,
   type Snap,
+  type Whole,
   asArray,
+  contextOf,
   estimateKept,
   hiddenRanges,
+  keepContexts,
   keepRanges,
+  maxKept,
+  wholeEdges,
   isPlace,
   layoutFor,
   placedLayout,
@@ -47,6 +53,14 @@ export interface ElideTextOptions {
   trim?: boolean;
   /** Move cuts to nicer boundaries: `separators()`, `words()`. */
   snap?: Snap | null;
+  /** Parts shown whole or not at all, as in `elide`. */
+  whole?: Whole | readonly Whole[] | null;
+  /**
+   * Text that runs over by a little shows whole, set tighter, as in
+   * `elide`: by up to this much letter-spacing (in `measure`'s unit), and
+   * twice that on word spaces. Default 0.
+   */
+  tighten?: number;
 }
 
 export interface ElideTextResult {
@@ -57,8 +71,14 @@ export interface ElideTextResult {
   hidden: Part[];
   /** Kept parts (from `keep`) that show while truncated. */
   kept: Part[];
-  /** The width of `text`, as measured. */
+  /** The width of `text`, as measured (tightened, if it was). */
   width: number;
+  /**
+   * How much closer `tighten` sets the letters for the text to fit: set
+   * letter-spacing this much tighter, and word-spacing twice that. 0 when
+   * it isn't tightened.
+   */
+  tightened: number;
 }
 
 /**
@@ -70,15 +90,29 @@ export interface ElideTextResult {
  * ```
  */
 export function elideText(text: string, options: ElideTextOptions): ElideTextResult {
-  const { width: room, font, letterSpacing = 0, position = 'end', keep = null, ellipsis = '…', trim = true, snap = null } = options;
+  const {
+    width: room,
+    font,
+    letterSpacing = 0,
+    position = 'end',
+    keep = null,
+    ellipsis = '…',
+    trim = true,
+    snap = null,
+    tighten = 0,
+  } = options;
   const raw = options.measure ?? (font ? (s: string) => advance(font, s) : null);
   if (!raw) throw new Error('elideText: pass a `font` or a `measure` function');
   const g = graphemes(text);
   const n = g.length;
   const measure = (s: string, count: number) => raw(s) + letterSpacing * count;
 
-  const whole = measure(text, n);
-  if (whole <= room) return { text, truncated: false, hidden: [], kept: [], width: whole };
+  const full = measure(text, n);
+  if (full <= room) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
+  // A pixel of tightening takes in one after every letter and two after every space.
+  const units = g.reduce((sum, s) => sum + (s === ' ' || s === ' ' ? 3 : 1), 0);
+  if (full - room <= tighten * units)
+    return { text, truncated: false, hidden: [], kept: [], width: room, tightened: (full - room) / units };
 
   const offsets = [0];
   for (const s of g) offsets.push(offsets[offsets.length - 1]! + s.length);
@@ -90,7 +124,9 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     sums[i + 1] = sums[i]! + w;
   });
   const mark = measure(ellipsis, graphemes(ellipsis).length);
-  let pins = toGraphemeRanges(keepRanges(text, asArray(keep)), offsets);
+  const graphemeRanges = (r: Range) => toGraphemeRanges([r], offsets);
+  const contexts = keepContexts(text, asArray(keep)).flatMap(([r, words]) => graphemeRanges(r).map((x): [Range, number] => [x, words]));
+  const wholes = wholeEdges(n, keepRanges(text, asArray(options.whole)).flatMap(graphemeRanges));
   const positions = asArray(position);
   // Places along the line: islands as long as fits before them (see `elide`).
   const em = Number(/(\d*\.?\d+)px/.exec(font ?? '')?.[1] ?? 16);
@@ -107,8 +143,18 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     : layoutFor(n, positions);
   const part = ([start, end]: Range): Part => ({ start, end, text: text.slice(offsets[start], offsets[end]) });
 
+  const cutting = (pins: readonly Range[]): Cutting => ({
+    graphemes: g,
+    layout,
+    pins,
+    snap,
+    trim,
+    wholes,
+    context: contextOf(g, contexts, pins),
+  });
+  let c = cutting(toGraphemeRanges(keepRanges(text, asArray(keep)), offsets));
   // A cut no wider than the ellipsis standing in for it only adds an ellipsis.
-  const cutsFor = (k: number) => hiddenRanges(g, layout, k, pins, snap, trim).filter(([s, e]) => sums[e]! - sums[s]! > mark);
+  const cutsFor = (k: number) => hiddenRanges(c, k).filter(([s, e]) => sums[e]! - sums[s]! > mark);
   const render = (cuts: readonly Range[]) => {
     let out = '';
     let at = 0;
@@ -124,26 +170,27 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   };
 
   // Kept parts that can't all fit give way, last first, as in `elide`.
-  while (pins.length > 0 && render(cutsFor(0)).width > room) pins = pins.slice(0, -1);
+  while (c.pins.length > 0 && render(cutsFor(0)).width > room) c = cutting(c.pins.slice(0, -1));
   // The glyph widths' estimate, then measured, since a string isn't just
   // the sum of its glyphs (kerning).
-  let k = estimateKept(g, layout, pins, snap, trim, sums, mark, room);
+  const most = maxKept(c);
+  let k = estimateKept(c, sums, mark, room);
   let cuts = cutsFor(k);
   let shown = render(cuts);
   while (shown.width > room && k > 0) {
     cuts = cutsFor(--k);
     shown = render(cuts);
   }
-  while (k < n - 1) {
+  while (k < most) {
     const more = cutsFor(k + 1);
     const wider = render(more);
     if (wider.width > room) break;
     [k, cuts, shown] = [k + 1, more, wider];
   }
-  if (cuts.length === 0) return { text, truncated: false, hidden: [], kept: [], width: whole };
-  return { text: shown.text, truncated: true, hidden: cuts.map(part), kept: pins.map(part), width: shown.width };
+  if (cuts.length === 0) return { text, truncated: false, hidden: [], kept: [], width: full, tightened: 0 };
+  return { text: shown.text, truncated: true, hidden: cuts.map(part), kept: c.pins.map(part), width: shown.width, tightened: 0 };
 }
 
 export { separators, words } from './cut.ts';
-export type { Keep, Place, Position, SeparatorOptions, Share, Snap, SnapContext } from './cut.ts';
+export type { Keep, Place, Position, SeparatorOptions, Share, Snap, SnapContext, Whole } from './cut.ts';
 export type { Part } from './options.ts';

@@ -186,7 +186,37 @@ is laid out in the line (one that isn't showing keeps its last width), and an
 ellipsis beside one treats its box as its ink. An image that loads at another
 width fits the text again. Text with units isn't judged without rendering.
 
+## Tightening
+
+When the full text doesn't fit and `tighten` is set, the pass tries it set
+tighter before it searches for a cut. A pixel of tightening takes in a pixel
+after every letter and two after every space (word spaces give more, as in
+justified type), so text running over by `over` needs `over / units`, a
+quarter pixel more to stay inside the edge. Over more than `tighten` allows,
+it's cut straight away. On one line, that first try usually fits; when it
+doesn't (layout rounds letter-spacing: Firefox to 1/60 px), how far it moved
+the line says how much it takes, rounded up, and that's the last try. On more
+lines, where wrapping makes the gain uneven, it tries the most it may and, if
+that fits, halves between the two three times, ending on the least that
+fits. It costs no layout unless the full text is within reach, and a
+tightened line isn't judged without rendering: its end isn't where the glyph
+widths say. Once cut, text is set as usual; tightening only ever saves a cut.
+
 ## Snapping
+
+Snapping and wholes come down to one thing: where a cut may start and where
+it may end (`Edges`). `words()` and `separators()` let one start where a
+segment starts and end where one ends; `whole` lets one start and end
+anywhere but inside its matches. Rules combine by both holding, and one
+search, `shortestRun`, finds the run that keeps to them: as few graphemes
+over what the cut hides as it can, each six it moves away from the cut
+counting as one more. So a cut through a whole slides off it, hiding as much
+just beside it, rather than hide all of it and leave a wide gap; at an end of
+the text, where nothing is beside it, the whole goes. With a snap, the snap
+gets the whole's edges and keeps to them too, and any cut that still splits
+one (a fragment, trimmed white space, a sliver paid for) is widened over it,
+never into a kept part. Wholes that touch stay two, so a cut can fall between
+them.
 
 Each side of a cut moves to a boundary, and separators next to the cut stay
 visible. Moving both sides hides more than the plain cut, and the room that
@@ -204,6 +234,21 @@ shorter run a little further from the cut wins over a longer one right at it
 (each six graphemes it moves counts as one more left over), but a cut never
 moves past the cuts either side, nor takes the start or end of the text unless
 it was already there.
+
+## Context
+
+A kept part's `context` is a list of steps, each a word and what's between
+it and the part: after the part, then before it, for each part in turn,
+round after round, so every match has a word before any has two. A match
+that ends inside a word gets the rest of it first. Each step costs the
+graphemes it shows that weren't showing, so windows that run into each other
+or into a kept part merge at no cost. The search hands out graphemes to the
+steps in order, a whole step at a time, and only once every step shows to
+the islands `position` places; a number of words less than `Infinity` ends
+the steps sooner. What shows only grows as the room does, so it reads
+steadily on a resize. Context belongs to its kept part: when kept parts give
+way for lack of room, their context goes with them, and when one comes back
+the others share their context with it.
 
 ## Find in page
 
@@ -361,7 +406,8 @@ make them differ.
 It sums glyph widths to find the cut, then measures the result, so kerning is
 accounted for. It measures with a canvas in `font` (an `OffscreenCanvas` in
 workers) or with `measure`. `keep` classes are ignored, since a string has no
-room for them.
+room for them. `tighten` is in `measure`'s unit, and `tightened` is the
+letter-spacing to take off when drawing (twice that on spaces).
 
 ## Frameworks
 
@@ -437,6 +483,34 @@ squeezes them out.
 `transitions` can be attached at any time; the first change after it animates
 from what's showing.
 
+## Text fields
+
+`elideInput` doesn't touch the value. It puts an element after the field,
+over its border box (anchored with CSS anchor positioning, or moved into
+place where that's missing), with the field's padding, border widths and
+typography, and a line as tall as the field's content box, which centres the
+text as a field does. An instance cuts the value in it. While it shows, the
+field's own text is hidden with `-webkit-text-fill-color`, which leaves
+`color` (and the caret) alone; its native placeholder is always hidden that
+way, and the copy shows it cut, in the placeholder's colour and opacity. The
+copy is inert and hidden from screen readers, so find in page and assistive
+technology see the field alone.
+
+A press is caught on `pointerdown`, before the browser places the caret: the
+copy says which glyph boundary is nearest the pointer (either side of what a
+pressed ellipsis hides, by which half was pressed), the field's own text is
+shown, and it's scrolled so that boundary lies under the pointer, from the
+canvas width of the value before it. The browser's own press then puts the
+caret there, and a drag selects from it. Beside an ellipsis the field can't
+always scroll that far (the copy's gaps aren't in the field's text): then the
+caret goes there when the press ends, unless it selected something. A touch
+places it on focus. A press the page cancels leaves the copy showing.
+
+The value changes without events when a script sets it: the field's own
+`value` property is wrapped (over whatever was there, such as React's
+tracker, which still runs), and a form's reset is followed. A field whose
+type turns to `password` hides the copy at once.
+
 ## Tooltips
 
 After the first tip's delay, the next shows at once, so moving along a list
@@ -455,7 +529,10 @@ the original's; it's placed so its text, not its box, sits on the line.
 In a held tip, a double press selects the run between breaks and a triple
 press all of it. Text selected in the original is selected in the tip too,
 including all of what a touched ellipsis hides. Escape, a scroll, a press
-elsewhere or a re-layout closes it.
+elsewhere or a re-layout that moves the text closes it. A pass that leaves
+the text where it was (the same cut, gaps within a quarter pixel) doesn't:
+every instance refits when any web font loads, often one the text doesn't
+use, and a tip shouldn't close under the pointer for that.
 
 The tip is `position: fixed` and `aria-hidden`. It lines up even when its
 container is the containing block of fixed elements (a transform, filter or

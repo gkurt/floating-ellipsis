@@ -236,6 +236,76 @@
         </div>
       </section>
 
+      <section class="block scene" aria-labelledby="snippet-title">
+        <div class="scene-head">
+          <p class="num">13</p>
+          <h2 id="snippet-title">Snippets around a <em>match.</em></h2>
+          <p>
+            Give a kept part <code>context</code>: words either side of every match show first, a word at a time, after and then before, and
+            the start of the text only once they all do. Type a word to search for.
+          </p>
+        </div>
+        <p class="code" id="snippetCode"></p>
+        <div class="stage">
+          <input class="field search" id="snippetQuery" type="search" value="lantern" aria-label="Search the notes" />
+          <div class="resizable line-list" id="snippetBox">
+            <button class="handle" aria-label="Resize the results (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="whole-title">
+        <div class="scene-head">
+          <p class="num">14</p>
+          <h2 id="whole-title">Numbers stay <em>whole.</em></h2>
+          <p>
+            A cut through <q>$12,345.67</q> that shows <q>$12,3…</q> misreports it. With <code>whole</code>, matches show whole or not at
+            all: a cut that would split one slides off it, hiding as much elsewhere. It's the rule <code>words()</code> follows, and the two
+            combine.
+          </p>
+        </div>
+        <p class="code" id="wholeCode"></p>
+        <div class="stage">
+          <div class="resizable labeled" id="wholeBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="tighten-title">
+        <div class="scene-head">
+          <p class="num">15</p>
+          <h2 id="tighten-title">Tighten before you <em>cut.</em></h2>
+          <p>
+            Text a few pixels too long loses a whole ellipsis' worth of letters. With <code>tighten</code>, it's set a little tighter
+            instead, word spaces most, just enough to end at the edge, and only cut once that isn't enough.
+          </p>
+        </div>
+        <p class="code" id="tightenCode"></p>
+        <div class="stage">
+          <div class="resizable labeled" id="tightenBox">
+            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block scene" aria-labelledby="input-title">
+        <div class="scene-head">
+          <p class="num">16</p>
+          <h2 id="input-title">Fields, cut until you <em>edit.</em></h2>
+          <p>
+            <code>floating-ellipsis/input</code> shows a field's value cut while it isn't being edited. Click anywhere, even on the
+            ellipsis: the whole value appears with the glyph you pressed still under the pointer, and the caret beside it.
+          </p>
+        </div>
+        <p class="code" id="inputCode"></p>
+        <div class="stage">
+          <div class="resizable labeled" id="inputBox">
+            <button class="handle" aria-label="Resize the fields (left and right arrow keys)"></button>
+          </div>
+        </div>
+      </section>
+
       <section class="block more-links" aria-labelledby="more-title">
         <h2 id="more-title">More</h2>
         <ul>

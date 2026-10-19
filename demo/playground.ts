@@ -5,6 +5,7 @@ import { ellipsisInk, markInks } from '#src/geometry.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type ElideOptions, type EllipsisStyle, type Gap, elide, words } from '#src/index.ts';
 import { type Effect, transitions } from '#src/transitions.ts';
+import { NUMBERS } from './examples.ts';
 import { $, resizable } from './ui.ts';
 
 // One floating panel holds the dials; on a phone it starts closed.
@@ -101,6 +102,7 @@ const textDials = createDialKit('Text', {
   position: [0.5, 0, 1, 0.01],
   lines: [1, 1, 3, 1],
   keep: { type: 'text', default: '', placeholder: 'quiet, asked or /\\w+ly/g' },
+  context: [0, 0, 8, 1],
   cutAt: {
     type: 'select',
     options: [
@@ -109,6 +111,8 @@ const textDials = createDialKit('Text', {
     ],
     default: 'glyph',
   },
+  numbers: { type: 'select', options: ['cut', 'whole'], default: 'cut' },
+  tighten: [0, 0, 0.1, 0.01],
 });
 const ellipsisDials = createDialKit('Ellipsis', {
   style: {
@@ -123,13 +127,15 @@ const ellipsisDials = createDialKit('Ellipsis', {
 });
 
 function update() {
-  const { text, position, lines, keep, cutAt } = textDials.values;
+  const { text, position, lines, keep, context, cutAt, numbers, tighten } = textDials.values;
   const { style, dots, gap, justify, repeat } = ellipsisDials.values;
   hero.update({
     text,
     position,
     lines,
-    keep: parseKeep(keep),
+    keep: context > 0 ? parseKeep(keep).map((match) => ({ match, context })) : parseKeep(keep),
+    whole: numbers === 'whole' ? NUMBERS : null,
+    tighten: `${tighten}em`,
     ellipsis: ellipsisStyle(style, dots),
     gap: gap as Gap,
     justify: justify === 'off' ? false : (justify as ElideOptions['justify']),
@@ -156,6 +162,7 @@ function renderReadout() {
     ['natural gaps', g ? `${px(g.naturalLeft)} · ${px(g.naturalRight)}` : '–'],
     ['final gaps', g ? [g.left, ...g.inner, g.right].map(px).join(' · ') : '–'],
     ['slack', `${px(s.slack)} (room before justify)`],
+    ['tightened', s.tightened > 0 ? `${px(s.tightened)} (letters closer)` : '–'],
   ];
   const key = rows.join('|');
   if (key === lastReadout) return;

@@ -86,6 +86,13 @@
       },
       "source": "./src/list.ts"
     },
+    "./input": {
+      "import": {
+        "types": "./dist/input.d.ts",
+        "default": "./dist/input.js"
+      },
+      "source": "./src/input.ts"
+    },
     "./autosize": {
       "import": {
         "types": "./dist/autosize.d.ts",

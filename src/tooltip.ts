@@ -1,6 +1,7 @@
 import type { Elide } from './elide.ts';
 import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements } from './geometry.ts';
 import { isWhitespace } from './graphemes.ts';
+import type { ElideState } from './options.ts';
 
 /**
  * What a tip shows, and where:
@@ -293,8 +294,11 @@ export class Tooltip {
     target.trigger.setAttribute(OPEN, '');
     if (target.ellipsis !== null) target.instance.ellipses[target.ellipsis]?.setAttribute(OPEN, '');
     if (reveal !== 'peek') this.#carrySelection(target.instance);
-    // Laid out again, it no longer lines up with the text.
-    this.#unrender = target.instance.onRender(() => this.#close());
+    // Laid out again elsewhere, it no longer lines up with the text. (A pass
+    // that leaves it as it was, as after a font loads that it doesn't use,
+    // doesn't count.)
+    const laid = target.instance.state;
+    this.#unrender = target.instance.onRender((state) => !sameLayout(state, laid) && this.#close());
     this.#settings.onShow?.(target);
   }
 
@@ -868,4 +872,30 @@ const FONT = [
 /** A tooltip for truncated text. Attach instances to it; call `destroy()` to remove it. */
 export function tooltip(options?: TooltipOptions): Tooltip {
   return new Tooltip(options);
+}
+
+/**
+ * Whether two states set the text the same way, as far as the eye can tell:
+ * the same cut, on as many lines, with gaps and spacing within a quarter
+ * pixel. (A cut judged from glyph widths and the same cut measured differ by
+ * a few hundredths.)
+ */
+function sameLayout(a: ElideState, b: ElideState): boolean {
+  const near = (x: number | null, y: number | null) => x === y || (x !== null && y !== null && Math.abs(x - y) < 0.25);
+  return (
+    a.text === b.text &&
+    a.expanded === b.expanded &&
+    a.lines === b.lines &&
+    near(a.slack, b.slack) &&
+    near(a.tightened, b.tightened) &&
+    a.hidden.length === b.hidden.length &&
+    a.hidden.every((h, i) => h.start === b.hidden[i]!.start && h.end === b.hidden[i]!.end) &&
+    a.gaps.length === b.gaps.length &&
+    a.gaps.every((g, i) => {
+      const o = b.gaps[i]!;
+      return (
+        near(g.left, o.left) && near(g.right, o.right) && g.inner.length === o.inner.length && g.inner.every((v, k) => near(v, o.inner[k]!))
+      );
+    })
+  );
 }

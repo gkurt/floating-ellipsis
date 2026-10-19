@@ -1,10 +1,16 @@
 import {
+  type Cutting,
+  type Edges,
   type Layout,
   type Range,
   type Tried,
   asArray,
+  contextOf,
   estimateKept,
   hiddenRanges,
+  keepContexts,
+  maxKept,
+  wholeEdges,
   isPlace,
   placedLayout,
   placesOf,
@@ -62,6 +68,9 @@ export interface Run extends Typeset {
   sums: Float64Array;
   /** The width of the suffix, as it shows when the pass starts. */
   suffix: number;
+  /** The element's word-spacing and font size, in px. */
+  wordSpacing: number;
+  fontSize: number;
   /** Lines break with the whole paragraph in view (`text-wrap: balance` or `pretty`), not one after another. */
   rebreaks: boolean;
   /** The bottom border and padding, and the line height in px (null for `normal`): where lines fit with `lines: 'fit'`. */
@@ -148,6 +157,9 @@ const WRAP_MODE = typeof CSS !== 'undefined' && CSS.supports('text-wrap-mode', '
 
 let nextId = 1;
 
+/** `n`, or 0 when it isn't a number (`normal`, say). */
+const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
+
 /** Passes waiting to run together (see `Elide.schedule`), and whether a flush is on its way. */
 const queued = new Map<Elide, ChangeReason>();
 let flushing = false;
@@ -192,6 +204,12 @@ export class Elide {
   #offsets: number[] = [0];
   #glyphEls: HTMLSpanElement[] = [];
   #pins: Range[] = [];
+  /** Kept parts with words of context to show around them (see `contextOf`). */
+  #contexts: [Range, number][] = [];
+  /** Where cuts may start and end so as not to split a whole; null for anywhere. */
+  #wholes: Edges | null = null;
+  /** The letter-spacing `tighten` took off the full text showing, in px (0: none). */
+  #tightened = 0;
   /** The classes `keep` gives each grapheme, or null; empty when none has any. */
   #classes: (string | null)[] = [];
   /** The elements around each grapheme, or null; empty for plain text. */
@@ -509,7 +527,7 @@ export class Elide {
       this.#fresh = true;
       this.#pendingReset = true;
     } else {
-      if (s.keep !== before.keep) this.#setPins();
+      if (s.keep !== before.keep || s.whole !== before.whole) this.#setPins();
       if (s.position !== before.position) this.#setLayout();
     }
     this.#setSizer();
@@ -673,9 +691,14 @@ export class Elide {
     this.#sizer.suffix(this.#suffix && this.#settings.suffix?.show === 'always' ? this.#suffix.el : null);
   }
 
+  /** Find what `keep` and `whole` match. */
   #setPins() {
     const keep = asArray(this.#settings.keep);
+    // Each on its own: wholes that touch are still two.
+    const graphemes = (r: Range) => toGraphemeRanges([r], this.#offsets);
     this.#pins = toGraphemeRanges(keepRanges(this.#text, keep), this.#offsets);
+    this.#contexts = keepContexts(this.#text, keep).flatMap(([r, words]) => graphemes(r).map((g): [Range, number] => [g, words]));
+    this.#wholes = wholeEdges(this.#g.length, keepRanges(this.#text, asArray(this.#settings.whole)).flatMap(graphemes));
     const classes = keepClasses(this.#text, keep);
     this.#classes = classes.length > 0 ? graphemeClasses(classes, this.#offsets) : [];
     this.#plain = this.#chains.length === 0 && this.#units.length === 0 && this.#classes.every((c) => c === null);
@@ -827,6 +850,8 @@ export class Elide {
       marks: null,
       sums: this.#sumsOf(typeset),
       suffix: this.#suffix?.measure() ?? 0,
+      wordSpacing: finite(parseFloat(cs.wordSpacing)),
+      fontSize: parseFloat(cs.fontSize),
       // While truncated, the style read is `greedy`'s own, not the page's.
       rebreaks:
         this.#ungreedy !== null || /balance|pretty/.test(cs.getPropertyValue('text-wrap-style') || cs.getPropertyValue('text-wrap')),
@@ -1056,7 +1081,7 @@ export class Elide {
     this.#lineEl.style.overflowWrap = on ? 'break-word' : '';
     if (on) {
       this.#greedy(false);
-      this.#lineEl.style.letterSpacing = '';
+      this.#tighten(null, 0);
       if (WRAP_MODE) this.#lineEl.style.setProperty('text-wrap-mode', '');
       else this.#lineEl.style.whiteSpace = '';
       this.#unlockHeight();
@@ -1093,7 +1118,7 @@ export class Elide {
       return;
     }
     const n = this.#g.length;
-    this.#lineEl.style.letterSpacing = '';
+    this.#tighten(null, 0);
     reconcile(this.#lineEl, [this.#runEl(0), first.el]);
     this.#fill(this.#runEl(0), 0, n);
     this.#fill(first.before, 0, 0);
@@ -1103,10 +1128,20 @@ export class Elide {
     this.#greedy(false);
   }
 
+  /**
+   * Set the line `by` px tighter per letter, and word spaces twice that (see
+   * `tighten`); or as the element sets it, with 0.
+   */
+  #tighten(run: Run | null, by: number) {
+    this.#tightened = run ? by : 0;
+    this.#lineEl.style.letterSpacing = run && by > 0 ? `${run.letterSpacing - by}px` : '';
+    this.#lineEl.style.wordSpacing = run && by > 0 ? `${run.wordSpacing - 2 * by}px` : '';
+  }
+
   /** Put the text into the DOM with `hidden` ranges replaced by ellipses. */
   #render(run: Run, hidden: readonly Range[]): GapPlan[] {
     const m = hidden.length;
-    this.#lineEl.style.letterSpacing = '';
+    this.#tighten(null, 0);
     if (m === 0) {
       this.#showAll();
       return [];
@@ -1357,6 +1392,7 @@ export class Elide {
       this.#units.length === 0 &&
       this.#suffix === null &&
       !this.#revealed &&
+      this.#tightened === 0 &&
       this.#misjudged !== run.glyphs &&
       (this.#plain || this.#uniform(run));
     let base: { cut: Range[]; end: number } | null = null;
@@ -1441,7 +1477,17 @@ export class Elide {
       // The predictor has measured a cut of this pass: it judges the ones
       // around it as well as rendering them would, if it is close enough.
       let probed = false;
-      const at = (k: number) => this.#worthCutting(run, hiddenRanges(this.#g, islands, k, pins, snap, trim));
+      const cutting = (pins: readonly Range[]): Cutting => ({
+        graphemes: this.#g,
+        layout: islands,
+        pins,
+        snap,
+        trim,
+        wholes: this.#wholes,
+        context: contextOf(this.#g, this.#contexts, pins),
+      });
+      let cuts = cutting(pins);
+      const at = (k: number) => this.#worthCutting(run, hiddenRanges(cuts, k));
       // What each cut tried so far did: different probes can come to the same cut.
       const outcomes = new Map<string, Tried>();
       const attempt = function* (this: Elide, cut: Range[]): Generator<void, Tried, void> {
@@ -1469,11 +1515,62 @@ export class Elide {
         }
         return { fits: fit.ok, room: fit.room };
       };
+      /**
+       * The full text, which runs over, set tighter until it fits (see
+       * `tighten`), or not at all. On one line, by as much as it runs over,
+       * over its letters and twice over its word spaces, then once more by
+       * what that moved it; on more, by halving between that and the most.
+       */
+      const squeeze = function* (this: Elide): Generator<void, boolean, void> {
+        const most = toPx(this.#settings.tighten, run.fontSize);
+        if (!(most > 0)) return false;
+        // How far it runs over: measured, or as judged.
+        const over = tried?.length === 0 ? -fit.room : (predictor?.right([]) ?? Infinity) - run.right;
+        // What tightening by a pixel takes in: a pixel after every letter, two after every space.
+        let units = n;
+        for (const g of this.#g) if (g === ' ' || g === ' ') units += 2;
+        if (!(over > 0) || over > most * units) return false;
+        const set = function* (this: Elide, by: number): Generator<void, boolean, void> {
+          yield* phase.write();
+          holdStill();
+          if (tried?.length !== 0) this.#renderFull(run);
+          tried = [];
+          this.#tighten(run, by);
+          yield* phase.read();
+          fit = this.#measure(run);
+          return fit.ok;
+        };
+        // Firefox rounds letter-spacing to 1/60 px: rounded up, it fits, if a little short of the edge.
+        const up = (by: number) => Math.ceil(by * 60 - 1e-6) / 60;
+        // A quarter pixel inside the edge, like a justified line.
+        const need = over + 0.25;
+        let by = need / units;
+        if (by > most) return false;
+        if (yield* set.call(this, by)) return true;
+        if (!wraps(lines)) {
+          const moved = run.right + over - fit.end;
+          by = moved > 0 ? up((by * need) / moved) : Infinity;
+          if (by <= most && (yield* set.call(this, by))) return true;
+        } else if (yield* set.call(this, most)) {
+          let [lo, hi] = [by, most];
+          for (let i = 0; i < 3; i++) {
+            const mid = up((lo + hi) / 2);
+            if (mid <= lo || mid >= hi) break;
+            if (yield* set.call(this, mid)) hi = mid;
+            else lo = mid;
+          }
+          return (fit.ok && this.#tightened === hi) || (yield* set.call(this, hi));
+        }
+        yield* phase.write();
+        this.#tighten(null, 0);
+        return false;
+      };
       // A judgement shouldn't be wrong, but if the final measurement says
       // the model was off, the cut is found again without judging (and this
       // text, set this way, isn't judged again).
       for (;;) {
         pins = pinned();
+        cuts = cutting(pins);
         hidden = [];
         // Trying the full text means cancelling the ellipsis, so only do it
         // when the text might fit: its glyph widths summed can't exceed the
@@ -1482,11 +1579,16 @@ export class Elide {
         const width = run.right - run.left;
         // (A suffix that only shows while truncated doesn't show with it.)
         const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
-        const full = (lines === 'fit' || run.sums[n]! <= (width * lines - reserved) * 1.1 + 1) && (yield* attempt.call(this, [])).fits;
+        const full =
+          ((lines === 'fit' || run.sums[n]! <= (width * lines - reserved) * 1.1 + 1) && (yield* attempt.call(this, [])).fits) ||
+          (n > 0 && (yield* squeeze.call(this)));
         const room = width * (lines === 'fit' ? fit.max : lines) - run.suffix;
         if (!full && n > 0) {
           // Kept parts that can't all fit give way, last first.
-          while (pins.length > 0 && !(yield* attempt.call(this, at(0))).fits) pins = giveWay(pins, this.#sought?.range ?? null);
+          while (pins.length > 0 && !(yield* attempt.call(this, at(0))).fits) {
+            pins = giveWay(pins, this.#sought?.range ?? null);
+            cuts = cutting(pins);
+          }
           yield* phase.write();
           // Where the search starts: what the canvas widths say fits. Kerning,
           // wrapping and rounding make that a guess, but a steady one, so it
@@ -1494,12 +1596,13 @@ export class Elide {
           // aims at what the room it left (or lacked) says fits, by the same
           // widths: the room wrapping wastes changes little from one to the next.
           const mark = layout ? groupMetrics(layout, layout.inner).advance : 0;
-          const kept = (width: number, near?: number) => estimateKept(this.#g, islands, pins, snap, trim, run.sums, mark, width, near);
+          const kept = (width: number, near?: number) => estimateKept(cuts, run.sums, mark, width, near);
           const guess = kept(room);
           // One past the expected answer first: when the expectation holds,
           // the last probe is the answer, already rendered and measured.
-          const first = Math.max(0, Math.min(n - 1, guess + (this.#bias ?? 0) + 1));
-          const search = steeredSteps(0, n - 1, first, (k, left) => kept(keptWidth(run.sums, mark, at(k)) + left, k));
+          const most = maxKept(cuts);
+          const first = Math.max(0, Math.min(most, guess + (this.#bias ?? 0) + 1));
+          const search = steeredSteps(0, most, first, (k, left) => kept(keptWidth(run.sums, mark, at(k)) + left, k));
           let step = search.next();
           while (!step.done) step = search.next(yield* attempt.call(this, at(step.value)));
           this.#bias = step.value - guess;
@@ -1561,7 +1664,7 @@ export class Elide {
       for (const release of held.reverse()) release();
     }
 
-    const state = this.#makeState(hidden, fit.lines, gaps, pins, slack);
+    const state = this.#makeState(hidden, fit.lines, gaps, pins, slack, this.#tightened);
     this.#current = state;
     const lock = holdHeight && state.truncated && wraps(lines) && !this.#revealed;
     // A resize that leaves plain text on as many lines leaves its height as held.
@@ -1591,8 +1694,15 @@ export class Elide {
     for (const fn of this.#renderListeners) fn(state);
   }
 
-  #makeState(hidden: readonly Range[], lines: number, gaps: GapInfo[], pins: readonly Range[] = this.#pins, slack = 0): ElideState {
-    return stateOf(this.#text, this.#offsets, { hidden, pins, lines, gaps, slack, expanded: this.#revealed });
+  #makeState(
+    hidden: readonly Range[],
+    lines: number,
+    gaps: GapInfo[],
+    pins: readonly Range[] = this.#pins,
+    slack = 0,
+    tightened = 0,
+  ): ElideState {
+    return stateOf(this.#text, this.#offsets, { hidden, pins, lines, gaps, slack, expanded: this.#revealed, tightened });
   }
 
   static {

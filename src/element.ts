@@ -17,6 +17,9 @@ const ATTRIBUTES = [
   'position',
   'keep',
   'keep-class',
+  'keep-context',
+  'whole',
+  'tighten',
   'ellipsis',
   'gap',
   'max-gap',
@@ -67,7 +70,8 @@ function parseSnap(value: string): Snap | null {
  * inline elements (links, code, emphasis) kept. A child with
  * `slot="suffix"` is the `suffix`. Attributes: `lines` (a number or `fit`), `position`
  * (`middle`, `0.3`, `0.33 0.67`), `keep` (a string or `/regex/flags`) and
- * `keep-class` (a class to highlight it with), `ellipsis`, `gap`, `max-gap`
+ * `keep-class` (a class to highlight it with) and `keep-context` (words of
+ * context around it), `whole` (a string or `/regex/flags`), `tighten`, `ellipsis`, `gap`, `max-gap`
  * (`none` for no limit), `justify` (`false` to turn it off), `repeat` (0 to 1, or `false`), `trim`
  * (`false`), `snap` (`words`, `paths`, or separator characters), `glyphs`,
  * `tooltip-title` (the `title` option), `copy`, `show-suffix`, `find`
@@ -161,8 +165,15 @@ export class ElideElement extends Base {
     const position = attr('position');
     if (position !== null) options.position = parsePosition(position);
     const keep = attr('keep');
-    const keepClass = attr('keep-class');
-    if (keep !== null) options.keep = keepClass ? { match: parseKeep(keep), class: keepClass } : parseKeep(keep);
+    const keepClass = attr('keep-class') ?? undefined;
+    const context = attr('keep-context');
+    const around = context === null ? undefined : Number(context);
+    const plain = !keepClass && around === undefined;
+    if (keep !== null) options.keep = plain ? parseKeep(keep) : { match: parseKeep(keep), class: keepClass, context: around };
+    const whole = attr('whole');
+    if (whole !== null) options.whole = parseKeep(whole);
+    const tighten = attr('tighten');
+    if (tighten !== null) options.tighten = isLength(tighten) ? tighten : Number(tighten);
     const ellipsis = attr('ellipsis');
     if (ellipsis !== null) options.ellipsis = ellipsis;
     const gap = attr('gap');

@@ -22,6 +22,32 @@ const mouse: BrowserCommand<[action: MouseAction, x: number, y: number]> = async
   if (action === 'up') await context.page.mouse.up();
 };
 
+/** Each browser's turn with the pointer: the one before it, done when it's given back. */
+const turns = new WeakMap<object, Promise<void>>();
+const giving = new WeakMap<object, () => void>();
+
+/**
+ * Test files run side by side, each in a browser context of its own, and
+ * pressing, dragging and focusing in one disturbs another (in Firefox, a
+ * press there focuses nothing): those that do take turns, from `'take'` (in
+ * a `beforeEach`) to `'give'` (in an `afterEach`), their page in front
+ * meanwhile.
+ */
+const pointer: BrowserCommand<[action: 'take' | 'give']> = async (context, action) => {
+  const browser = context.page.context().browser() ?? context.page;
+  if (action === 'give') {
+    giving.get(browser)?.();
+    giving.delete(browser);
+    return;
+  }
+  const before = turns.get(browser) ?? Promise.resolve();
+  let give = () => {};
+  turns.set(browser, new Promise<void>((resolve) => (give = resolve)));
+  await before;
+  giving.set(browser, give);
+  await context.page.bringToFront();
+};
+
 const sessions = new WeakMap<object, CDPSession>();
 
 /** The DevTools protocol session for the page, its performance metrics on (Chromium only). */
@@ -103,7 +129,7 @@ export default defineConfig(({ mode }) => {
         provider: playwright(),
         viewport: { width: 1000, height: 700 },
         instances: bench ? [{ browser: 'chromium' }] : [{ browser: 'chromium' }, { browser: 'firefox' }, { browser: 'webkit' }],
-        commands: { mouse, reducedMotion, layouts, metrics, profile },
+        commands: { mouse, pointer, reducedMotion, layouts, metrics, profile },
       },
     },
   };

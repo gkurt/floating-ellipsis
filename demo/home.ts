@@ -1,6 +1,7 @@
 import { autoSize } from '#src/autosize.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type ElideOptions, elide } from '#src/index.ts';
+import { elideInput } from '#src/input.ts';
 import { suffix } from '#src/suffix.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { transitions } from '#src/transitions.ts';
@@ -11,6 +12,7 @@ import {
   fast,
   fileIcon,
   hero,
+  inputFields,
   issues,
   keepRows,
   lantern,
@@ -24,10 +26,14 @@ import {
   sharedColumns,
   siblings,
   snapRows,
+  snippetKeep,
+  snippets,
+  tightRows,
   toggleSmoothly,
   tooltipOptions,
   tooltipPaths,
   unitRows,
+  wholeRows,
 } from './examples.ts';
 import { $, resizable } from './ui.ts';
 
@@ -365,4 +371,81 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('listCode', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
   stage(box, [0.3, 0.75]);
+}
+
+// ---------------------------------------------------------------------------
+// 13 Snippets around a match
+
+{
+  const box = $('#snippetBox');
+  const query = $<HTMLInputElement>('#snippetQuery');
+  const rows = snippets.map((text) => {
+    const line = el('p', 'line', text);
+    box.insertBefore(line, $('.handle', box));
+    return elide(line, { keep: snippetKeep(query.value) });
+  });
+  const search = () => {
+    const keep = snippetKeep(query.value);
+    for (const t of rows) t.update({ keep });
+    const q = query.value.trim().replace(/[<&]/g, '') || '…';
+    setCode('snippetCode', `keep: { match: /«${q}»/gi, class: «'hit'», context: «Infinity» }`);
+  };
+  query.addEventListener('input', search);
+  search();
+  stage(box, [0.35, 0.8]);
+}
+
+// ---------------------------------------------------------------------------
+// 14 Numbers stay whole
+
+{
+  const box = $('#wholeBox');
+  for (const { label, text, options } of wholeRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    row.append(line);
+    box.insertBefore(row, $('.handle', box));
+    transitions(elide(line, options), calm);
+  }
+  setCode('wholeCode', "elide(el, { position: «'middle'», whole: «/[$€£]?\\d[\\d,.:/-]*\\d%?/g» })");
+  stage(box, [0.45, 0.9]);
+}
+
+// ---------------------------------------------------------------------------
+// 15 Tighten before you cut
+
+{
+  const box = $('#tightenBox');
+  for (const { label, text, options } of tightRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    const readout = el('span', 'tightness');
+    row.append(line, readout);
+    box.insertBefore(row, $('.handle', box));
+    elide(line, options).onRender(({ tightened, truncated }) => {
+      readout.textContent = truncated ? 'cut' : tightened > 0 ? `−${tightened.toFixed(2)}px` : '';
+    });
+  }
+  setCode('tightenCode', "elide(el, { tighten: «'0.05em'» }) // letters up to 0.05em closer, word spaces 0.1em");
+  stage(box, [0.42, 0.62]);
+}
+
+// ---------------------------------------------------------------------------
+// 16 Fields, cut until you edit
+
+{
+  const box = $('#inputBox');
+  for (const { label, value, placeholder, options } of inputFields) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const input = el('input', 'field');
+    input.value = value;
+    input.placeholder = placeholder;
+    input.spellcheck = false;
+    input.setAttribute('aria-label', label);
+    row.append(input);
+    box.insertBefore(row, $('.handle', box));
+    elideInput(input, options);
+  }
+  setCode('inputCode', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
+  stage(box, [0.5, 1]);
 }

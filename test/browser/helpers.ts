@@ -10,6 +10,8 @@ declare module 'vitest/browser' {
   interface BrowserCommands {
     /** The real mouse at `x`, `y` in the test frame's viewport (see vitest.config.ts). */
     mouse: (action: 'move' | 'down' | 'up', x: number, y: number) => Promise<void>;
+    /** Wait for a turn with the page's one mouse and focus (`'take'`), or end it (`'give'`). */
+    pointer: (action: 'take' | 'give') => Promise<void>;
     reducedMotion: (on: boolean) => Promise<void>;
     /** Layouts the page has done so far (Chromium only). */
     layouts: () => Promise<number>;

@@ -1,4 +1,5 @@
 import { type Elide, type ElideOptions, type Keep, separators, words } from '#src/index.ts';
+import type { InputOptions } from '#src/input.ts';
 import { list, split } from '#src/list.ts';
 import type { TransitionOptions } from '#src/transitions.ts';
 
@@ -236,3 +237,66 @@ export function lensAt(p: number, n: number) {
     src: `keep: { start: «${start}», end: «${end}» }, position: «${p.toFixed(2)}»`,
   };
 }
+
+/** Search results: the query is kept with as much context as fits, word by word. */
+export const snippets = [
+  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill, and by dusk the lantern by the gate was the only light left on the bank.',
+  'Notes from the workshop: the brass gears arrived on Tuesday, the engine turned for the first time on Friday, and somebody hung a paper lantern over the bench to celebrate.',
+  'We waited on the bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning.',
+];
+
+/** A keep for every match of `query`, highlighted, with all the context that fits around it. */
+export function snippetKeep(query: string): ElideOptions['keep'] {
+  const q = query.trim();
+  if (!q) return null;
+  return { match: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), class: 'hit', context: Infinity };
+}
+
+/** Amounts, dates, versions, ids: a cut through one would misreport it. */
+export const NUMBERS = /[$€£]?\d[\d,.:/-]*\d%?|[$€£]?\d/g;
+
+export const wholeRows: { label: string; text: string; options: ElideOptions }[] = [
+  {
+    label: 'any glyph',
+    text: 'Invoice 2026-0412 · $12,345.67 due 14 Oct 2026 · ref 88412093',
+    options: { position: 'middle' },
+  },
+  {
+    label: 'whole: NUMBERS',
+    text: 'Invoice 2026-0412 · $12,345.67 due 14 Oct 2026 · ref 88412093',
+    options: { position: 'middle', whole: NUMBERS },
+  },
+  {
+    label: 'with words()',
+    text: 'Deployed v2.14.3 to 12 regions in 4m 31s, 99.98% healthy, build 7781203',
+    options: { position: 'middle', whole: NUMBERS, snap: words() },
+  },
+];
+
+export const tightRows: { label: string; text: string; options: ElideOptions }[] = [
+  { label: 'tighten: 0', text: 'Quarterly revenue forecast', options: {} },
+  { label: 'tighten: 0.05em', text: 'Quarterly revenue forecast', options: { tighten: '0.05em' } },
+  { label: 'tighten: 0', text: 'Bernoulli numbers, note G', options: { position: 'middle' } },
+  { label: 'tighten: 0.05em', text: 'Bernoulli numbers, note G', options: { position: 'middle', tighten: '0.05em' } },
+];
+
+export const inputFields: { label: string; value: string; placeholder: string; options: InputOptions }[] = [
+  {
+    label: 'path',
+    value: '/Users/ada/Projects/difference-engine/notes/2026/bernoulli-numbers.md',
+    placeholder: '',
+    options: { position: 'middle', keep: /[^/]+$/ },
+  },
+  {
+    label: 'url',
+    value: 'https://github.com/gkurt/floating-ellipsis/blob/main/docs/how-it-works.md#find-in-page',
+    placeholder: '',
+    options: { position: 'middle', snap: separators('/') },
+  },
+  {
+    label: 'placeholder',
+    value: '',
+    placeholder: 'Search every note, file and folder in the difference engine project',
+    options: { position: 'middle' },
+  },
+];

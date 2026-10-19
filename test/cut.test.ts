@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  type Cutting,
+  type Layout,
   type Range,
+  type Position,
+  type Snap,
   allocationOrder,
   complement,
   estimateKept,
-  fewestSegments,
+  segmentEdges,
+  shortestRun,
+  wholeEdges,
+  widen,
+  contextOf,
   graphemeClasses,
   hiddenRanges,
   islands,
@@ -27,6 +35,27 @@ import {
   words,
 } from '#src/cut.ts';
 import { graphemes } from '#src/graphemes.ts';
+
+/** What cuts `g` with no wholes or context, as `hiddenRanges` and `estimateKept` take it. */
+const cutting = (g: readonly string[], layout: Layout, pins: readonly Range[], snap: Snap | null, trim: boolean): Cutting => ({
+  graphemes: g,
+  layout,
+  pins,
+  snap,
+  trim,
+  wholes: null,
+  context: null,
+});
+const hide = (g: readonly string[], layout: Layout, k: number, pins: readonly Range[], snap: Snap | null, trim: boolean) =>
+  hiddenRanges(cutting(g, layout, pins, snap, trim), k);
+const estimate = (
+  g: readonly string[],
+  layout: Layout,
+  pins: readonly Range[],
+  snap: Snap | null,
+  trim: boolean,
+  ...rest: [ArrayLike<number>, number, number]
+) => estimateKept(cutting(g, layout, pins, snap, trim), ...rest);
 
 /** Render hidden ranges as text with '…' in their place. */
 const show = (g: readonly string[], hidden: readonly Range[]) => {
@@ -180,22 +209,22 @@ describe('hiddenRanges', () => {
   it('trims whitespace next to the ellipsis', () => {
     const layout = layoutFor(g.length, ['middle']);
     // 12 kept: "Hello " + " world" → the spaces next to the cut go.
-    const hidden = hiddenRanges(g, layout, 12, [], null, true);
+    const hidden = hide(g, layout, 12, [], null, true);
     expect(show(g, hidden)).toBe('Hello…world');
-    expect(show(g, hiddenRanges(g, layout, 12, [], null, false))).toBe('Hello … world');
+    expect(show(g, hide(g, layout, 12, [], null, false))).toBe('Hello … world');
   });
 
   it('ignores a snap that leaves nothing to hide', () => {
     const empty = () => ({ start: 100, end: 0 });
     const layout = layoutFor(g.length, ['middle']);
-    expect(hiddenRanges(g, layout, 6, [], empty, false)).toEqual(hiddenRanges(g, layout, 6, [], null, false));
+    expect(hide(g, layout, 6, [], empty, false)).toEqual(hide(g, layout, 6, [], null, false));
   });
 
   it('keeps pinned parts, splitting the cut around them', () => {
     const text = graphemes('The quick brown fox jumps over the lazy dog');
     const layout = layoutFor(text.length, ['end']);
     const fox = text.join('').indexOf('fox');
-    const hidden = hiddenRanges(text, layout, 4, [[fox, fox + 3]], null, true);
+    const hidden = hide(text, layout, 4, [[fox, fox + 3]], null, true);
     expect(show(text, hidden)).toBe('The…fox…');
   });
 
@@ -203,13 +232,114 @@ describe('hiddenRanges', () => {
     const text = graphemes('quarterly-report-final-v3.pdf');
     const layout = layoutFor(text.length, ['end']);
     const ext = keepRanges(text.join(''), [/\.[^.]+$/]);
-    expect(show(text, hiddenRanges(text, layout, 9, ext, null, true))).toBe('quarterly….pdf');
+    expect(show(text, hide(text, layout, 9, ext, null, true))).toBe('quarterly….pdf');
   });
 
   it('places several ellipses', () => {
     const text = graphemes('0123456789abcdefghij');
     const layout = layoutFor(text.length, [0.25, 0.75]);
-    expect(show(text, hiddenRanges(text, layout, 8, [], null, true))).toBe('01…89ab…ij');
+    expect(show(text, hide(text, layout, 8, [], null, true))).toBe('01…89ab…ij');
+  });
+});
+
+describe('wholes', () => {
+  const PRICE = /\$?\d[\d,.]*\d/g;
+  const cut = (text: string, positions: Position[], snap: Snap | null = null) => {
+    const g = graphemes(text);
+    const c: Cutting = {
+      ...cutting(g, layoutFor(g.length, positions), [], snap, true),
+      wholes: wholeEdges(g.length, toGraphemeRanges(keepRanges(text, [PRICE]), [...g.keys(), g.length])),
+    };
+    return (k: number) => show(g, hiddenRanges(c, k));
+  };
+
+  it('never shows part of one', () => {
+    const text = 'Total due: $12,345.67 by Friday';
+    for (const positions of [['end'], ['middle'], ['start'], [0.3, 0.7]] as Position[][]) {
+      const at = cut(text, positions);
+      for (let k = 0; k < text.length - 1; k++) {
+        const shown = at(k);
+        const digits = shown.replace(/[^\d]/g, '');
+        expect(digits === '' || digits === '1234567').toBe(true);
+      }
+    }
+  });
+
+  it('hides all of one at an end', () => {
+    const at = cut('Total due: $12,345.67', ['end']);
+    expect(at(14)).toBe('Total due:…');
+  });
+
+  it('slides a cut off one, hiding as much', () => {
+    // A plain cut would hide "2345" from the middle of the number.
+    const at = cut('alpha beta 12345678 gamma delta', ['middle']);
+    expect(at(27)).toBe('alpha beta 12345678…ma delta');
+  });
+
+  it('combines with words()', () => {
+    const at = cut('Paid $1,250.00 on the 3rd of March, 2026', ['middle'], words());
+    const numbers = new Set(['$1,250.00', '3', '2026']);
+    for (let k = 0; k < 38; k++) for (const [n] of at(k).matchAll(/\$?\d[\d,.]*\d|\$?\d/g)) expect(numbers.has(n)).toBe(true);
+  });
+
+  it('keeps touching ones apart', () => {
+    const edges = wholeEdges(6, [
+      [0, 2],
+      [2, 4],
+    ])!;
+    expect([...Array(7).keys()].map((i) => edges.start(i))).toEqual([true, false, true, false, true, true, true]);
+  });
+
+  it('widens a cut that splits one, but not into a pin', () => {
+    const edges = wholeEdges(10, [[2, 8]])!;
+    expect(widen(10, [[4, 6]], edges, [])).toEqual([[2, 8]]);
+    expect(widen(10, [[4, 6]], edges, [[2, 3]])).toEqual([[3, 8]]);
+  });
+});
+
+describe('context', () => {
+  const text = 'one two three LANTERN four five six seven';
+  const g = graphemes(text);
+  const at = text.indexOf('LANTERN');
+  const lantern: Range = [at, at + 7];
+
+  it('grows a word at a time, after and then before', () => {
+    const context = contextOf(g, [[lantern, 2]], [lantern])!;
+    expect(context.steps.map(([s, e]) => text.slice(s, e))).toEqual([' four', 'three ', ' five', 'two ']);
+    expect([...context.costs]).toEqual([5, 11, 16, 20]);
+  });
+
+  it('shows before the islands do', () => {
+    const c: Cutting = {
+      ...cutting(g, layoutFor(g.length, ['end']), [lantern], null, true),
+      context: contextOf(g, [[lantern, 2]], [lantern]),
+    };
+    const shown = (k: number) => show(g, hiddenRanges(c, k));
+    expect(shown(0)).toBe('…LANTERN…');
+    expect(shown(5)).toBe('…LANTERN four…');
+    expect(shown(11)).toBe('…three LANTERN four…');
+    expect(shown(20)).toBe('…two three LANTERN four five…');
+    // Then the islands: the start, here running into the context.
+    expect(shown(24)).toBe('one two three LANTERN four five…');
+  });
+
+  it('completes a word the match ends in, and merges windows', () => {
+    const lan: Range = [at, at + 3];
+    const four = text.indexOf('four');
+    const context = contextOf(
+      g,
+      [
+        [lan, 1],
+        [[four, four + 4], 1],
+      ],
+      [lan, [four, four + 4]],
+    )!;
+    expect(context.steps.map(([s, e]) => text.slice(s, e))).toEqual(['TERN', 'three ', ' five', 'LANTERN ']);
+    expect(context.costs.at(-1)).toBe(4 + 6 + 5 + 1);
+  });
+
+  it('goes with the kept part when it gives way', () => {
+    expect(contextOf(g, [[lantern, 2]], [])).toBeNull();
   });
 });
 
@@ -261,7 +391,7 @@ describe('showSlivers', () => {
   it('applies through hiddenRanges', () => {
     const layout = layoutFor(g.length, ['middle']);
     for (let kept = 0; kept < g.length; kept++) {
-      for (const [s, e] of hiddenRanges(g, layout, kept, [fox], null, true)) {
+      for (const [s, e] of hide(g, layout, kept, [fox], null, true)) {
         const beside = e === fox[0] || s === fox[1];
         const letters = g.slice(s, e).filter((c) => c.trim()).length;
         expect(beside && letters <= 3).toBe(false);
@@ -281,10 +411,10 @@ describe('separators', () => {
   it('cuts at path segments, keeping as much text as the plain cut', () => {
     const path = graphemes('/abc/def/ghj/klm/nop');
     const layout = layoutFor(path.length, ['middle']);
-    expect(show(path, hiddenRanges(path, layout, 12, [], null, true))).toBe('/abc/d…lm/nop');
+    expect(show(path, hide(path, layout, 12, [], null, true))).toBe('/abc/d…lm/nop');
     // The tail's "lm" goes to the head, which completes "def".
-    expect(show(path, hiddenRanges(path, layout, 12, [], snap, true))).toBe('/abc/def/…/nop');
-    expect(show(path, hiddenRanges(path, layout, 16, [], snap, true))).toBe('/abc/def/…/klm/nop');
+    expect(show(path, hide(path, layout, 12, [], snap, true))).toBe('/abc/def/…/nop');
+    expect(show(path, hide(path, layout, 16, [], snap, true))).toBe('/abc/def/…/klm/nop');
   });
 
   it('keeps one fragment, grown by what the other side gives up', () => {
@@ -328,39 +458,47 @@ describe('separators', () => {
     // A glyph's width each, and one for the ellipsis.
     const sums = path.map((_, i) => i).concat(path.length);
     for (let room = 20; room < path.length - 1; room++) {
-      const k = estimateKept(path, layout, [], whole, true, sums, 1, room);
-      const shown = show(path, hiddenRanges(path, layout, k, [], whole, true));
+      const k = estimate(path, layout, [], whole, true, sums, 1, room);
+      const shown = show(path, hide(path, layout, k, [], whole, true));
       expect(graphemes(shown).length).toBeLessThanOrEqual(room);
       expect(room - graphemes(shown).length).toBeLessThanOrEqual(4);
     }
   });
 });
 
-describe('fewestSegments', () => {
+describe('shortestRun', () => {
   const sepOf = (text: string) => {
     const g = graphemes(text);
-    return [(i: number) => g[i] === '/', g.length] as const;
+    return [segmentEdges((i: number) => g[i] === '/'), g.length] as const;
   };
+
+  it('slides off a whole rather than grow', () => {
+    // "abcd[efgh]ijkl": a cut of two from inside the whole goes beside it.
+    const edges = wholeEdges(12, [[4, 8]])!;
+    expect(shortestRun(edges, 12, 6, 8)).toEqual({ start: 8, end: 10 });
+    expect(shortestRun(edges, 12, 9, 12)).toEqual({ start: 9, end: 12 });
+    expect(shortestRun(edges, 12, 6, 12)).toEqual({ start: 4, end: 12 });
+  });
 
   it('takes the shortest run that hides enough', () => {
     const [isSep, n] = sepOf('/aa/bbbbbbbb/ccc/dd/eeeeee');
     // Three to hide around "bbbbbbbb": "ccc" does it.
-    expect(fewestSegments(isSep, n, 6, 9)).toEqual({ start: 13, end: 16 });
+    expect(shortestRun(isSep, n, 6, 9)).toEqual({ start: 13, end: 16 });
   });
 
   it('prefers a run near the cut when another saves too little', () => {
     const [isSep, n] = sepOf('/aaaa/bbb/cccccccccccccccccccc/dd/eeee');
     // "dd" would leave no room over, but is far; "bbb" is next to the cut.
-    expect(fewestSegments(isSep, n, 6, 8)).toEqual({ start: 6, end: 9 });
+    expect(shortestRun(isSep, n, 6, 8)).toEqual({ start: 6, end: 9 });
   });
 
   it('stays within its bounds, and off the ends of the text', () => {
     const [isSep, n] = sepOf('/aa/bbbbbbbb/ccc/dd/eeeeee');
-    expect(fewestSegments(isSep, n, 6, 9, 0, 12)).toEqual({ start: 4, end: 12 });
+    expect(shortestRun(isSep, n, 6, 9, 0, 12)).toEqual({ start: 4, end: 12 });
     // Inside the last segment, a cut that doesn't reach the end goes elsewhere.
-    expect(fewestSegments(isSep, n, 20, 23)).toEqual({ start: 13, end: 16 });
-    expect(fewestSegments(isSep, n, 20, 23, 17, 26)).toBeNull();
-    expect(fewestSegments(isSep, n, 20, 26)).toEqual({ start: 20, end: 26 });
+    expect(shortestRun(isSep, n, 20, 23)).toEqual({ start: 13, end: 16 });
+    expect(shortestRun(isSep, n, 20, 23, 17, 26)).toBeNull();
+    expect(shortestRun(isSep, n, 20, 26)).toEqual({ start: 20, end: 26 });
   });
 });
 
@@ -547,17 +685,16 @@ describe('estimateKept', () => {
 
   it('keeps as much as fits with a mark for each cut', () => {
     // Kept k from the start: 10k for the text, 5 for the ellipsis.
-    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 60)).toBe(5);
-    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 64.9)).toBe(5);
-    expect(estimateKept(g, layoutFor(10, ['end']), [], null, true, sums, 5, 65)).toBe(6);
+    expect(estimate(g, layoutFor(10, ['end']), [], null, true, sums, 5, 60)).toBe(5);
+    expect(estimate(g, layoutFor(10, ['end']), [], null, true, sums, 5, 64.9)).toBe(5);
+    expect(estimate(g, layoutFor(10, ['end']), [], null, true, sums, 5, 65)).toBe(6);
   });
 
   it('counts a mark for every cut, kept parts included', () => {
     // Keeping 'k' splits the cut in two: 10 per kept grapheme, 'k' and two marks.
     const long = graphemes('abcdefghijklmnopqrst');
     const pins: Range[] = [[10, 11]];
-    const at = (room: number) =>
-      estimateKept(long, layoutFor(20, ['end']), pins, null, false, long.map((_, i) => i * 10).concat(200), 5, room);
+    const at = (room: number) => estimate(long, layoutFor(20, ['end']), pins, null, false, long.map((_, i) => i * 10).concat(200), 5, room);
     expect(at(60)).toBe(4);
     expect(at(69)).toBe(4);
     expect(at(70)).toBe(5);

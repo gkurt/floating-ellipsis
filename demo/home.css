@@ -392,6 +392,35 @@ input.track:focus-visible {
 
 /* ------------------------------------------------------------------------ */
 
+/* The search field, the fields and the readouts (13 to 16) */
+.home .field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 15px/20px var(--sans);
+}
+.home .field::placeholder {
+  color: var(--muted);
+}
+.home .field.search {
+  display: block;
+  max-width: 280px;
+  margin-bottom: 14px;
+}
+.labeled-row:has(.tightness) {
+  grid-template-columns: 130px minmax(0, 1fr) 64px;
+}
+.labeled-row .tightness {
+  color: var(--muted);
+  font: 12px/18px var(--mono);
+  text-align: right;
+}
+
 .more-links {
   padding-top: 112px;
 }
@@ -457,6 +486,12 @@ input.track:focus-visible {
   }
   .labeled-row > code {
     text-align: left;
+  }
+  .labeled-row:has(.tightness) {
+    grid-template-columns: minmax(0, 1fr) 64px;
+  }
+  .labeled-row:has(.tightness) > code {
+    grid-column: 1 / -1;
   }
   .split {
     grid-template-columns: minmax(0, 1fr);
