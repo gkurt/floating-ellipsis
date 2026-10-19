@@ -1,4 +1,5 @@
 import { type Elide, type ElideOptions, type Keep, separators, words } from '#src/index.ts';
+import { list, split } from '#src/list.ts';
 import type { TransitionOptions } from '#src/transitions.ts';
 
 /** The examples the home page and the video share: their text, and the options that cut it. */
@@ -186,6 +187,32 @@ export const unitRows: { label: string; text: string; options: ElideOptions }[] 
     label: 'scripts',
     text: 'Grüße · नमस्ते दुनिया · こんにちは世界 · 안녕하세요 · Γειά σου · สวัสดีชาวโลก',
     options: { position: 'middle' },
+  },
+];
+
+const others = (n: number) => (n === 1 ? '1 other' : `${n} others`);
+
+/** Lists: whole items from the start, and a label for the rest. */
+export const listRows: { label: string; text: string; options: ElideOptions }[] = [
+  {
+    label: 'names',
+    text: '',
+    options: list(['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds', 'Ken Thompson', 'Barbara Liskov', 'Edsger Dijkstra'], {
+      format: new Intl.ListFormat('en'),
+      label: others,
+    }),
+  },
+  {
+    label: 'mentions',
+    text: ['ada.lovelace', 'grace', 'linus', 'ken', 'barbara', 'edsger']
+      .map((n) => `<span class="mention" data-elide-unit>@${n}</span>`)
+      .join(', '),
+    options: list(split(', '), { label: (n) => `+${n}`, joiner: ' ' }),
+  },
+  {
+    label: 'emails',
+    text: 'ada.lovelace@analytical.org, grace@cobol.dev, linus@kernel.org and ken@bell-labs.com',
+    options: list(split(/, | and /), { label: others }),
   },
 ];
 

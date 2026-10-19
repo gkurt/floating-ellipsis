@@ -13,6 +13,7 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   more", a badge) follows the text and is never cut.
 - **Native behaviour.** Find in page finds hidden text, copying gives the full
   text, screen readers read it all.
+- **Lists.** Whole items, and a label for the rest: "Ada, Grace and 2 others".
 - **Add-ons.** Headless tooltips, glyph transitions, a DOM-free `elideText`, a
   CSS fallback, and bindings for custom elements, React, Vue and Svelte.
 - **Fast in bulk.** Thousands of instances share a few layouts.
@@ -145,6 +146,34 @@ is never cut. A node is moved into place, keeping its listeners, and goes back
 on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
 shows all of the text until `collapse()`. To animate the height as it opens and
 closes, see [Animating "Read more"](docs/how-it-works.md#animating-read-more).
+
+### Lists
+
+```js
+import { list, split } from 'floating-ellipsis/list';
+
+elide(el, { ...list(['Ada', 'Grace', 'Linus', 'Ken'], { label: (n) => `${n} others` }) }); // Ada, Grace and 2 others
+elide(el, { ...list(split(', '), { label: (n) => `+${n}`, joiner: ' ' }) }); // the element's own items: @ada, @grace +2
+```
+
+Items show whole or not at all, from the start, and a label for the hidden
+ones follows the last that shows. When not even the first fits, it is cut and
+the label starts with an ellipsis (`Ada Lovel… and 3 others`). Items are an
+array, joined into the text by `Intl.ListFormat`, or a function that finds
+them in the text, in order; `split(separator)` takes a string or a RegExp.
+`data-elide-unit` elements (mentions, chips) count as items. Spread it before
+your own options: it sets `snap`, `suffix`, `position`, `ellipsis`, `gap`,
+`justify`, `repeat` and `find`.
+
+| Option     | Default                  |                                                                                     |
+| ---------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `label`    | `` (n) => `${n} more` `` | What stands for the hidden items, given how many are hidden and how many there are. |
+| `joiner`   | the list's own           | What goes between the last item showing and the label.                              |
+| `format`   | `new Intl.ListFormat()`  | How an array is joined into the text, and how the label joins it.                   |
+| `ellipsis` | `'…'`                    | What ends the first item when it is cut.                                            |
+
+The label is `[data-fp-list]`, for styling. Screen readers read every item,
+and find in page and copying leave the label out.
 
 ### Sized by content
 

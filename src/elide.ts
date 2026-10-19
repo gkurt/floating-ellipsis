@@ -969,9 +969,9 @@ export class Elide {
     this.#titled = truncated;
   }
 
-  /** Show the suffix as the text is (or isn't) truncated. */
-  #suffixFor(truncated: boolean) {
-    this.#suffix?.show(truncated || this.#settings.suffix?.show !== 'truncated');
+  /** Show the suffix as the text is (or isn't) truncated, `hidden` cut. */
+  #suffixFor(hidden: readonly Range[]) {
+    this.#suffix?.show(hidden.length > 0 || this.#settings.suffix?.show !== 'truncated', hidden, this.#g);
   }
 
   /**
@@ -1035,7 +1035,7 @@ export class Elide {
     this.#fill(this.#runEl(0), 0, this.#g.length);
     this.#fill(first.before, 0, 0);
     this.#fill(first.after, 0, 0);
-    this.#suffixFor(false);
+    this.#suffixFor([]);
     this.#greedy(false);
   }
 
@@ -1058,7 +1058,7 @@ export class Elide {
     this.#fill(first.before, 0, 0);
     this.#fill(first.after, n, n);
     first.el.style.position = 'absolute';
-    this.#suffixFor(false);
+    this.#suffixFor([]);
     this.#greedy(false);
   }
 
@@ -1075,7 +1075,7 @@ export class Elide {
     this.#joins[0]!.el.style.display = '';
     this.#joins[0]!.el.style.position = '';
     reconcile(this.#lineEl, want);
-    this.#suffixFor(true);
+    this.#suffixFor(hidden);
     // (Once on, it hides what the page says: it stays on while truncated.)
     if (run.rebreaks || this.#ungreedy !== null) this.#greedy(true);
     for (const { el, range, shown } of this.#layoutOf(hidden)) this.#fill(el, range[0], range[1], shown);
@@ -1437,7 +1437,9 @@ export class Elide {
         // room on all lines (with some leeway for kerning and collapsed spaces).
         // How many lines fit the height shows once the full text is tried.
         const width = run.right - run.left;
-        const full = (lines === 'fit' || run.sums[n]! <= (width * lines - run.suffix) * 1.1 + 1) && (yield* attempt.call(this, [])).fits;
+        // (A suffix that only shows while truncated doesn't show with it.)
+        const reserved = this.#settings.suffix?.show === 'truncated' ? 0 : run.suffix;
+        const full = (lines === 'fit' || run.sums[n]! <= (width * lines - reserved) * 1.1 + 1) && (yield* attempt.call(this, [])).fits;
         const room = width * (lines === 'fit' ? fit.max : lines) - run.suffix;
         if (!full && n > 0) {
           // Kept parts that can't all fit give way, last first.

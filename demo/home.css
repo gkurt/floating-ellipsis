@@ -385,6 +385,11 @@ input.track:focus-visible {
   font-size: 0.86em;
 }
 
+/* 12: the label counting what a list hides. */
+.scene [data-fp-list] {
+  color: var(--muted);
+}
+
 /* ------------------------------------------------------------------------ */
 
 .more-links {

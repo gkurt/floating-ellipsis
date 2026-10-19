@@ -17,6 +17,7 @@ import {
   lanternPosition,
   lensAt,
   lineSteps,
+  listRows,
   post as postText,
   quote,
   river,
@@ -348,4 +349,20 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('unitsCode', "elide(el, { position: «'middle'» }) // <img>, <svg> and [data-elide-unit] stay whole");
   stage(box, [0.4, 0.9]);
+}
+
+// ---------------------------------------------------------------------------
+// 12 Lists
+
+{
+  const box = $('#listBox');
+  for (const { label, text, options } of listRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    row.append(line);
+    box.insertBefore(row, $('.handle', box));
+    elide(line, options);
+  }
+  setCode('listCode', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
+  stage(box, [0.3, 0.75]);
 }

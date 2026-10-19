@@ -79,6 +79,13 @@
       },
       "source": "./src/suffix.ts"
     },
+    "./list": {
+      "import": {
+        "types": "./dist/list.d.ts",
+        "default": "./dist/list.js"
+      },
+      "source": "./src/list.ts"
+    },
     "./autosize": {
       "import": {
         "types": "./dist/autosize.d.ts",

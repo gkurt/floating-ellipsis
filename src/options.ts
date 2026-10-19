@@ -176,7 +176,12 @@ export interface SuffixSlot {
   fill(content: string | Node): void;
   /** Its width now, for fitting. Reads layout. */
   measure(): number;
-  show(on: boolean): void;
+  /**
+   * Show it (`on`) or not, as a pass renders `graphemes` with `hidden` cut:
+   * before the pass measures what has to fit, so content that depends on
+   * the cut (as a list's label does) is measured as it shows.
+   */
+  show(on: boolean, hidden: readonly Range[], graphemes: readonly string[]): void;
   /** Put a node back where it came from; one of the host's own comes back with its content on `destroy` (`destroying`). */
   giveBack(destroying: boolean): void;
 }

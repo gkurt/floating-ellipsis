@@ -126,7 +126,7 @@ demo's table page shows both.
 ## Entry points
 
 What only some pages use lives in its own entry, so the rest don't ship it:
-geometry, glyph mode, suffixes, auto-sizing and `onChange`. Their code isn't reachable
+geometry, glyph mode, suffixes, lists, auto-sizing and `onChange`. Their code isn't reachable
 from the `Elide` class, so bundlers leave it out. The `glyphs`, `suffix` and `autoSize`
 options take an object that brings the code with it, as `snap` does.
 Geometry and `onChange` take the instance. They reach its internals through
@@ -282,6 +282,31 @@ Two things make closing differ from opening:
   width, and the text fits again in a pass a microtask later. Run during the
   animation, that pass would measure the element at its `min-height` and hold
   that. `refresh()` and reading `state` run it first.
+
+## Lists
+
+`list()` is made of options the core already has. Its `snap` moves a cut
+from the end to the end of the last item before it, so items go whole, and
+its `suffix` is the label. A suffix is measured with the line, and each pass
+shows it with the cut it is trying, before measuring; so every probe is
+measured with its own label, `+9` and `+10` alike, and a label that changes
+width costs no layout of its own. The search starts from the label the last
+pass showed. A suffix that only shows while truncated isn't counted when
+the pass tries the full text, which it doesn't show beside.
+
+Items are found in the text in order, each after the one before, so the same
+name twice is two items; what lies between them is a separator. An array is
+joined by `format`, and the label is joined as `format` joins a last item to
+the ones that show (`formatToParts`, so "Ada and 3 more" but "Ada, Grace,
+and 2 more"); found in the text, it takes the text's last separator. When no
+item fits whole, the first is cut, and fewer than three of its graphemes
+aren't shown.
+
+The label is generated content (`::after`), hidden from screen readers,
+which read the full text: find in page doesn't find it, and copying leaves
+it out. Find in page on a hidden item expands the list (`find: 'expand'`),
+and an expanded list hides its label. `keep` doesn't go with a list: a kept
+part among the hidden items shows without the separators around it.
 
 ## Sized by content
 
