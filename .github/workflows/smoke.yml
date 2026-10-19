@@ -1,0 +1,26 @@
+# The package as npm will get it, used as a consumer would (scripts/smoke.ts).
+# The release workflow calls this and waits for it; pull requests run it too.
+name: Smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Pack, install and use
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun i
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run smoke

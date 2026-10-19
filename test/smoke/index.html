@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>floating-ellipsis smoke test</title>
+    <style>
+      body {
+        font: 15px/20px sans-serif;
+      }
+      .box {
+        width: 160px;
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box" id="core">/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md</div>
+    <elide-text class="box" id="element" position="middle"
+      >/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md</elide-text
+    >
+    <div class="box" id="react"></div>
+    <div class="box" id="fallback" data-elide-fallback>/Users/ada/Projects/analytical-engine/notes/2026/difference-tables.md</div>
+    <script type="module" src="./page.ts"></script>
+  </body>
+</html>

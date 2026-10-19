@@ -9,6 +9,7 @@ bun run test:next     # the Next.js example, built and tested in real engines
 bun run bench         # main-thread time and layouts per scenario (Chromium)
 bun run build         # dist/ with type declarations
 bun run size          # gzipped size of each entry against its budget
+bun run smoke         # the packed package, installed with npm and used as a consumer
 ```
 
 The browser tests need Playwright's engines once:
@@ -72,3 +73,10 @@ packages:
 On `main`, the release workflow opens a "chore: release vX.Y.Z" pull request
 with the versions and `CHANGELOG.md` updated; merging it publishes to npm
 through trusted publishing.
+
+Both wait for the smoke test (`bun run smoke`, `scripts/smoke.ts`): the
+package built and packed as the release publishes it, installed with npm into
+the app in `test/smoke/` outside the repo, imported in Node without a DOM,
+type-checked as Node and bundlers resolve it, bundled by Vite and opened in
+Chromium. Pull requests run it too. It needs Node and npm, and Chromium
+(`bunx playwright install chromium`).

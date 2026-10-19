@@ -3,6 +3,9 @@
 # `tegami ci` versions when pending .tegami/*.md changelogs exist (opening a
 # "Version Packages" PR via the github plugin), otherwise it publishes from the
 # committed .tegami/publish-lock.yaml.
+#
+# Either way it waits for the smoke test (smoke.yml): the package packed as
+# npm will get it, installed and used as a consumer would.
 name: Release
 
 on:
@@ -18,8 +21,14 @@ permissions:
   pull-requests: write # open the Version Packages PR
 
 jobs:
+  smoke:
+    uses: ./.github/workflows/smoke.yml
+    permissions:
+      contents: read
+
   release:
     name: Version & publish
+    needs: smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

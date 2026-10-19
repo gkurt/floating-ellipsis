@@ -174,6 +174,7 @@
     "bench": "vitest run --mode bench --silent=false",
     "checks": "bun check && bun typecheck && bun run test",
     "size": "bun scripts/size.ts",
+    "smoke": "bun scripts/smoke.ts",
     "tegami": "bun scripts/tegami.mts",
     "prepublishOnly": "bun run build",
     "prepare": "husky"
