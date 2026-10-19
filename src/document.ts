@@ -66,8 +66,8 @@ function onCopy(event: ClipboardEvent) {
       continue;
     }
     touched = true;
-    const { copy, ellipsis } = entry.instance.options;
-    el.replaceWith(copy === 'full' || entry.instance.state.expanded ? part.text : ellipsisText(ellipsis));
+    const { copy } = entry.instance.options;
+    el.replaceWith(copy === 'full' || entry.instance.state.expanded ? part.text : ellipsisText(entry.instance.markStyle));
   }
   if (!touched) return;
 

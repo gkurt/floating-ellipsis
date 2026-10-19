@@ -17,6 +17,24 @@ export function graphemes(text: string): string[] {
   return out;
 }
 
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}]/u;
+const LETTER = /\p{L}/u;
+
+/**
+ * Whether text is Chinese or Japanese, for `ellipsis: 'auto'`: more of its
+ * letters are ideographs or kana than not, or with no letters at all,
+ * `lang` (the element's language) says so.
+ */
+export function isCJK(text: readonly string[], lang = ''): boolean {
+  let cjk = 0;
+  let other = 0;
+  for (const g of text) {
+    if (CJK.test(g)) cjk++;
+    else if (LETTER.test(g)) other++;
+  }
+  return cjk + other > 0 ? cjk > other : /^(zh|ja)\b/i.test(lang);
+}
+
 const WHITESPACE = /^\s+$/u;
 
 export function isWhitespace(g: string | undefined): boolean {

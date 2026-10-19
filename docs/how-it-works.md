@@ -157,6 +157,49 @@ passes share, so it costs no layout of its own.
 the size of the font's dot rhythm, balanced and justified like any other. The
 spacing defaults to the font's own ellipsis rhythm, scaled to the mark size.
 
+## Dots in brackets
+
+A string ellipsis is a mark per character, so `justify: 'dots'` would space
+`[`, `…` and `]` apart like dots. Dots in matching brackets (`[]`, `()`,
+`<>`, `{}`, `«»`, and their full-width forms) are one mark instead: the
+font sets the brackets against the dots, and nothing comes between them, nor
+more dots with `repeat`. It stands for words left out, so it is spaced like a
+word: `gap: 'dots'` gives it the ink gap a word space leaves between an `n`
+and the bracket, and the room justifying adds goes into the two gaps beside
+it. A word space can be wider than `maxGap` (in a monospace font it is), so
+the gaps may always be one. Its marks (`markInks`) are its dots. Cutting
+mid-word reads as a misquotation, so pair it with `snap: words()`; it isn't
+the default, which would put word segmentation in every page's bundle.
+
+## Chinese and Japanese
+
+Chinese and Japanese set their ellipsis in the middle of the line, six dots
+over two characters' cells in running text. Their fonts draw `…` that way,
+but a page whose font stack starts with a Latin font gets that font's `…`,
+on the baseline. `'auto'` draws the dots instead: `align: 'middle'` sets them
+at the middle of `口`'s ink, which fills an ideograph's box, and `cells`
+makes the ellipsis exactly as wide as that many ideographs, each dot centred
+in its share. One cell's worth (three dots) is the usual cut of one line.
+Each instance decides by its text (more ideographs and kana than other
+letters, then the element's `lang`), not by the text beside each cut: a cut
+whose width changed with where it landed couldn't be searched for.
+
+The text is set on a grid, every character a cell wide, and columns line up
+from line to line. An ellipsis a fraction of a pixel off moves every
+character after it off its column. So the cells aren't measured and set as
+margins: the ellipsis holds that many ideographs as generated content
+(transparent, out of find in page and copying), and its marks are positioned
+over them, each at its share of the ellipsis' width as laid out. The browser
+sets those ideographs as it sets the ones around them, with the same font
+fallback, `letter-spacing`, `text-spacing-trim` and `text-autospace`, and on
+a justified line (Chromium spaces ideographs apart there; Firefox and WebKit
+don't) it spaces them apart with the rest, so the ellipsis stretches as two
+characters would. The fit is planned with the width a canvas gives `一`, and
+no gaps are added beside the ellipsis nor room spread into it: the room left
+at the line's end is what any other line of the paragraph leaves. A
+font that sets its punctuation narrower than a cell (as WebKit's fallback on
+Windows does `。`) is off the grid before the ellipsis is.
+
 ## Highlights and markup
 
 What's beside an ellipsis is kept with it, so the two never part across lines.

@@ -104,7 +104,7 @@ export const snapRows: { label: string; text: string; mono?: boolean; options: E
 
 export const tooltipPaths = [
   'README.md',
-  '/Users/ada/Projects/difference-engine/notes/bernoulli.md',
+  '/Users/adalovelace/Projects/difference-engine/notes/bernoulli.md',
   'package.json',
   'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal\\LocalState\\settings\\backups\\2026-10-14\\campbell-powershell.json',
 ];
@@ -305,4 +305,16 @@ export const inputFields: { label: string; value: string; placeholder: string; o
     placeholder: 'Search every note, file and folder in the difference engine project',
     options: { position: 'middle' },
   },
+];
+
+const chinese = '我们在桥上一直等到天黑，数着白鹭，争论河水明天早上会不会涨到第二级台阶。结果并没有。';
+const japanese = '橋の上で日が暮れるまで待ち、鷺を数えながら、水が朝までに二段目に届くかどうか言い合った。';
+
+/** Words left out of a quotation, and Chinese and Japanese set on their cells. */
+export const markRows: { label: string; text: string; lang?: string; options: ElideOptions }[] = [
+  { label: "'[…]'", text: quote, options: { position: 'middle', ellipsis: '[…]', snap: words() } },
+  { label: "'(…)', 2 lines", text: quote, options: { position: 'middle', lines: 2, ellipsis: '(…)', snap: words() } },
+  { label: "'…', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: '…' } },
+  { label: "'auto', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: 'auto' } },
+  { label: "'auto', 1 line", text: japanese, lang: 'ja', options: { ellipsis: 'auto' } },
 ];

@@ -15,7 +15,7 @@ import {
   measure,
   metricsVersion,
 } from './metrics.ts';
-import { repeatRatio } from './options.ts';
+import { repeatRatio, wraps } from './options.ts';
 
 export type Shape = 'dot' | 'bullet' | 'ring' | 'square';
 export type Length = number | `${number}em` | `${number}px`;
@@ -23,7 +23,7 @@ export type Length = number | `${number}em` | `${number}px`;
 /** Drawn ellipsis marks. Sizes default to the font's own '.' (dot, square) or '•' (bullet, ring). */
 export interface MarkStyle {
   shape: Shape;
-  /** Number of marks, 0 or more. Default 3. With 0 the ellipsis is just a gap. */
+  /** Number of marks, 0 or more. Default 3 (3 per cell with `cells`). With 0 the ellipsis is just a gap. */
   count?: number;
   /** Diameter. Default from the font. */
   size?: Length;
@@ -35,12 +35,28 @@ export interface MarkStyle {
    * be spaced independently.
    */
   like?: string;
+  /**
+   * Where the marks sit: 'baseline' (default), where the font's '.' (or
+   * `like`) sits, or 'middle', the middle of an ideograph's box, where
+   * Chinese and Japanese set their dots.
+   */
+  align?: 'baseline' | 'middle';
+  /**
+   * Take this many of the cells Chinese and Japanese text is set in (each
+   * as wide as an ideograph), each mark centred in its share of them, so the
+   * text after the ellipsis stays in its columns. The ellipsis then keeps
+   * its width: no gaps are added beside it, nor slack spread into it.
+   */
+  cells?: number;
 }
 
 /**
  * - a string is rendered as text; each character is a separate mark, so
- *   '...' can be spaced out while '…' is a single glyph
+ *   '...' can be spaced out while '…' is a single glyph. Dots in brackets,
+ *   like '[…]' or '(...)', are one mark, set like a word.
  * - a `MarkStyle` draws shapes
+ * - 'auto': six dots in the middle of two cells (one on a single line) for
+ *   Chinese and Japanese text, '…' for any other
  */
 export type EllipsisStyle = string | MarkStyle;
 
@@ -65,6 +81,12 @@ export interface MarkLayout {
   css: string | null;
   /** Every mark is the same, so `repeat` can add more of them. */
   repeats: boolean;
+  /** Set like a word (dots in brackets): `rhythm` is a word space. */
+  word: boolean;
+  /** The cells the ellipsis takes (see `MarkStyle.cells`), or 0 for none. */
+  cells: number;
+  /** How wide those cells are, in px: the ellipsis' width, its marks set over them (see `onCells`). */
+  span: number;
 }
 
 /**
@@ -86,22 +108,50 @@ export function toPx(value: Length, fontSize: number): number {
 /** How many dots the horizontal dotted characters are made of. */
 const DOTS_IN: Record<string, number> = { '…': 3, '⋯': 3, '‥': 2 };
 
+/** Brackets that enclose an ellipsis in a quotation, as `[…]` marks words left out. */
+const BRACKETS = new Set(['[]', '()', '<>', '{}', '⟨⟩', '«»', '‹›', '［］', '（）', '〔〕', '【】']);
+const DOTTED = /^[.…⋯‥·]$/u;
+
+/** Whether `style` is dots in brackets, like '[…]' or '(...)': one mark, its brackets hugging its dots. */
+export function enclosed(style: EllipsisStyle): style is string {
+  if (typeof style !== 'string') return false;
+  const g = graphemes(style);
+  return g.length >= 3 && BRACKETS.has(g[0]! + g.at(-1)!) && g.slice(1, -1).every((c) => DOTTED.test(c));
+}
+
+/** The marks of a string ellipsis: each grapheme, or all of it for one enclosed in brackets. */
+const marksOf = (text: string): string[] => (enclosed(text) ? [text] : graphemes(text));
+
 /**
- * The marks actually drawn. `justify: 'dots'` and `repeat` need separate
- * marks, so a single glyph like '…' is redrawn as dots sized and placed like
- * its own.
+ * The marks actually drawn. `'auto'` is decided by the text (`cjk`). Then
+ * `justify: 'dots'` and `repeat` need separate marks, so a single glyph like
+ * '…' is redrawn as dots sized and placed like its own.
  */
-export function markStyleFor(settings: { ellipsis: EllipsisStyle; justify: unknown; repeat: boolean | number }): EllipsisStyle {
-  const e = settings.ellipsis;
+export function markStyleFor(
+  settings: { ellipsis: EllipsisStyle; justify: unknown; repeat: boolean | number; lines: number | 'fit' },
+  cjk = false,
+): EllipsisStyle {
+  const e = settings.ellipsis === 'auto' ? autoStyle(cjk, wraps(settings.lines)) : settings.ellipsis;
   const split = settings.justify === 'dots' || repeatRatio(settings.repeat) > 0;
   if (split && typeof e === 'string' && graphemes(e).length === 1) return { shape: 'dot', like: e, count: DOTS_IN[e] ?? 1 };
 
   return e;
 }
 
+/**
+ * The ellipsis `'auto'` stands for. Chinese and Japanese set theirs in the
+ * middle of the line, six dots over two cells in running text; one cell's
+ * worth is the usual cut of a single line.
+ */
+function autoStyle(cjk: boolean, wrapping: boolean): EllipsisStyle {
+  if (!cjk) return '…';
+  const cells = wrapping ? 2 : 1;
+  return { shape: 'dot', like: '…', count: 3 * cells, cells, align: 'middle' };
+}
+
 /** How many marks `style` draws (before `repeat` adds any). */
 export const markCount = (style: EllipsisStyle): number =>
-  typeof style === 'string' ? graphemes(style).length : Math.max(0, Math.round(style.count ?? 3));
+  typeof style === 'string' ? marksOf(style).length : Math.max(0, Math.round(style.count ?? 3 * Math.max(1, style.cells ?? 1)));
 
 /** Create the mark elements for an ellipsis. */
 export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
@@ -112,7 +162,7 @@ export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
     el.textContent = text;
     return el;
   };
-  if (typeof style === 'string') return graphemes(style).map(make);
+  if (typeof style === 'string') return marksOf(style).map(make);
   return Array.from({ length: markCount(style) }, () => {
     const el = make('');
     el.setAttribute('data-fp-shape', style.shape);
@@ -120,9 +170,9 @@ export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
   });
 }
 
-/** Plain-text stand-in for an ellipsis style. */
+/** Plain-text stand-in for the marks drawn (see `markStyleFor`): '……' for two cells. */
 export function ellipsisText(style: EllipsisStyle): string {
-  return typeof style === 'string' ? style : '…';
+  return typeof style === 'string' ? style : (style.like ?? '…').repeat(Math.max(1, style.cells ?? 1));
 }
 
 const diameter = (m: GlyphMetrics) => (m.left + m.right + m.ascent + m.descent) / 2;
@@ -143,7 +193,10 @@ export function layoutMarks(
   const transform = cs.textTransform;
   // The same marks, set the same way, measure the same (until fonts load):
   // the same layout, which tells a pass that nothing changed.
-  const marks = typeof style === 'string' ? style : `${style.shape} ${style.count} ${style.size} ${style.spacing} ${style.like}`;
+  const marks =
+    typeof style === 'string'
+      ? style
+      : `${style.shape} ${style.count} ${style.size} ${style.spacing} ${style.like} ${style.align} ${style.cells}`;
   const key = `${marks}|${font.css}|${fontSize}|${letterSpacing}|${transform}|${count}|${metricsVersion()}`;
   let layout = layouts.get(key);
   if (!layout) {
@@ -168,16 +221,22 @@ function measureMarks(
   const spacing = Number.isFinite(letterSpacing) ? letterSpacing : 0;
 
   if (typeof style === 'string') {
-    const marks = graphemes(applyTextTransform(style, transform));
-    const metrics = marks.map((g) => {
-      const m = measure(font, g);
-      return spacing !== 0 ? { ...m, advance: m.advance + spacing } : m;
-    });
+    const text = applyTextTransform(style, transform);
+    const marks = marksOf(text);
+    // Letter-spacing follows every grapheme, inside a mark too.
+    const spaced = (m: GlyphMetrics, n: number) =>
+      spacing !== 0 ? { ...m, advance: m.advance + n * spacing, right: m.right + (n - 1) * spacing } : m;
+    const metrics = marks.map((g) => spaced(measure(font, g), graphemes(g).length));
     const natural = metrics.slice(1).map((m, i) => inkGap(metrics[i]!, m));
     const single = marks.length === 1;
+    const word = enclosed(text);
     // With no marks at all the ellipsis is a gap; keep it as wide as the
     // font's own dot rhythm so the text on either side doesn't run together.
     const none = marks.length === 0 ? (dotSpacing(font, '…') ?? fontSize * 0.2) : null;
+    const rhythm = word
+      ? wordGap(font, metrics[0]!, spaced)
+      : (none ?? (single ? dotSpacing(font, marks[0]!) : natural.length > 0 ? natural.reduce((s, v) => s + v, 0) / natural.length : null));
+    const runs = single ? inkRuns(font, marks[0]!) : null;
     return {
       font,
       fontSize,
@@ -186,11 +245,14 @@ function measureMarks(
       metrics,
       natural,
       inner: natural.map(() => 0),
-      rhythm:
-        none ?? (single ? dotSpacing(font, marks[0]!) : natural.length > 0 ? natural.reduce((s, v) => s + v, 0) / natural.length : null),
-      runs: single ? inkRuns(font, marks[0]!) : null,
+      rhythm,
+      // An enclosed ellipsis' marks are its dots, not its brackets.
+      runs: word && runs && runs.length > 2 ? runs.slice(1, -1) : runs,
       css: null,
       repeats: marks.length > 1 && marks.every((g) => g === marks[0]),
+      word,
+      cells: 0,
+      span: 0,
     };
   }
 
@@ -202,22 +264,33 @@ function measureMarks(
   const natural = parts.length > 0 ? parts.reduce((s, [a, b]) => s + b - a, 0) / parts.length : diameter(reference);
   // A whole number of layout's units, so many of them add up exactly (see `repeat`).
   const d = toUnit(style.size !== undefined ? toPx(style.size, fontSize) : natural);
-  const middle = (reference.ascent - reference.descent) / 2;
+  // An ideograph's box is the em square, and '口' fills it: its middle is the box's.
+  const centre = style.align === 'middle' ? measure(font, '口') : reference;
+  const middle = (centre.ascent - centre.descent) / 2;
   const bottom = middle - d / 2;
   const own = style.like ? dotSpacing(font, style.like) : null;
+  const cells = Math.max(0, style.cells ?? 0);
+  // As an ideograph sets them: its advance, and the letter-spacing after it.
+  const span = cells * (measure(font, CELL).advance + spacing);
   const rhythm =
-    style.spacing !== undefined
-      ? toPx(style.spacing, fontSize)
-      : (own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period))));
+    cells > 0
+      ? span / Math.max(1, count) - d
+      : style.spacing !== undefined
+        ? toPx(style.spacing, fontSize)
+        : (own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period))));
   const m: GlyphMetrics = { advance: d, left: 0, right: d, ascent: bottom + d, descent: -bottom };
 
   const shapeCss =
     style.shape === 'ring'
       ? `box-sizing:border-box;border:${Math.max(1, d * 0.16)}px solid currentColor;border-radius:50%`
       : `background:currentColor;border-radius:${style.shape === 'square' ? 0 : '50%'}`;
+  // On cells, marks are set over the ideographs that take the room (see
+  // `onCells`), from the top of the ellipsis' box, its font's ascent above
+  // the baseline.
+  const place = cells > 0 ? `position:absolute;top:${ascent - bottom - d}px` : `display:inline-block;vertical-align:${bottom}px`;
   // In forced-colors mode backgrounds are overridden, which would erase the
   // marks; opting out keeps them in the (forced) text colour.
-  const css = `display:inline-block;white-space:pre;width:${d}px;height:${d}px;vertical-align:${bottom}px;forced-color-adjust:none;${shapeCss}`;
+  const css = `${place};white-space:pre;width:${d}px;height:${d}px;forced-color-adjust:none;${shapeCss}`;
   return {
     font,
     fontSize,
@@ -225,12 +298,43 @@ function measureMarks(
     drawn: true,
     metrics: Array.from({ length: count }, () => m),
     natural: Array.from({ length: Math.max(0, count - 1) }, () => 0),
-    inner: Array.from({ length: Math.max(0, count - 1) }, () => rhythm),
+    inner: Array.from({ length: Math.max(0, count - 1) }, () => (cells > 0 ? 0 : rhythm)),
     rhythm,
     runs: null,
     css,
-    repeats: count > 0,
+    repeats: count > 0 && cells === 0,
+    word: false,
+    cells,
+    span,
   };
+}
+
+/** The ideograph whose box is a cell. */
+const CELL = '一';
+
+/** What takes the room of `cells` cells: ideographs, set as the text around them is. */
+export const cellsText = (cells: number): string => CELL.repeat(Math.max(0, Math.round(cells)));
+
+/**
+ * Put marks on cells (see `MarkStyle.cells`): each centred in its share of
+ * the ellipsis, as wide as its cells are laid out, so a line that is
+ * justified, and spaces its ideographs apart, spaces the marks with them.
+ */
+export function onCells(marks: readonly HTMLElement[], d: number): void {
+  marks.forEach((el, k) => {
+    const left = `calc(${((k + 0.5) / marks.length) * 100}% - ${d / 2}px)`;
+    if (el.style.left !== left) el.style.left = left;
+  });
+}
+
+/**
+ * The ink gap a word space leaves before and after an ellipsis set like a
+ * word (`mark`), next to an 'n': what `gap: 'dots'` keeps either side of it.
+ */
+function wordGap(font: Font, mark: GlyphMetrics, spaced: (m: GlyphMetrics, n: number) => GlyphMetrics): number {
+  const n = spaced(measure(font, 'n'), 1);
+  const space = spaced(measure(font, ' '), 1).advance;
+  return (inkGap(n, mark) + inkGap(mark, n)) / 2 + space;
 }
 
 /** Give drawn marks their shape (see `MarkLayout.css`), keeping the margins set by spacing. */
@@ -263,7 +367,14 @@ export function markInk(layout: MarkLayout, marks: readonly HTMLElement[], ellip
 
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */
 export function groupMetrics(layout: MarkLayout, inner: readonly number[]): GlyphMetrics {
-  const { metrics } = layout;
+  const { metrics, span } = layout;
+  if (layout.cells > 0) {
+    // Its cells' width, its first and last marks centred in their shares of it.
+    const m = metrics[0];
+    if (!m) return { advance: span, left: 0, right: 0, ascent: 0, descent: 0 };
+    const inset = span / metrics.length / 2 - m.advance / 2;
+    return { advance: span, left: -inset, right: span - inset, ascent: m.ascent, descent: m.descent };
+  }
   if (metrics.length === 0) return { advance: 0, left: 0, right: 0, ascent: 0, descent: 0 };
   let origin = 0;
   let ascent = 0;

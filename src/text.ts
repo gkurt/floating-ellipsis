@@ -24,7 +24,7 @@ import {
   placesOf,
   toGraphemeRanges,
 } from './cut.ts';
-import { graphemes, isWhitespace } from './graphemes.ts';
+import { graphemes, isCJK, isWhitespace } from './graphemes.ts';
 import { advance } from './metrics.ts';
 import type { Part } from './options.ts';
 
@@ -47,7 +47,7 @@ export interface ElideTextOptions {
   position?: Position | readonly Position[];
   /** Parts that always stay visible, as in `elide`. */
   keep?: Keep | readonly Keep[] | null;
-  /** The ellipsis. Default '…'. */
+  /** The ellipsis. Default '…'. 'auto': '⋯', the midline ellipsis, for Chinese and Japanese text, '…' for any other. */
   ellipsis?: string;
   /** Drop whitespace touching an ellipsis. Default true. */
   trim?: boolean;
@@ -98,7 +98,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     letterSpacing = 0,
     position = 'end',
     keep = null,
-    ellipsis = '…',
+    ellipsis: chosen = '…',
     trim = true,
     snap = null,
     tighten = 0,
@@ -108,6 +108,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   if (!raw) throw new Error('elideText: pass a `font` or a `measure` function');
   const g = graphemes(text);
   const n = g.length;
+  const ellipsis = chosen === 'auto' ? (isCJK(g) ? '⋯' : '…') : chosen;
   const measure = (s: string, count: number) => raw(s) + letterSpacing * count;
 
   const full = measure(text, n);

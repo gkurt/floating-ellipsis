@@ -223,18 +223,23 @@ export function nest(
 }
 
 const SAY = 'data-fp-say';
+/** The cells an ellipsis takes (see `MarkStyle.cells`): ideographs nobody sees, nor finds, nor copies. */
+export const CELLS = 'data-fp-cells';
 let sheet: CSSStyleSheet | null | undefined;
 const adopted = new WeakSet<Document | ShadowRoot>();
 
 /**
- * Whether the screen-reader copy can be generated content where `node` is,
- * adopting the rule that draws it into its document or shadow root.
+ * Whether generated content (the screen-reader copy, an ellipsis' cells)
+ * can be drawn where `node` is, adopting the rules that draw it into its
+ * document or shadow root.
  */
-function canSay(node: Node): boolean {
+export function adopt(node: Node): boolean {
   if (sheet === undefined) {
     try {
       sheet = new CSSStyleSheet();
-      sheet.replaceSync(`[${SAY}]::before{content:attr(${SAY})}`);
+      sheet.replaceSync(
+        `[${SAY}]::before{content:attr(${SAY})}[${CELLS}]::before{content:attr(${CELLS});color:transparent;forced-color-adjust:none}`,
+      );
     } catch {
       sheet = null;
     }
@@ -261,7 +266,7 @@ export function speak(
   chains: readonly (Chain | null)[],
   units: readonly (Element | null)[],
 ): boolean {
-  const saying = canSay(host);
+  const saying = adopt(host);
   const text = (s: string): Node => {
     if (!saying) return document.createTextNode(s);
     const span = document.createElement('span');

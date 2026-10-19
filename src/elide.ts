@@ -29,15 +29,25 @@ import {
   wordsOf,
 } from './cut.ts';
 import { byId, forgetFound, hookDocument, instances } from './document.ts';
-import { isWhitespace } from './graphemes.ts';
+import { isCJK, isWhitespace } from './graphemes.ts';
 import { type Marking, besideEllipsis, fillPiece } from './highlight.ts';
 import { openUp } from './inside.ts';
-import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space } from './join.ts';
+import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space, spellCells } from './join.ts';
 import { type Justified, justify } from './justify.ts';
 import { type LineBox, contentEdges, contentHeight, holdStyle, lineBoxes, lineSpan } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
-import { type EllipsisStyle, type MarkLayout, groupMetrics, layoutMarks, markCount, markStyleFor, styleMarks, toPx } from './marks.ts';
-import { type Chain, UNIT_COPY, extentOf, graphemesWith, markCopies, originals, readMarkup, speak } from './markup.ts';
+import {
+  type EllipsisStyle,
+  type MarkLayout,
+  groupMetrics,
+  layoutMarks,
+  markCount,
+  markStyleFor,
+  onCells,
+  styleMarks,
+  toPx,
+} from './marks.ts';
+import { type Chain, UNIT_COPY, adopt, extentOf, graphemesWith, markCopies, originals, readMarkup, speak } from './markup.ts';
 import { type GapPlan, type GlyphMetrics, type Typeset, glyphIn, planGap, resolveGap, typesetOf } from './metrics.ts';
 import {
   type AutoSizeSlot,
@@ -269,6 +279,8 @@ export class Elide {
   #titled = false;
   #destroyed = false;
   #style: EllipsisStyle = '…';
+  /** The text is Chinese or Japanese, for `ellipsis: 'auto'` (see `isCJK`). */
+  #cjk = false;
   /** Gives the element its own inline height back, while we hold it. */
   #heightLock: (() => void) | null = null;
   /** How many lines the text was on when its height was held. */
@@ -510,12 +522,9 @@ export class Elide {
     this.#settings = { ...before, ...defined(rest) };
     const s = this.#settings;
     const restyled =
-      markStyleFor(s) !== this.#style && (s.ellipsis !== before.ellipsis || s.justify !== before.justify || s.repeat !== before.repeat);
-    if (restyled || wraps(s.lines) !== wraps(before.lines)) {
-      for (const join of this.#joins) this.#fillMarks(join);
-      // The old measurements describe marks that are gone.
-      if (this.#lastRun) this.#lastRun.marks = null;
-    }
+      markStyleFor(s, this.#cjk) !== this.#style &&
+      (s.ellipsis !== before.ellipsis || s.justify !== before.justify || s.repeat !== before.repeat);
+    if (restyled || wraps(s.lines) !== wraps(before.lines)) this.#restyle();
     if (s.observe !== before.observe) this.#observe(s.observe);
     if (s.lines !== before.lines) this.#bias = null;
     this.#watchRoom();
@@ -652,6 +661,11 @@ export class Elide {
     this.#even = !/^\s|\s$|\s\s|[\t\n\r\f]/.test(text);
     this.#misjudged = null;
     ({ graphemes: this.#g, units: this.#units } = graphemesWith(text, units));
+    const cjk = isCJK(this.#g, this.element.closest('[lang]')?.getAttribute('lang') ?? '');
+    if (cjk !== this.#cjk) {
+      this.#cjk = cjk;
+      if (this.#settings.ellipsis === 'auto') this.#restyle();
+    }
     this.#unitWidths.clear();
     this.#offsets = [0];
     for (const s of this.#g) this.#offsets.push(this.#offsets[this.#offsets.length - 1]! + s.length);
@@ -765,9 +779,16 @@ export class Elide {
   }
 
   #fillMarks(join: Join) {
-    this.#style = markStyleFor(this.#settings);
+    this.#style = markStyleFor(this.#settings, this.#cjk);
     // Only text that can wrap needs gluing: Firefox letter-spaces the joiners.
     drawMarks(join, this.#style, wraps(this.#settings.lines));
+  }
+
+  /** Draw every ellipsis' marks afresh. */
+  #restyle() {
+    for (const join of this.#joins) this.#fillMarks(join);
+    // The old measurements describe marks that are gone.
+    if (this.#lastRun) this.#lastRun.marks = null;
   }
 
   #runEl(index: number): HTMLSpanElement {
@@ -919,7 +940,9 @@ export class Elide {
   /** The ellipsis' marks as one glyph, and the gap wanted on each side of it. */
   #spacing(run: Run) {
     const layout = this.#markLayout(run);
-    return { group: groupMetrics(layout, layout.inner), target: resolveGap(this.#settings.gap, layout.fontSize, () => layout.rhythm) };
+    // An ellipsis on cells has its room inside it (see `MarkStyle.cells`).
+    const target = layout.cells > 0 ? 'none' : resolveGap(this.#settings.gap, layout.fontSize, () => layout.rhythm);
+    return { group: groupMetrics(layout, layout.inner), target };
   }
 
   /** The glyph at `i` as an ellipsis' neighbour: null for none, or whitespace (it has no ink). A unit is inked edge to edge. */
@@ -1166,6 +1189,13 @@ export class Elide {
 
     const layout = this.#markLayout(run);
     if (layout.css !== null) for (let j = 0; j < m; j++) styleMarks(this.#joins[j]!.marks, layout.css);
+    if (layout.cells > 0) {
+      const generated = adopt(this.element);
+      for (let j = 0; j < m; j++) {
+        onCells(this.#joins[j]!.marks, layout.metrics[0]?.advance ?? 0);
+        if (!generated) spellCells(this.#joins[j]!);
+      }
+    }
     const plans = this.#plan(run, hidden);
     plans.forEach((plan, j) => space(this.#joins[j]!, plan.marginLeft, plan.marginRight, layout.inner));
     return plans;
@@ -1184,10 +1214,14 @@ export class Elide {
    */
   #justified(run: Run, plans: GapPlan[], lines: number, hidden: readonly Range[], end: number | null = null): Justified {
     const boxes = (): LineBox[] => (end === null ? lineBoxes(...this.#lineParts()) : [{ top: 0, bottom: 0, left: run.left, right: end }]);
+    const marks = run.marks!;
     return {
-      mode: this.#settings.justify,
+      // An ellipsis on cells keeps its width, so the text after it keeps to them.
+      mode: marks.cells > 0 ? false : this.#settings.justify,
       repeat: repeatRatio(this.#settings.repeat),
-      maxGap: this.#settings.maxGap === null ? null : toPx(this.#settings.maxGap, run.marks!.fontSize),
+      // One set like a word may always have a word space.
+      maxGap:
+        this.#settings.maxGap === null ? null : Math.max(toPx(this.#settings.maxGap, marks.fontSize), marks.word ? (marks.rhythm ?? 0) : 0),
       lines,
       // Truncated, lines break one after another (see `greedy`).
       sure: (!wraps(this.#settings.lines) && WRAP_MODE) || !run.rebreaks || this.#ungreedy !== null,

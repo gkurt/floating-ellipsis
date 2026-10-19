@@ -38,7 +38,11 @@ export interface ElideOptions {
   /**
    * What the ellipsis looks like: a string ('…' by default, '...', '·····')
    * or drawn marks, e.g. `{ shape: 'bullet', count: 5 }`. See `MarkStyle`.
-   * An empty string or `count: 0` leaves just a balanced gap.
+   * An empty string or `count: 0` leaves just a balanced gap. Dots in
+   * brackets ('[…]', '(…)') mark words left out of a quotation: the brackets
+   * hug the dots, and the ellipsis is spaced like a word. 'auto' sets
+   * Chinese and Japanese text's ellipsis in the middle of the line, on its
+   * cells (see `MarkStyle.cells`), and any other text's as '…'.
    */
   ellipsis?: EllipsisStyle;
   /**

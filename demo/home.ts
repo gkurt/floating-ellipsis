@@ -20,6 +20,7 @@ import {
   lensAt,
   lineSteps,
   listRows,
+  markRows,
   post as postText,
   quote,
   river,
@@ -449,4 +450,22 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('inputCode', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
   stage(box, [0.5, 1]);
+}
+
+// ---------------------------------------------------------------------------
+// 17 Quotations, Chinese and Japanese
+
+{
+  const box = $('#marksBox');
+  for (const { label, text, lang, options } of markRows) {
+    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+    const line = el('p', 'line', text);
+    if (lang) line.lang = lang;
+    if (options.lines !== undefined) line.classList.add('wraps');
+    row.append(line);
+    box.insertBefore(row, $('.handle', box));
+    elide(line, options);
+  }
+  setCode('marksCode', "elide(quote, { ellipsis: «'[…]'», snap: words() }); elide(chinese, { ellipsis: «'auto'» })");
+  stage(box, [0.4, 0.75]);
 }

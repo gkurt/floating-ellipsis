@@ -4,7 +4,8 @@
  * its place while expanded.
  */
 import { type Range, wordAround } from './cut.ts';
-import { type EllipsisStyle, buildMarks } from './marks.ts';
+import { type EllipsisStyle, buildMarks, cellsText } from './marks.ts';
+import { CELLS } from './markup.ts';
 
 export interface Join {
   el: HTMLSpanElement;
@@ -65,13 +66,31 @@ export function createJoin(id: string, index: number, find: boolean): Join {
 /**
  * Draw the join's marks in `style`. WebKit breaks a line after the (inline-
  * block) marks despite the join's `nowrap`, unless text sits right before and
- * after them in the ellipsis: `glue` puts joiners there.
+ * after them in the ellipsis: `glue` puts joiners there. Marks on cells are
+ * set over the ideographs that take their room (generated content, see
+ * `CELLS`), and out of the flow, so they need none.
  */
 export function drawMarks(join: Join, style: EllipsisStyle, glue: boolean): void {
   join.marks = buildMarks(style);
-  const joiner = () => document.createTextNode(WORD_JOINER);
-  join.drawn = glue && join.marks.length > 0 ? [joiner(), ...join.marks, joiner()] : join.marks;
+  const cells = typeof style === 'string' ? 0 : (style.cells ?? 0);
+  join.ellipsis.style.position = cells > 0 ? 'relative' : '';
+  if (cells > 0) {
+    const room = document.createElement('span');
+    room.setAttribute(CELLS, cellsText(cells));
+    join.drawn = [room, ...join.marks];
+  } else {
+    const joiner = () => document.createTextNode(WORD_JOINER);
+    join.drawn = glue && join.marks.length > 0 ? [joiner(), ...join.marks, joiner()] : join.marks;
+  }
   join.ellipsis.replaceChildren(...join.drawn);
+}
+
+/** Where generated content can't be drawn, an ellipsis' cells are text nobody sees. */
+export function spellCells(join: Join): void {
+  const room = join.drawn[0];
+  if (!(room instanceof HTMLElement) || !room.hasAttribute(CELLS) || room.firstChild) return;
+  room.style.color = 'transparent';
+  room.textContent = room.getAttribute(CELLS);
 }
 
 /**

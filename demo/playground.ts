@@ -74,6 +74,7 @@ function parseKeep(value: string): (string | RegExp)[] {
 function ellipsisStyle(kind: string, n: number): EllipsisStyle {
   if (kind === 'glyph') return n === 3 ? '…' : { shape: 'dot', like: '…', count: n };
   if (kind === 'periods') return '.'.repeat(n);
+  if (kind === 'quotation') return `[${'.'.repeat(n)}]`;
   return { shape: kind as 'dot' | 'bullet' | 'ring' | 'square', count: n };
 }
 
@@ -118,7 +119,15 @@ const textDials = createDialKit('Text', {
 const ellipsisDials = createDialKit('Ellipsis', {
   style: {
     type: 'select',
-    options: [{ value: 'glyph', label: '… (the font’s)' }, { value: 'periods', label: '... (periods)' }, 'dot', 'bullet', 'ring', 'square'],
+    options: [
+      { value: 'glyph', label: '… (the font’s)' },
+      { value: 'periods', label: '... (periods)' },
+      { value: 'quotation', label: '[...] (a quotation)' },
+      'dot',
+      'bullet',
+      'ring',
+      'square',
+    ],
     default: 'glyph',
   },
   dots: [3, 0, 7, 1],

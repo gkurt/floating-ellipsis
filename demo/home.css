@@ -136,6 +136,9 @@
   font: 400 clamp(18px, 2.6vw, 28px) / 1.4 var(--sans);
   white-space: nowrap;
 }
+.scene .line.wraps {
+  white-space: normal;
+}
 .scene .line.mono {
   font: 400 clamp(14px, 2vw, 21px) / 1.5 var(--mono);
 }
