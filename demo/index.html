@@ -21,10 +21,16 @@
     <!-- The video's scenes (video.ts), live: the examples come from examples.ts, and the boxes are yours to resize. -->
     <header class="intro">
       <nav class="eyebrow">
-        <span>floating-ellipsis</span>
+        <span class="brand">floating-ellipsis</span>
+        <a href="./advanced.html">Advanced</a>
         <a href="./playground.html">Playground</a>
-        <a href="./table.html">Table</a>
-        <a href="https://github.com/gkurt/floating-ellipsis">GitHub</a>
+        <a class="github" href="https://github.com/gkurt/floating-ellipsis"
+          ><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+            /></svg
+          >GitHub</a
+        >
       </nav>
       <h1>Truncate text <em>anywhere.</em></h1>
       <div class="hero-stage">
@@ -171,195 +177,25 @@
         </div>
       </section>
 
-      <section class="block scene" aria-labelledby="lens-title">
-        <div class="scene-head">
-          <p class="num">09</p>
-          <h2 id="lens-title">Customize: a <em>lens.</em></h2>
-          <p>Move the pointer across the quote: the part under it is kept, and the cut follows.</p>
-        </div>
-        <p class="code" id="lensCode"></p>
-        <div class="stage lens" id="lensStage">
-          <p class="lens-line" id="lensLine"></p>
-          <p class="lens-hint">— Ada Lovelace, 1843</p>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="autosize-title">
-        <div class="scene-head">
-          <p class="num">10</p>
-          <h2 id="autosize-title">Sized by <em>content.</em></h2>
-          <p>
-            A chip or a flex item takes its width from its text, so once cut it stays narrow. With <code>autoSize()</code> it takes the
-            width its full text would, and grows back when there is room. Narrow the box, then widen it again. And with
-            <code>lines: 'fit'</code>, text shows as many lines as its box is tall: drag the card's corner.
-          </p>
-        </div>
-        <p class="code" id="autosizeCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="autosizeBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="units-title">
-        <div class="scene-head">
-          <p class="num">11</p>
-          <h2 id="units-title">Icons, emoji and every <em>script.</em></h2>
-          <p>
-            Images, icons and elements marked <code>data-elide-unit</code> show whole or not at all. Emoji, skin tones and the letters of
-            any script are never split, wherever the cut falls.
-          </p>
-        </div>
-        <p class="code" id="unitsCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="unitsBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="list-title">
-        <div class="scene-head">
-          <p class="num">12</p>
-          <h2 id="list-title">Lists say how many are <em>left.</em></h2>
-          <p>
-            With <code>floating-ellipsis/list</code>, items show whole or not at all, and a label counts the rest, joined as the list joins
-            its last item. When not even the first fits, it's cut. Screen readers still read every item.
-          </p>
-        </div>
-        <p class="code" id="listCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="listBox">
-            <button class="handle" aria-label="Resize the lists (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="snippet-title">
-        <div class="scene-head">
-          <p class="num">13</p>
-          <h2 id="snippet-title">Snippets around a <em>match.</em></h2>
-          <p>
-            Give a kept part <code>context</code>: words either side of every match show first, a word at a time, after and then before, and
-            the start of the text only once they all do. Type a word to search for.
-          </p>
-        </div>
-        <p class="code" id="snippetCode"></p>
-        <div class="stage">
-          <input class="field search" id="snippetQuery" type="search" value="lantern" aria-label="Search the notes" />
-          <div class="resizable line-list" id="snippetBox">
-            <button class="handle" aria-label="Resize the results (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="whole-title">
-        <div class="scene-head">
-          <p class="num">14</p>
-          <h2 id="whole-title">Numbers stay <em>whole.</em></h2>
-          <p>
-            A cut through <q>$12,345.67</q> that shows <q>$12,3…</q> misreports it. With <code>whole</code>, matches show whole or not at
-            all: a cut that would split one slides off it, hiding as much elsewhere. It's the rule <code>words()</code> follows, and the two
-            combine.
-          </p>
-        </div>
-        <p class="code" id="wholeCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="wholeBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="tighten-title">
-        <div class="scene-head">
-          <p class="num">15</p>
-          <h2 id="tighten-title">Tighten before you <em>cut.</em></h2>
-          <p>
-            Text a few pixels too long loses a whole ellipsis' worth of letters. With <code>tighten</code>, it's set a little tighter
-            instead, word spaces most, just enough to end at the edge, and only cut once that isn't enough. With <code>tightenCuts</code>, a
-            cut line is set tighter too, to show a few more letters.
-          </p>
-        </div>
-        <p class="code" id="tightenCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="tightenBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="input-title">
-        <div class="scene-head">
-          <p class="num">16</p>
-          <h2 id="input-title">Fields, cut until you <em>edit.</em></h2>
-          <p>
-            <code>floating-ellipsis/input</code> shows a field's value cut while it isn't being edited. Click anywhere, even on the
-            ellipsis: the whole value appears with the glyph you pressed still under the pointer, and the caret beside it.
-          </p>
-        </div>
-        <p class="code" id="inputCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="inputBox">
-            <button class="handle" aria-label="Resize the fields (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="marks-title">
-        <div class="scene-head">
-          <p class="num">17</p>
-          <h2 id="marks-title">Quotations, Chinese and <em>Japanese.</em></h2>
-          <p>
-            Words left out of a quotation are marked <q>[…]</q>: the brackets hug the dots, and the room goes either side, from a word
-            space. Chinese and Japanese set their ellipsis in the middle of the line, six dots over two characters' cells.
-            <code>'auto'</code> does that for their text, whatever font the dots would come from, and takes exactly as many cells as it
-            says, so the characters after it stay in their columns, even on a justified line.
-          </p>
-        </div>
-        <p class="code" id="marksCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="marksBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="block scene" aria-labelledby="short-title">
-        <div class="scene-head">
-          <p class="num">18</p>
-          <h2 id="short-title">Shorter before it's <em>cut.</em></h2>
-          <p>
-            <q>Wednesday</q> can be <q>Wed</q> long before anything needs an ellipsis. With <code>shorten</code>, parts take their short
-            forms a step at a time, as few as fit, the least important first; past the last, the text is cut. Copying, find in page and
-            screen readers get the long forms, and so does the tooltip. <code>dateForms</code> writes a date down to <q>10/14/26</q> as its
-            locale does, and <code>data-elide-short</code> gives markup its own.
-          </p>
-        </div>
-        <p class="code" id="shortCode"></p>
-        <div class="stage">
-          <div class="resizable labeled" id="shortBox">
-            <button class="handle" aria-label="Resize the rows (left and right arrow keys)"></button>
-          </div>
-        </div>
-      </section>
-
       <section class="block more-links" aria-labelledby="more-title">
         <h2 id="more-title">More</h2>
         <ul>
+          <li>
+            <a href="./advanced.html"
+              ><b>Advanced features</b
+              ><span
+                >Sized by content, icons and emoji, lists, snippets, whole numbers, tightening, text fields, quotations and short
+                forms.</span
+              ></a
+            >
+          </li>
           <li>
             <a href="./playground.html"
               ><b>Playground</b><span>One line, every option on dials: shapes, gaps, justification, motion, ink guides.</span></a
             >
           </li>
           <li>
-            <a href="./table.html"><b>Crowded table</b><span>2,500 rows resized together: all read layout, then all write.</span></a>
-          </li>
-          <li>
-            <a href="./autosize.html"
-              ><b>Sized by content</b><span>Chips, flex items and inline-blocks, with and without autoSize.</span></a
-            >
+            <a href="./table.html"><b>Demo: Crowded table</b><span>2,500 rows resized together: all read layout, then all write.</span></a>
           </li>
           <li>
             <a href="https://github.com/gkurt/floating-ellipsis"><b>Docs</b><span>The README, and how it works.</span></a>

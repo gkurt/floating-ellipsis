@@ -1,4 +1,4 @@
-/* The home page (index.html): the video's scenes (video.css), on the site's tokens. */
+/* The home page (index.html) and the advanced page (advanced.html): the video's scenes (video.css), on the site's tokens. */
 
 .home .intro {
   padding-top: 40px;
@@ -11,16 +11,22 @@
   gap: 8px 22px;
   margin-bottom: 64px;
 }
-.home .eyebrow span {
-  color: var(--accent);
-  margin-right: auto;
-}
 .home .eyebrow a {
   color: var(--muted);
   text-decoration: none;
 }
-.home .eyebrow a:hover {
+.home .eyebrow a:hover,
+.home .eyebrow a[aria-current='page'] {
   color: var(--ink);
+}
+.home .eyebrow .brand {
+  color: var(--accent);
+  margin-right: auto;
+}
+.home .eyebrow .github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .home h1 {
   font-size: clamp(52px, 10vw, 112px);
@@ -302,7 +308,7 @@ input.track:focus-visible {
   gap: 18px;
 }
 
-/* 08: two columns of the same paths. */
+/* Home 08: two columns of the same paths. */
 .split {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -318,27 +324,7 @@ input.track:focus-visible {
   font-size: clamp(12px, 1.6vw, 17px);
 }
 
-/* 09: the lens. */
-.stage.lens {
-  cursor: crosshair;
-}
-.lens-line {
-  margin: 0;
-  font: 400 clamp(28px, 4.4vw, 50px) / 1.3 var(--serif);
-  white-space: nowrap;
-}
-.lens-line [data-fp-kept] {
-  color: var(--accent);
-}
-.lens-line [data-fp-ellipsis] {
-  color: var(--muted);
-}
-.lens-hint {
-  margin: 24px 0 0;
-  color: var(--muted);
-}
-
-/* 10: chips sized by their text, in a row that may not wrap. */
+/* Advanced 01: chips sized by their text, in a row that may not wrap. */
 .chips {
   display: flex;
   gap: 8px;
@@ -354,7 +340,7 @@ input.track:focus-visible {
   white-space: nowrap;
 }
 
-/* 10: a card as tall as you drag it, its text fitted to that. */
+/* Advanced 01: a card as tall as you drag it, its text fitted to that. */
 .fit-card {
   display: flex;
   flex-direction: column;
@@ -375,7 +361,7 @@ input.track:focus-visible {
   margin: 0;
 }
 
-/* 11: icons and mentions, kept whole. */
+/* Advanced 02: icons and mentions, kept whole. */
 .scene .line .icon {
   vertical-align: -0.12em;
   color: var(--accent-2);
@@ -388,14 +374,14 @@ input.track:focus-visible {
   font-size: 0.86em;
 }
 
-/* 12: the label counting what a list hides. */
+/* Advanced 03: the label counting what a list hides. */
 .scene [data-fp-list] {
   color: var(--muted);
 }
 
 /* ------------------------------------------------------------------------ */
 
-/* The search field, the fields and the readouts (13 to 16) */
+/* The search field, the fields and the readouts (advanced 04 to 07) */
 .home .field {
   box-sizing: border-box;
   width: 100%;

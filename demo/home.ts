@@ -1,42 +1,29 @@
-import { autoSize } from '#src/autosize.ts';
 import { glyphs } from '#src/glyphs.ts';
-import { type Elide, type ElideOptions, elide } from '#src/index.ts';
-import { elideInput } from '#src/input.ts';
+import { elide } from '#src/index.ts';
 import { suffix } from '#src/suffix.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { transitions } from '#src/transitions.ts';
 import {
   calm,
-  code,
   fading,
   fast,
   fileIcon,
   hero,
-  inputFields,
   issues,
   keepRows,
   lantern,
   lanternPosition,
-  lensAt,
   lineSteps,
-  listRows,
-  markRows,
   post as postText,
-  quote,
   river,
   sharedColumns,
-  shortRows,
   siblings,
   snapRows,
-  snippetKeep,
-  snippets,
-  tightRows,
   toggleSmoothly,
   tooltipOptions,
   tooltipPaths,
-  unitRows,
-  wholeRows,
 } from './examples.ts';
+import { calmMotion, el, room, setCode, stage } from './scenes.ts';
 import { $, resizable } from './ui.ts';
 
 /**
@@ -44,70 +31,6 @@ import { $, resizable } from './ui.ts';
  * when it first comes into view, as in the video, and then it's the
  * reader's to resize.
  */
-
-const calmMotion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, html = ''): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = cls;
-  node.innerHTML = html;
-  return node;
-}
-
-function setCode(id: string, src: string) {
-  $(`#${id}`).innerHTML = code(src);
-}
-
-/** The widest a box may be: its parent's content width. */
-function room(box: HTMLElement) {
-  const parent = box.parentElement!;
-  const cs = getComputedStyle(parent);
-  return parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-}
-
-const smooth = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2);
-
-/**
- * Resizable by its handle; the first time it's well in view, its width
- * sweeps through `widths` (fractions of the room it has), unless the handle
- * is taken first.
- */
-function stage(box: HTMLElement, widths: number[]) {
-  let taken = false;
-  resizable(box, () => (taken = true));
-  if (!calmMotion) return;
-  const seen = new IntersectionObserver(
-    ([entry]) => {
-      if (!entry?.isIntersecting) return;
-      seen.disconnect();
-      void sweep();
-    },
-    { threshold: 0.6 },
-  );
-  seen.observe(box);
-  async function sweep() {
-    for (const to of widths) {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      const from = box.getBoundingClientRect().width;
-      const target = to * room(box);
-      const ms = Math.min(1700, Math.max(700, Math.abs(target - from) * 2.6));
-      const start = performance.now();
-      const done = await new Promise<boolean>((resolve) => {
-        const frame = (now: number) => {
-          if (taken) return resolve(false);
-          const k = Math.min(1, (now - start) / ms);
-          box.style.width = `${from + (target - from) * smooth(k)}px`;
-          if (k < 1) requestAnimationFrame(frame);
-          else resolve(true);
-        };
-        requestAnimationFrame(frame);
-      });
-      if (!done) return;
-    }
-    // Back to a share of the room, so it follows the window from here.
-    box.style.width = `${widths.at(-1)! * 100}%`;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Hero: the line breathes while it's on screen, until its handle is taken.
@@ -291,204 +214,4 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
   }
   setCode('sharedCode', "keep: differing(path, siblings), snap: separators(«'/'»)");
   stage(box, [0.72]);
-}
-
-// ---------------------------------------------------------------------------
-// 09 A lens, following the pointer
-
-{
-  const lensStage = $('#lensStage');
-  const line = $('#lensLine');
-  line.textContent = quote;
-  const n = [...new Intl.Segmenter().segment(quote)].length;
-  const t: Elide = elide(line, { position: 0.5, glyphs });
-  setCode('lensCode', 'keep: { start: «0», end: «0» }, position: «0.50»');
-  lensStage.addEventListener('pointermove', (e) => {
-    const r = line.getBoundingClientRect();
-    const { options, src } = lensAt(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), n);
-    t.update(options);
-    setCode('lensCode', src);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// 10 Sized by content
-
-{
-  const box = $('#autosizeBox');
-  const chips = ['feature/balanced-ellipsis-gaps', 'design-system/tokens/colors.json', 'release/2026-10-14-hotfix'];
-  const rows: [string, ElideOptions][] = [
-    ['without', { position: 'middle' }],
-    ['autoSize()', { position: 'middle', autoSize: autoSize() }],
-  ];
-  for (const [label, options] of rows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const strip = el('div', 'chips');
-    for (const text of chips) {
-      const chip = el('span', 'chip', text);
-      strip.append(chip);
-      elide(chip, options);
-    }
-    row.append(strip);
-    box.insertBefore(row, $('.handle', box));
-  }
-  const row = el('div', 'labeled-row', "<code>lines: 'fit'</code>");
-  const card = el('div', 'fit-card');
-  const para = el('p', '', river);
-  card.append(para);
-  row.append(card);
-  box.insertBefore(row, $('.handle', box));
-  transitions(elide(para, { lines: 'fit', position: 0.6 }), calm);
-  setCode('autosizeCode', "elide(chip, { autoSize: autoSize() })   elide(p, { lines: «'fit'» })");
-  stage(box, [0.4, 1]);
-}
-
-// ---------------------------------------------------------------------------
-// 11 Icons, emoji and every script
-
-{
-  const box = $('#unitsBox');
-  for (const { label, text, options } of unitRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    row.append(line);
-    box.insertBefore(row, $('.handle', box));
-    transitions(elide(line, options), calm);
-  }
-  setCode('unitsCode', "elide(el, { position: «'middle'» }) // <img>, <svg> and [data-elide-unit] stay whole");
-  stage(box, [0.4, 0.9]);
-}
-
-// ---------------------------------------------------------------------------
-// 12 Lists
-
-{
-  const box = $('#listBox');
-  for (const { label, text, options } of listRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    row.append(line);
-    box.insertBefore(row, $('.handle', box));
-    elide(line, options);
-  }
-  setCode('listCode', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
-  stage(box, [0.3, 0.75]);
-}
-
-// ---------------------------------------------------------------------------
-// 13 Snippets around a match
-
-{
-  const box = $('#snippetBox');
-  const query = $<HTMLInputElement>('#snippetQuery');
-  const rows = snippets.map((text) => {
-    const line = el('p', 'line', text);
-    box.insertBefore(line, $('.handle', box));
-    return elide(line, { keep: snippetKeep(query.value) });
-  });
-  const search = () => {
-    const keep = snippetKeep(query.value);
-    for (const t of rows) t.update({ keep });
-    const q = query.value.trim().replace(/[<&]/g, '') || '…';
-    setCode('snippetCode', `keep: { match: /«${q}»/gi, class: «'hit'», context: «Infinity» }`);
-  };
-  query.addEventListener('input', search);
-  search();
-  stage(box, [0.35, 0.8]);
-}
-
-// ---------------------------------------------------------------------------
-// 14 Numbers stay whole
-
-{
-  const box = $('#wholeBox');
-  for (const { label, text, options } of wholeRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    row.append(line);
-    box.insertBefore(row, $('.handle', box));
-    transitions(elide(line, options), calm);
-  }
-  setCode('wholeCode', "elide(el, { position: «'middle'», whole: «/[$€£]?\\d[\\d,.:/-]*\\d%?/g» })");
-  stage(box, [0.45, 0.9]);
-}
-
-// ---------------------------------------------------------------------------
-// 15 Tighten before you cut
-
-{
-  const box = $('#tightenBox');
-  for (const { label, text, options } of tightRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    const readout = el('span', 'tightness');
-    row.append(line, readout);
-    box.insertBefore(row, $('.handle', box));
-    elide(line, options).onRender(({ tightened, truncated }) => {
-      const by = tightened > 0 ? `−${tightened.toFixed(2)}px` : '';
-      readout.textContent = truncated ? `cut ${by}`.trim() : by;
-    });
-  }
-  setCode('tightenCode', "elide(el, { tighten: «'0.05em'» }) // letters up to 0.05em closer, word spaces 0.1em");
-  stage(box, [0.42, 0.62]);
-}
-
-// ---------------------------------------------------------------------------
-// 16 Fields, cut until you edit
-
-{
-  const box = $('#inputBox');
-  for (const { label, value, placeholder, options } of inputFields) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const input = el('input', 'field');
-    input.value = value;
-    input.placeholder = placeholder;
-    input.spellcheck = false;
-    input.setAttribute('aria-label', label);
-    row.append(input);
-    box.insertBefore(row, $('.handle', box));
-    elideInput(input, options);
-  }
-  setCode('inputCode', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
-  stage(box, [0.5, 0.75]);
-}
-
-// ---------------------------------------------------------------------------
-// 17 Quotations, Chinese and Japanese
-
-{
-  const box = $('#marksBox');
-  for (const { label, text, lang, options } of markRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    if (lang) line.lang = lang;
-    if (options.lines !== undefined) line.classList.add('wraps');
-    row.append(line);
-    box.insertBefore(row, $('.handle', box));
-    elide(line, options);
-  }
-  setCode('marksCode', "elide(quote, { ellipsis: «'[…]'», snap: words() }); elide(chinese, { ellipsis: «'auto'» })");
-  stage(box, [0.4, 0.75]);
-}
-
-// ---------------------------------------------------------------------------
-// 18 Shorter before it's cut
-
-{
-  const box = $('#shortBox');
-  const tips = tooltip({ reveal: 'grow' });
-  for (const { label, text, options } of shortRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
-    const line = el('p', 'line', text);
-    const readout = el('span', 'tightness');
-    row.append(line, readout);
-    box.insertBefore(row, $('.handle', box));
-    const t = elide(line, options);
-    t.onRender(({ short, truncated }) => {
-      readout.textContent = truncated ? 'cut' : short.length > 0 ? `${short.length} short` : '';
-    });
-    tips.attach(t, row);
-  }
-  setCode('shortCode', "shorten: [{ match: «'Wednesday'», to: [«'Wed'», «'W'»] }, { match: «' 2026'», to: «''» }]");
-  stage(box, [0.4, 0.85]);
 }

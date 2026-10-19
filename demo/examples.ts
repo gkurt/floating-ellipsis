@@ -4,7 +4,7 @@ import type { InputOptions } from '#src/input.ts';
 import { list, split } from '#src/list.ts';
 import type { TransitionOptions } from '#src/transitions.ts';
 
-/** The examples the home page and the video share: their text, and the options that cut it. */
+/** The examples the home and advanced pages and the video share: their text, and the options that cut it. */
 
 /** Glyphs merge into the dots, and the spacing between the dots glides: for one change at a time. */
 export const calm: TransitionOptions = { effect: 'merge' };
@@ -226,31 +226,18 @@ export const sharedColumns: [string, (path: string) => ElideOptions][] = [
 export const quote =
   'We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard loom weaves flowers and leaves.';
 
-/** How far either side of the pointer the lens keeps, in graphemes. */
-export const lensReach = 9;
-
-/** The lens' `keep` and `position` for a pointer `p` of the way across a text of `n` graphemes. */
-export function lensAt(p: number, n: number) {
-  const i = Math.round(p * (n - 1));
-  const [start, end] = [Math.max(0, i - lensReach), Math.min(n, i + lensReach)];
-  return {
-    options: { keep: { start, end, class: 'lensed' }, position: p },
-    src: `keep: { start: «${start}», end: «${end}» }, position: «${p.toFixed(2)}»`,
-  };
-}
-
-/** Search results: the query is kept with as much context as fits, word by word. */
+/** Search results: the query is kept with a few words around it. */
 export const snippets = [
-  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill, and by dusk the lantern by the gate was the only light left on the bank.',
-  'Notes from the workshop: the brass gears arrived on Tuesday, the engine turned for the first time on Friday, and somebody hung a paper lantern over the bench to celebrate.',
+  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill, and by dusk the lamp by the gate was the only light left on the bank.',
+  'Notes from the workshop: the brass gears arrived on Tuesday, the engine turned for the first time on Friday, and somebody hung a paper lamp over the bench to celebrate.',
   'We waited on the bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning.',
 ];
 
-/** A keep for every match of `query`, highlighted, with all the context that fits around it. */
+/** A keep for every match of `query`, highlighted, with two words either side of it. */
 export function snippetKeep(query: string): ElideOptions['keep'] {
   const q = query.trim();
   if (!q) return null;
-  return { match: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), class: 'hit', context: Infinity };
+  return { match: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), class: 'hit', context: 2 };
 }
 
 /** Amounts, dates, versions, ids: a cut through one would misreport it. */
@@ -339,7 +326,7 @@ export const shortRows: { label: string; text: string; options: ElideOptions }[]
   { label: 'dateForms', text: `Due ${due.text}`, options: { shorten: due.shorten } },
   {
     label: 'data-elide-short',
-    text: 'Lantern fixture: <span data-elide-short="Ada">Ada Lovelace</span> and <span data-elide-short="Grace">Grace Hopper</span> reviewing, <b data-elide-short="Thu">Thursday</b>',
+    text: 'Release notes: <span data-elide-short="Ada">Ada Lovelace</span> and <span data-elide-short="Grace">Grace Hopper</span> reviewing, <b data-elide-short="Thu">Thursday</b>',
     options: { position: 'middle' },
   },
 ];

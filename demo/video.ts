@@ -14,10 +14,8 @@ import {
   keepRows,
   lantern,
   lanternPosition,
-  lensAt,
   lineSteps,
   post as postText,
-  quote,
   river,
   sharedColumns,
   siblings,
@@ -122,7 +120,7 @@ async function click(el: HTMLElement) {
 
 const scenes = $('#scenes');
 const counter = $('#counter');
-const chapters = 9;
+const chapters = 8;
 
 class Scene {
   readonly section = document.createElement('section');
@@ -454,46 +452,6 @@ async function shared() {
   await s.leave();
 }
 
-/** `keep` and `position` following the pointer. */
-async function lens() {
-  const s = new Scene(9, 'Customize: a <em>lens.</em>', 'keep: { start: «0», end: «0» }, position: «0.00»');
-  s.section.classList.add('lens');
-  const line = el('p', 'line', quote);
-  const b = box(1000, line);
-  b.classList.add('quiet');
-  s.stage.append(b, el('p', 'lens-hint', '— Ada Lovelace, 1843'));
-  const n = [...new Intl.Segmenter().segment(quote)].length;
-  const t = s.elide(line, { position: 0.5, glyphs });
-  const look = () => {
-    const r = b.getBoundingClientRect();
-    const { options, src } = lensAt(Math.min(1, Math.max(0, (pointer.x - r.left) / r.width)), n);
-    t.update(options);
-    s.code(src);
-  };
-  await s.enter();
-  pointer.x = 140;
-  pointer.y = at(line)[1] + 50;
-  await showCursor(true);
-  look();
-  const [x0, y] = [pointer.x, pointer.y];
-  const left = b.getBoundingClientRect().left;
-  await tween(2600, (k) => {
-    pointer.x = lerp(x0, left + 1000, k);
-    pointer.y = y;
-    hover();
-    look();
-  });
-  await wait(200);
-  await tween(1200, (k) => {
-    pointer.x = lerp(left + 1000, left + 420, k);
-    hover();
-    look();
-  });
-  await wait(500);
-  await showCursor(false);
-  await s.leave();
-}
-
 async function outro() {
   const s = new Scene(
     null,
@@ -515,7 +473,7 @@ async function outro() {
   await wait(1700);
 }
 
-const script = [intro, position, lines, suffixes, snapping, tooltips, keeping, find, shared, lens, outro];
+const script = [intro, position, lines, suffixes, snapping, tooltips, keeping, find, shared, outro];
 
 async function play() {
   for (const scene of script.slice(Number(params.get('scene') ?? 0))) await scene();
