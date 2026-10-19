@@ -277,6 +277,20 @@ input.track:focus-visible {
   text-align: right;
 }
 
+/* Rows that show the default, beside rows that use the feature: muted, so the others stand out. */
+.baseline .line,
+.baseline .chip {
+  color: var(--muted);
+}
+.baseline .chip {
+  background: var(--line);
+}
+.labeled:has(.baseline) .labeled-row:not(.baseline) > code,
+.split:has(.baseline) .column:not(.baseline) > code {
+  color: var(--accent-2);
+  font-weight: 500;
+}
+
 /* 05: files that say whether they fit. */
 .fits-list .path {
   font-size: clamp(13px, 1.7vw, 16px);

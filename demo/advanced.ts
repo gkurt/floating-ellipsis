@@ -27,12 +27,12 @@ import { $ } from './ui.ts';
 {
   const box = $('#autosizeBox');
   const chips = ['feature/balanced-ellipsis-gaps', 'design-system/tokens/colors.json', 'release/2026-10-14-hotfix'];
-  const rows: [string, ElideOptions][] = [
-    ['without', { position: 'middle' }],
-    ['autoSize()', { position: 'middle', autoSize: autoSize() }],
+  const rows: { label: string; baseline?: boolean; options: ElideOptions }[] = [
+    { label: 'without', baseline: true, options: { position: 'middle' } },
+    { label: 'autoSize()', options: { position: 'middle', autoSize: autoSize() } },
   ];
-  for (const [label, options] of rows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+  for (const { label, baseline, options } of rows) {
+    const row = el('div', `labeled-row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const strip = el('div', 'chips');
     for (const text of chips) {
       const chip = el('span', 'chip', text);
@@ -112,8 +112,8 @@ import { $ } from './ui.ts';
 
 {
   const box = $('#wholeBox');
-  for (const { label, text, options } of wholeRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+  for (const { label, text, baseline, options } of wholeRows) {
+    const row = el('div', `labeled-row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const line = el('p', 'line', text);
     row.append(line);
     box.insertBefore(row, $('.handle', box));
@@ -128,8 +128,8 @@ import { $ } from './ui.ts';
 
 {
   const box = $('#tightenBox');
-  for (const { label, text, options } of tightRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+  for (const { label, text, baseline, options } of tightRows) {
+    const row = el('div', `labeled-row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const line = el('p', 'line', text);
     const readout = el('span', 'tightness');
     row.append(line, readout);
@@ -168,8 +168,8 @@ import { $ } from './ui.ts';
 
 {
   const box = $('#marksBox');
-  for (const { label, text, lang, options } of markRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+  for (const { label, text, lang, baseline, options } of markRows) {
+    const row = el('div', `labeled-row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const line = el('p', 'line', text);
     if (lang) line.lang = lang;
     if (options.lines !== undefined) line.classList.add('wraps');

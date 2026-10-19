@@ -175,6 +175,14 @@ body {
 .row .line {
   font-size: 32px;
 }
+/* Rows that show the default, beside rows that use the feature: muted, so the others stand out. */
+.baseline .line {
+  color: var(--muted);
+}
+.rows:has(> .row.baseline) > .row:not(.baseline) > code,
+.split:has(> .rows.baseline) > .rows:not(.baseline) > code {
+  color: var(--accent-2);
+}
 .row .line.mono {
   font-size: 27px;
 }

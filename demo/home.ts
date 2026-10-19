@@ -132,8 +132,8 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
 
 {
   const box = $('#snapBox');
-  for (const { label, text, mono, options } of snapRows) {
-    const row = el('div', 'labeled-row', `<code>${label}</code>`);
+  for (const { label, text, mono, baseline, options } of snapRows) {
+    const row = el('div', `labeled-row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const line = el('p', mono ? 'line mono' : 'line', text);
     row.append(line);
     box.insertBefore(row, $('.handle', box));
@@ -203,8 +203,8 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
 
 {
   const box = $('#sharedBox');
-  for (const [label, options] of sharedColumns) {
-    const column = el('div', 'column', `<code>${label}</code>`);
+  for (const { label, baseline, options } of sharedColumns) {
+    const column = el('div', `column${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     box.insertBefore(column, $('.handle', box));
     for (const path of siblings) {
       const line = el('p', 'line mono', path);

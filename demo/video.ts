@@ -310,8 +310,8 @@ async function suffixes() {
 async function snapping() {
   const s = new Scene(4, 'Cut between words or path <em>segments.</em>', "snap: words()      snap: separators(«'/'»)");
   const list = el('div', 'rows');
-  const rows = snapRows.map(({ label, text, mono, options }) => {
-    const row = el('div', 'row', `<code>${label}</code>`);
+  const rows = snapRows.map(({ label, text, mono, baseline, options }) => {
+    const row = el('div', `row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     const line = el('p', mono ? 'line mono' : 'line', text);
     row.append(line);
     list.append(row);
@@ -434,8 +434,8 @@ async function find() {
 async function shared() {
   const s = new Scene(8, 'Customize: cut what’s <em>shared.</em>', "keep: differing(path, siblings), snap: separators(«'/'»)");
   const split = el('div', 'split box');
-  for (const [label, options] of sharedColumns) {
-    const column = el('div', 'rows', `<code>${label}</code>`);
+  for (const { label, baseline, options } of sharedColumns) {
+    const column = el('div', `rows${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
     split.append(column);
     for (const path of siblings) {
       const line = el('p', 'line mono', path);

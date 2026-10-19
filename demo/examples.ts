@@ -92,8 +92,21 @@ export const issues = [
 
 const sentence = 'The quick brown fox jumps over the lazy dog by the old river mill';
 
-export const snapRows: { label: string; text: string; mono?: boolean; options: ElideOptions }[] = [
-  { label: 'any glyph', text: sentence, options: { position: 0.5 } },
+/**
+ * Rows a scene sets beside each other: the `baseline` ones show the default
+ * (or what goes wrong without the feature), and are drawn muted so the rows
+ * that use the feature stand out.
+ */
+export interface Row {
+  label: string;
+  text: string;
+  mono?: boolean;
+  baseline?: boolean;
+  options: ElideOptions;
+}
+
+export const snapRows: Row[] = [
+  { label: 'any glyph', text: sentence, baseline: true, options: { position: 0.5 } },
   { label: 'words()', text: sentence, options: { position: 0.5, snap: words() } },
   {
     label: "separators('/')",
@@ -168,7 +181,7 @@ const pdfIcon =
   '<svg class="icon" aria-label="PDF" width="1.6em" height="0.92em" viewBox="0 0 28 16"><rect width="28" height="16" rx="3" fill="currentColor"/><text x="14" y="11.5" text-anchor="middle" font-size="9" font-weight="700" font-family="system-ui, sans-serif" style="fill: var(--surface)">PDF</text></svg>';
 const mention = (name: string) => `<span class="mention" data-elide-unit>@${name}</span>`;
 
-export const unitRows: { label: string; text: string; options: ElideOptions }[] = [
+export const unitRows: Row[] = [
   {
     label: '&lt;svg&gt;',
     text: `${folderIcon} Projects / engine / ${pdfIcon} Bernoulli notes (2).pdf`,
@@ -195,7 +208,7 @@ export const unitRows: { label: string; text: string; options: ElideOptions }[] 
 const others = (n: number) => (n === 1 ? '1 other' : `${n} others`);
 
 /** Lists: whole items from the start, and a label for the rest. */
-export const listRows: { label: string; text: string; options: ElideOptions }[] = [
+export const listRows: Row[] = [
   {
     label: 'names',
     text: '',
@@ -218,9 +231,12 @@ export const listRows: { label: string; text: string; options: ElideOptions }[] 
   },
 ];
 
-export const sharedColumns: [string, (path: string) => ElideOptions][] = [
-  ["position: 'middle'", () => ({ position: 'middle' })],
-  ['keep: differing(…)', (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/', { fragment: false }) })],
+export const sharedColumns: { label: string; baseline?: boolean; options: (path: string) => ElideOptions }[] = [
+  { label: "position: 'middle'", baseline: true, options: () => ({ position: 'middle' }) },
+  {
+    label: 'keep: differing(…)',
+    options: (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/', { fragment: false }) }),
+  },
 ];
 
 export const quote =
@@ -243,10 +259,11 @@ export function snippetKeep(query: string): ElideOptions['keep'] {
 /** Amounts, dates, versions, ids: a cut through one would misreport it. */
 export const NUMBERS = /[$€£]?\d[\d,.:/-]*\d%?|[$€£]?\d/g;
 
-export const wholeRows: { label: string; text: string; options: ElideOptions }[] = [
+export const wholeRows: Row[] = [
   {
     label: 'any glyph',
     text: 'Invoice 2026-0412 · $12,345.67 due 14 Oct 2026 · ref 88412093',
+    baseline: true,
     options: { position: 'middle' },
   },
   {
@@ -261,10 +278,10 @@ export const wholeRows: { label: string; text: string; options: ElideOptions }[]
   },
 ];
 
-export const tightRows: { label: string; text: string; options: ElideOptions }[] = [
-  { label: 'tighten: 0', text: 'Quarterly revenue forecast', options: {} },
+export const tightRows: Row[] = [
+  { label: 'tighten: 0', text: 'Quarterly revenue forecast', baseline: true, options: {} },
   { label: 'tighten: 0.05em', text: 'Quarterly revenue forecast', options: { tighten: '0.05em' } },
-  { label: 'tighten: 0', text: 'Bernoulli numbers, note G', options: { position: 'middle' } },
+  { label: 'tighten: 0', text: 'Bernoulli numbers, note G', baseline: true, options: { position: 'middle' } },
   { label: 'tighten: 0.05em', text: 'Bernoulli numbers, note G', options: { position: 'middle', tighten: '0.05em' } },
   { label: 'tighten: 0.05em', text: 'Quarterly revenue forecast by region and channel', options: { tighten: '0.05em' } },
   {
@@ -299,10 +316,10 @@ const chinese = '我们在桥上一直等到天黑，数着白鹭，争论河水
 const japanese = '橋の上で日が暮れるまで待ち、鷺を数えながら、水が朝までに二段目に届くかどうか言い合った。';
 
 /** Words left out of a quotation, and Chinese and Japanese set on their cells. */
-export const markRows: { label: string; text: string; lang?: string; options: ElideOptions }[] = [
+export const markRows: (Row & { lang?: string })[] = [
   { label: "'[…]'", text: quote, options: { position: 'middle', ellipsis: '[…]', snap: words() } },
   { label: "'(…)', 2 lines", text: quote, options: { position: 'middle', lines: 2, ellipsis: '(…)', snap: words() } },
-  { label: "'…', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: '…' } },
+  { label: "'…', 2 lines", text: chinese, lang: 'zh', baseline: true, options: { position: 'middle', lines: 2, ellipsis: '…' } },
   { label: "'auto', 2 lines", text: chinese, lang: 'zh', options: { position: 'middle', lines: 2, ellipsis: 'auto' } },
   { label: "'auto', 1 line", text: japanese, lang: 'ja', options: { ellipsis: 'auto' } },
 ];
@@ -310,7 +327,7 @@ export const markRows: { label: string; text: string; lang?: string; options: El
 const due = dateForms(new Date(2026, 9, 14, 15, 30), { locale: 'en-US', time: true });
 
 /** Parts that show shorter before anything is cut: names and days, a date as its locale writes it, and markup's own. */
-export const shortRows: { label: string; text: string; options: ElideOptions }[] = [
+export const shortRows: Row[] = [
   {
     label: 'shorten',
     text: 'Design review with Christopher Robin on Wednesday, 14 October 2026',
