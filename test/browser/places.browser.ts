@@ -3,7 +3,7 @@ import { separators } from '#src/cut.ts';
 import type { Elide } from '#src/elide.ts';
 import { ellipsisInk, ellipsisRect } from '#src/geometry.ts';
 import type { ElideOptions } from '#src/options.ts';
-import { FONTS, PATH, PROSE, box, content, expectConsistent, expectFits, expectFlush, make, rendered, shown, sweep } from './helpers.ts';
+import { FONTS, PATH, PROSE, box, content, expectConsistent, expectFits, expectFlush, make, rendered, sweep } from './helpers.ts';
 
 const TEXTS = [
   PATH,
@@ -49,9 +49,14 @@ describe.each(FONTS)('a place along the line, in %s', (font) => {
     }
   });
 
-  it('stays near its place and flush at every width, never showing less as it widens', () => {
+  // A place can show a grapheme less as the box widens: the text before it
+  // takes a glyph, the ellipsis steps right by that glyph, and the end loses
+  // what no longer fits after it. So the start never shows less, and the end
+  // only when the start shows more.
+  it('stays near its place and flush at every width, the start never showing less as it widens', () => {
     const t = make(box(PATH, `font:${font}`), { position: '50%' });
-    let before = 0;
+    let head = 0;
+    let tail = 0;
     for (const _ of sweep(t, 90, 420, 3)) {
       expectFits(t);
       expectConsistent(t);
@@ -59,8 +64,12 @@ describe.each(FONTS)('a place along the line, in %s', (font) => {
       expectFlush(t);
       const c = content(t.element);
       expect(Math.abs(middleOf(t) - (c.left + c.right) / 2)).toBeLessThan(em(t));
-      expect(shown(t)).toBeGreaterThanOrEqual(before);
-      before = shown(t);
+      const { start, end } = t.state.hidden[0]!;
+      const after = t.graphemes.length - end;
+      expect(start).toBeGreaterThanOrEqual(head);
+      if (after < tail) expect(start).toBeGreaterThan(head);
+      head = start;
+      tail = after;
     }
   });
 

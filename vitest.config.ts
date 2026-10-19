@@ -5,13 +5,15 @@ import type { CDPSession, Page } from 'playwright';
 import { defineConfig } from 'vitest/config';
 import type { BrowserCommand } from 'vitest/node';
 
-type MouseAction = 'move' | 'down' | 'up';
+type MouseAction = 'move' | 'down' | 'up' | 'press';
 
 /**
  * The real mouse at `x`, `y` in the test frame's viewport. Vitest runs each
  * test file in an iframe, possibly scaled, so the point is mapped onto the page.
+ * `'press'` presses `times` times in one go, so pages counting presses by
+ * time see them as one double or triple press however slow the round trips.
  */
-const mouse: BrowserCommand<[action: MouseAction, x: number, y: number]> = async (context, action, x, y) => {
+const mouse: BrowserCommand<[action: MouseAction, x: number, y: number, times?: number]> = async (context, action, x, y, times = 1) => {
   const frame = await context.frame();
   const box = await (await frame.frameElement()).boundingBox();
   if (!box) throw new Error('The test frame is not laid out');
@@ -20,6 +22,11 @@ const mouse: BrowserCommand<[action: MouseAction, x: number, y: number]> = async
   await context.page.mouse.move(box.x + x * scale, box.y + y * scale);
   if (action === 'down') await context.page.mouse.down();
   if (action === 'up') await context.page.mouse.up();
+  if (action !== 'press') return;
+  for (let i = 0; i < times; i++) {
+    await context.page.mouse.down();
+    await context.page.mouse.up();
+  }
 };
 
 /** Each browser's turn with the pointer: the one before it, done when it's given back. */

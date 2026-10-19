@@ -119,6 +119,13 @@ space beside the cut goes with it. `keep`, `snap` and `justify` work as
 usual, so they can move the ellipsis further: a snapped cut by a segment, the
 room `justify` spreads by a part of a glyph.
 
+A place keeps the ellipsis where it is at the cost of a wider box always
+showing more: when widening lets the text before it take one more glyph, the
+ellipsis steps right by that glyph's width, and the end can lose more than
+widening gained ("/Users/a…-tables.md" becomes "/Users/ad…ables.md"). The
+start never shows less as the box widens, and the end shows less only when
+the start shows more.
+
 ## Batching
 
 Reading layout after changing the DOM forces a layout, and in a long list each

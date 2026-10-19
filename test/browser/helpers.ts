@@ -8,8 +8,8 @@ import { type ElideOptions, isVisible } from '#src/options.ts';
 
 declare module 'vitest/browser' {
   interface BrowserCommands {
-    /** The real mouse at `x`, `y` in the test frame's viewport (see vitest.config.ts). */
-    mouse: (action: 'move' | 'down' | 'up', x: number, y: number) => Promise<void>;
+    /** The real mouse at `x`, `y` in the test frame's viewport, `'press'` pressing `times` times in one go (see vitest.config.ts). */
+    mouse: (action: 'move' | 'down' | 'up' | 'press', x: number, y: number, times?: number) => Promise<void>;
     /** Wait for a turn with the page's one mouse and focus (`'take'`), or end it (`'give'`). */
     pointer: (action: 'take' | 'give') => Promise<void>;
     reducedMotion: (on: boolean) => Promise<void>;

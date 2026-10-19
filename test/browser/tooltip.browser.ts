@@ -295,12 +295,7 @@ describe('tooltip', () => {
   });
 
   describe('selecting', () => {
-    async function press(x: number, y: number, times = 1) {
-      for (let i = 0; i < times; i++) {
-        await commands.mouse('down', x, y);
-        await commands.mouse('up', x, y);
-      }
-    }
+    const press = (x: number, y: number, times = 1) => commands.mouse('press', x, y, times);
 
     /** A full-text tip for PATH, opened by hovering, and the centre of a grapheme of "Projects" in it. */
     async function hovered() {
@@ -327,7 +322,8 @@ describe('tooltip', () => {
       const { tip, line, at } = await hovered();
       await press(...at, 2);
       expect(getSelection()!.toString()).toBe('Projects');
-      await press(...at);
+      // Three at once: a press on its own after the two may come too late to count as a third.
+      await press(...at, 3);
       expect(getSelection()!.toString()).toBe(PATH);
       // It holds a selection: moving away leaves it open.
       await commands.mouse('move', line.left + 5, line.bottom + 150);

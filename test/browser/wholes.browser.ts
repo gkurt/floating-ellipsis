@@ -56,7 +56,8 @@ describe.each(FONTS)('context, in %s', (font) => {
     const keep = { match: 'lantern', class: 'hit', context: Infinity };
     const t = make(box(RIVER, `font:${font}`), { keep });
     let snippets = 0;
-    for (const _ of sweep(t, 80, 900, 6)) {
+    // From where the match fits with an ellipsis either side, in any font `serif` maps to.
+    for (const _ of sweep(t, 120, 900, 6)) {
       expectFits(t);
       expectConsistent(t);
       const shown = visible(t);

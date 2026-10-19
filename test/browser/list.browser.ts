@@ -98,7 +98,11 @@ describe.each(FONTS)('list in %s', (font) => {
 describe('list', () => {
   it('joins the label as the format joins a last item', () => {
     const t = make(box('', 'width:600px'), list(NAMES, { format: en }));
-    const widths = [1, 2, 3].map((n) => natural(t, en.format([...NAMES.slice(0, n), `${NAMES.length - n} more`])));
+    // The items and the label are set as runs of their own, so a kerning pair across them ("r,") doesn't kern.
+    const widths = [1, 2, 3].map((n) => {
+      const items = NAMES.slice(0, n).join(', ');
+      return natural(t, items) + natural(t, en.format([...NAMES.slice(0, n), `${NAMES.length - n} more`]).slice(items.length));
+    });
     widen(t, Math.ceil(widths[0]!) + 1);
     expect(seen(t)).toBe('Ada Lovelace and 4 more');
     widen(t, Math.ceil(widths[1]!) + 1);

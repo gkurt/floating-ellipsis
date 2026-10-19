@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { server } from 'vitest/browser';
 import { dateForms } from '#src/dates.ts';
 import type { Elide } from '#src/elide.ts';
 import { graphemeAt, graphemeRect, shortElement, shortRect } from '#src/geometry.ts';
 import { glyphs } from '#src/glyphs.ts';
+import type { ElideOptions } from '#src/options.ts';
 import type { Shorten } from '#src/shorten.ts';
 import { tooltip } from '#src/tooltip.ts';
 import { FONTS, box, expectConsistent, expectFits, expectFlush, frames, make, sweep } from './helpers.ts';
@@ -14,11 +16,26 @@ const SHORTEN: Shorten[] = [
   { match: 'October', to: 'Oct' },
   { match: ' 2026', to: '' },
 ];
+// WebKit starts a text range's box on a whole pixel, up to a pixel before its glyph.
+const slack = server.browser === 'webkit' ? 1 : 0.5;
+
 /** The forms the part with long form `text` takes. */
 const formsOf = (text: string): readonly string[] => {
   const to = SHORTEN.find((s) => 'match' in s && s.match === text)!.to;
   return typeof to === 'string' ? [to] : to;
 };
+
+/**
+ * A box of MEETING as wide as it is with every part at its first form: it
+ * shows them all, and isn't cut, whatever font `serif` maps to. (A little
+ * more, as each form is set as its own run.)
+ */
+function firstForms(options: ElideOptions): Elide {
+  const el = box('Design review with C. Robin on Wed, 14 Oct in the big room', 'width:max-content');
+  el.style.width = `${Math.ceil(el.getBoundingClientRect().width) + 2}px`;
+  el.textContent = MEETING;
+  return make(el, options);
+}
 
 /** How many steps of short forms show. */
 const level = (t: Elide) => t.state.short.reduce((sum, p) => sum + formsOf(p.text).indexOf(p.form) + 1, 0);
@@ -75,7 +92,7 @@ describe('shorten', () => {
   });
 
   it('marks the element, and puts the long form in the title', () => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN, title: true });
+    const t = firstForms({ shorten: SHORTEN, title: true });
     expect(t.truncated).toBe(false);
     expect(t.state.shortened).toBe(true);
     expect(t.element.title).toBe(MEETING);
@@ -99,7 +116,7 @@ describe('shorten', () => {
   });
 
   it('copies the long form', () => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN });
+    const t = firstForms({ shorten: SHORTEN });
     expect(t.state.shortened).toBe(true);
     const range = document.createRange();
     range.selectNodeContents(t.element.querySelector('[data-fp-text]')!);
@@ -115,7 +132,7 @@ describe('shorten', () => {
   });
 
   it('draws a short form as generated content, with its long form hidden until found', () => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN });
+    const t = firstForms({ shorten: SHORTEN });
     const part = t.state.short.find((p) => p.text === 'Wednesday')!;
     const el = shortElement(t, t.state.short.indexOf(part))!;
     expect(getComputedStyle(el, '::before').content).toBe(`"${part.form}"`);
@@ -125,7 +142,7 @@ describe('shorten', () => {
   });
 
   it.each(['keep', 'expand'] as const)('shows the long form find in page found (find: %s)', async (find) => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN, find });
+    const t = firstForms({ shorten: SHORTEN, find });
     const j = t.state.short.findIndex((p) => p.text === 'Wednesday');
     const found = shortElement(t, j)!.querySelector<HTMLElement>('[data-fp-found]')!;
     found.dispatchEvent(new Event('beforematch', { bubbles: true }));
@@ -146,7 +163,7 @@ describe('shorten', () => {
   });
 
   it('maps a short form to its part', () => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN });
+    const t = firstForms({ shorten: SHORTEN });
     const j = t.state.short.findIndex((p) => p.text === 'Wednesday');
     const part = t.state.short[j]!;
     const rect = shortRect(t, j)!;
@@ -154,8 +171,8 @@ describe('shorten', () => {
     for (let i = part.start; i < part.end; i++) expect(graphemeRect(t, i)).toBeNull();
     const before = graphemeRect(t, part.start - 1)!;
     const after = graphemeRect(t, part.end)!;
-    expect(before.right).toBeLessThanOrEqual(rect.left + 0.5);
-    expect(after.left).toBeGreaterThanOrEqual(rect.right - 0.5);
+    expect(before.right).toBeLessThanOrEqual(rect.left + slack);
+    expect(after.left).toBeGreaterThanOrEqual(rect.right - slack);
     const el = shortElement(t, j)!;
     expect(graphemeAt(t, el, 0)).toBe(part.start);
   });
@@ -202,7 +219,7 @@ describe('shorten', () => {
   });
 
   it('opens a tooltip on text that is only shortened, growing the long forms in', () => {
-    const t = make(box(MEETING, 'width:420px'), { shorten: SHORTEN });
+    const t = firstForms({ shorten: SHORTEN });
     expect(t.truncated).toBe(false);
     const tip = tooltip({ reveal: 'grow' });
     tip.attach(t);
