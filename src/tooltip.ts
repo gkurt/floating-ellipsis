@@ -120,8 +120,8 @@ const cut = (instance: Elide) => (instance.truncated || instance.state.shortened
 
 const OPEN = 'data-fp-tip-open';
 
-/** How far into a 'grow' the hidden text starts to show: the tip has nearly grown by then. */
-const REVEAL = 0.5;
+/** How far into a 'grow' the hidden text starts to show: once the tip has mostly grown, eased so the two settle together. */
+const REVEAL = 0.4;
 
 /**
  * A headless tooltip for truncated text: one tip element, shared by every
@@ -518,8 +518,8 @@ export class Tooltip {
   /**
    * Every grapheme showing travels from where it was, the marks stay where
    * they are and fade, and the background grows from the lines' box to the
-   * tip's. The hidden text waits where it lands, and fades in, unblurring,
-   * once the tip has nearly grown: the room first, then what fills it.
+   * tip's. The hidden text waits where it lands, and fades in once the tip
+   * has mostly grown, on its curve: the room first, then what fills it.
    *
    * Inline text can't be transformed, so while it moves the text is taken
    * out of the flow, in runs set where they land, and the tip keeps its size.
@@ -541,14 +541,20 @@ export class Tooltip {
     spans.forEach((_, i) => {
       const run = runs.at(-1);
       const a = run?.start ?? 0;
+      // A grapheme with no width of its own is drawn by a ligature with the
+      // one before it ('fi', or 'ti' in some fonts): split from it, the
+      // ligature would come apart as they move and snap back as they land.
+      // (The line can't tell: a range across a ligature splits its width.)
+      const ligature = run && targets[i]!.width === 0 && near(targets[i]!.top, targets[i - 1]!.top);
       const together =
-        run &&
-        part[i] === part[a] &&
-        near(targets[i]!.top, targets[a]!.top) &&
-        (part[i]! >= 0 ||
-          (near(from[i]!.left - targets[i]!.left, from[a]!.left - targets[a]!.left) &&
-            near(from[i]!.top - targets[i]!.top, from[a]!.top - targets[a]!.top)));
-      if (together) run.end = i + 1;
+        ligature ||
+        (run &&
+          part[i] === part[a] &&
+          near(targets[i]!.top, targets[a]!.top) &&
+          (part[i]! >= 0 ||
+            (near(from[i]!.left - targets[i]!.left, from[a]!.left - targets[a]!.left) &&
+              near(from[i]!.top - targets[i]!.top, from[a]!.top - targets[a]!.top))));
+      if (run && together) run.end = i + 1;
       else runs.push({ start: i, end: i + 1 });
     });
 
@@ -598,15 +604,9 @@ export class Tooltip {
         group.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: 'none' }], timing);
         return;
       }
-      // Hidden text waits where it lands, and shows once the tip has nearly grown.
-      group.animate(
-        [
-          { opacity: 0, filter: 'blur(4px)' },
-          { offset: REVEAL, opacity: 0, filter: 'blur(4px)', easing: 'ease-out' },
-          { opacity: 1, filter: 'blur(0px)' },
-        ],
-        { duration, fill: 'backwards' },
-      );
+      // Hidden text waits where it lands, and fades in behind the tip growing
+      // round it, on the same curve, so the two end nearly together.
+      group.animate([{ opacity: 0 }, { offset: REVEAL, opacity: 0, easing }, { opacity: 1 }], { duration, fill: 'backwards' });
     });
 
     for (const { el, rect } of origin.dots) {

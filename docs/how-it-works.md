@@ -675,8 +675,9 @@ cheap.
 
 A growing tip starts as an exact copy of the line, dots included: every
 grapheme showing starts where it is on screen and moves to make room. The
-room grows first: the hidden text waits where it lands, and fades in once the
-tip has nearly grown. Its text starts where the line's does and runs right. Past the
+room grows first: the hidden text waits where it lands, and fades in from
+40% of the way, on the tip's own curve, so the two end nearly together.
+Its text starts where the line's does and runs right. Past the
 window's edge or `maxWidth` it wraps (after `breaks` where it can), and only
 when that would leave it narrower than `aspect` does it widen to the left, as
 little as it can. A full-text tip takes the text's font so its glyphs land on
