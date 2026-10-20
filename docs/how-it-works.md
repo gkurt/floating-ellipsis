@@ -8,23 +8,23 @@ Implementation details behind the behaviour described in the
 1. **Fit.** The text is rendered into the element and measured with
    `getClientRects()`, so every CSS property that affects layout is respected.
    A search finds the most graphemes that fit in `lines` lines. It starts from
-   what the summed glyph widths say fits, shifted by how far off that was last
-   time, so it usually only has to confirm it. Each cut it renders says how
-   much room it left on the lines, or how much spilled past them, and the
-   next aims where the glyph widths say that room ends, one past it first, so
+   what the summed glyph widths predict fits, shifted by how far off that was last
+   time, so it usually only has to confirm it. Each truncation it renders shows
+   how much room it left on the lines, or how much spilled past them, and the
+   next aims where the glyph widths put the end of that room, one past it first, so
    that a true aim ends on the answer already rendered: two or three layouts
    for several lines, where halving took five or more. On one line, once one
-   cut has been measured, any other is judged from glyph widths and kerning
+   truncation has been measured, any other is judged from glyph widths and kerning
    pairs alone when it clears the edge by a margin, so a resize or new text
    usually needs no layout but the one that checks the answer. The margin
    starts at a twentieth of an em; every check records how far off the
    judgement was for that font, and once there are enough, the margin is three
    times the most it was off (a tenth of a pixel in most engines, a third in
-   one), so fewer cuts need rendering to tell. Text with
+   one), so fewer truncations need rendering to tell. Text with
    highlights or inline elements is judged too when each kind showing sets
    text as the element does: the same font, spacing and case, and no padding,
    border or margin. If the check finds the widths were off (three-letter
-   ligatures, `font-kerning: none`), the cut is found again by rendering, and
+   ligatures, `font-kerning: none`), the truncation is found again by rendering, and
    that text isn't judged again. The full text is only tried when its summed
    glyph widths could fit. Where spaces are kept (`white-space: pre-wrap`, as
    in a textarea), the space a line wraps at hangs past the edge, and
@@ -40,7 +40,7 @@ Implementation details behind the behaviour described in the
    would replace it is shown too.
 3. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
    because browsers round glyph boxes to whole pixels. Where the canvas
-   doesn't say where a glyph's ink is (WebKit on Linux and Windows gives the
+   doesn't report where a glyph's ink is (WebKit on Linux and Windows gives the
    advance box), the glyph is drawn and scanned for it instead. Gaps
    between ink edges are computed with kerning ignored, and margins on the
    ellipsis make both gaps equal the target. The ellipsis is drawn on a
@@ -55,13 +55,13 @@ Implementation details behind the behaviour described in the
    inside the edge can't move any break, so it isn't checked. (`text-wrap:
    balance` and `pretty` break them with the paragraph in view, evening them
    out; truncated text fills every line to the edge, so there's nothing to
-   even out, and they would only move the breaks after the cut is fitted. So
-   while truncated, the element's `text-wrap-style` is held at `auto`; text
-   that fits wraps as the page says.) A cut
+   even out, and they would only move the breaks after the truncation is fitted.
+   So while truncated, the element's `text-wrap-style` is held at `auto`; text
+   that fits wraps as the page sets it.) A truncation
    judged on one line is justified from where it is expected to end, in the
    same write as rendering it, so the layout that checks the judgement checks
    the justified line too (and if it ends more than a tenth of a pixel off the
-   edge, it's justified again from where it does). A cut judged beside one
+   edge, it's justified again from where it does). A truncation judged beside one
    the pass has measured goes unchecked, unless judgements of that font have
    been off by more than that tenth of a pixel (as in WebKit on Linux). No
    gap grows past `maxGap`: room a long wrapping word leaves behind stays at
@@ -88,7 +88,7 @@ Implementation details behind the behaviour described in the
    expected to end. So drawn marks are sized in whole units, and each one's
    place is rounded rather than each margin, so they add up exactly. A text
    mark's width can't be set like that: a line with text marks added is read
-   once more, and what's off goes into its last ellipsis' gaps. The cut is the same as without `repeat`, except that
+   once more, and what's off goes into its last ellipsis' gaps. The truncation is the same as without `repeat`, except that
    a single `'…'` drawn as dots is a hair narrower.
 
 5. **Stability.** While truncated, the ellipsis keeps its place in the DOM and
@@ -113,13 +113,13 @@ ellipsis lands wherever the text before it ends. A place (`'50%'`,
 `'120px'`, `'8em'`) sizes the islands by width instead: on one line, the
 first is as long as its glyph widths (with kerning, and the ink of its last
 glyph) keep it short of the place, less half the ellipsis and the gap it
-wants; one between two places is centred where it sits in the text, as long
+needs; one between two places is centred where it sits in the text, as long
 as fits between them; the last takes the rest. The search fills them in
-turn, so it only looks for how much of the end fits, and judging cuts from
+turn, so it only searches for how much of the end fits, and judging truncations from
 glyph widths works as on any line. Where the place falls inside a glyph, the
 text before it stops a glyph short, and the ellipsis follows it there; white
-space beside the cut goes with it. `keep`, `snap` and `justify` work as
-usual, so they can move the ellipsis further: a snapped cut by a segment, the
+space beside the ellipsis goes with it. `keep`, `snap` and `justify` work as
+usual, so they can move the ellipsis further: snapping by a segment, the
 room `justify` spreads by a part of a glyph.
 
 A place keeps the ellipsis where it is at the cost of a wider box always
@@ -165,7 +165,7 @@ passes share, so it costs no layout of its own.
 
 ## Drawn marks
 
-`count` can be anything from 0 up. With no marks, the cut still leaves a gap
+`count` can be anything from 0 up. With no marks, truncation still leaves a gap
 the size of the font's dot rhythm, balanced and justified like any other. The
 spacing defaults to the font's own ellipsis rhythm, scaled to the mark size.
 
@@ -179,7 +179,7 @@ more dots with `repeat`. It stands for words left out, so it is spaced like a
 word: `gap: 'dots'` gives it the ink gap a word space leaves between an `n`
 and the bracket, and the room justifying adds goes into the two gaps beside
 it. A word space can be wider than `maxGap` (in a monospace font it is), so
-the gaps may always be one. Its marks (`markInks`) are its dots. Cutting
+the gaps may always be one. Its marks (`markInks`) are its dots. Truncating
 mid-word reads as a misquotation, so pair it with `snap: words()`; it isn't
 the default, which would put word segmentation in every page's bundle.
 
@@ -191,10 +191,10 @@ but a page whose font stack starts with a Latin font gets that font's `…`,
 on the baseline. `'auto'` draws the dots instead: `align: 'middle'` sets them
 at the middle of `口`'s ink, which fills an ideograph's box, and `cells`
 makes the ellipsis exactly as wide as that many ideographs, each dot centred
-in its share. One cell's worth (three dots) is the usual cut of one line.
-Each instance decides by its text (more ideographs and kana than other
-letters, then the element's `lang`), not by the text beside each cut: a cut
-whose width changed with where it landed couldn't be searched for.
+in its share. One cell's worth (three dots) is the usual ellipsis of one line.
+Each instance checks its whole text (more ideographs and kana than other
+letters, then the element's `lang`), not the text beside each ellipsis: an
+ellipsis whose width changed with where it landed couldn't be searched for.
 
 The text is set on a grid, every character a cell wide, and columns line up
 from line to line. An ellipsis a fraction of a pixel off moves every
@@ -221,12 +221,27 @@ more), so a piece is seldom a lone letter. Overlapping highlights get both
 classes; in glyph mode the class goes on each glyph.
 
 Each visible part of the line sits inside shallow copies of its elements: a
-link cut by an ellipsis is a link on both sides, and a highlight inside a link
+link split by an ellipsis is a link on both sides, and a highlight inside a link
 is inside a copy of the link. Copies have no `id`, are out of the tab order,
 and lack the original's listeners; events bubble from them. `<br>` is a space.
 
 A class or element that changes the font (bold, say) is still measured, but
 the gaps around an ellipsis are planned with the element's own font.
+
+### Selection
+
+A browser paints a selection over text alone: not an ellipsis' drawn marks,
+nor the margins that are its gaps, nor generated text (a short form, a
+list's label). A selection crossing them would look patchy, though copying
+gives all of it. So a shared `selectionchange` listener paints each one the
+selection crosses, the same ones copying expands: its background in the
+element's `::selection` colour where the page sets one, or else `Highlight`
+(with `HighlightText`), which is Firefox's own default but not quite
+Chromium's or WebKit's. An ellipsis' gaps get a box shadow either side, as
+wide as its margin. Firefox highlights the text of a line and the others its
+whole height, so outside Firefox the painted parts take the line's leading
+as vertical padding, which an inline element's layout ignores. Each gets its
+own inline styles back once the selection leaves it.
 
 ### Units
 
@@ -235,7 +250,7 @@ whatever its text: its `alt` or `aria-label`, an element's own text, or
 U+FFFC. The text around it is split into graphemes on its own, so nothing
 joins onto it. The line shows a deep copy of it (the drawing of an SVG, the
 markup inside a mention), kept on one line; the screen-reader copy has the
-image itself, read by its alt text, or says a unit's text like the rest.
+image itself, read by its alt text, or a unit's text like the rest.
 Canvas can't measure an image, so each pass reads how wide each unit's copy
 is laid out in the line (one that isn't showing keeps its last width), and an
 ellipsis beside one treats its box as its ink. An image that loads at another
@@ -244,36 +259,36 @@ width fits the text again. Text with units isn't judged without rendering.
 ## Tightening
 
 When the full text doesn't fit and `tighten` is set, the pass tries it set
-tighter before it searches for a cut. A pixel of tightening takes in a pixel
+tighter before it searches for a truncation. A pixel of tightening takes in a pixel
 after every letter and two after every space (word spaces give more, as in
 justified type), so text running over by `over` needs `over / units`, a
 quarter pixel more to stay inside the edge. Over more than `tighten` allows,
-it's cut straight away. On one line, that first try usually fits; when it
+it's truncated straight away. On one line, that first try usually fits; when it
 doesn't (layout rounds letter-spacing: Firefox to 1/60 px), how far it moved
-the line says how much it takes, rounded up, and that's the last try. On more
+the line shows how much it takes, rounded up, and that's the last try. On more
 lines, where wrapping makes the gain uneven, it tries the most it may and, if
 that fits, halves between the two three times, ending on the least that
 fits. It costs no layout unless the full text is within reach, and a
 tightened line isn't judged without rendering: its end isn't where the glyph
-widths say. How far the text runs over is always measured, never judged by
+widths put it. How far the text runs over is always measured, never judged by
 the glyph widths: near the most, a judgement and a measurement can fall on
 either side of it, and which one a pass has depends on the pass before, so
-deciding by either would flip a line between tightened and cut from pass to
-pass as the box shrinks. Once cut, text is set as usual; tightening only
-ever saves a cut, unless `tightenCuts`.
+deciding by either would flip a line between tightened and truncated from pass
+to pass as the box shrinks. Once truncated, text is set as usual; tightening
+only ever avoids truncation, unless `tightenCuts`.
 
-With `tightenCuts`, on one line, the search for the cut is followed by a
-second, upward from the cut it found: for as many more graphemes as fit
+With `tightenCuts`, on one line, the search for the truncation is followed by
+a second, upward from the truncation it found: for as many more graphemes as fit
 with the line set as tight as it may. It aims by the glyph widths less
 `tighten` for every unit, as the first search aims by the glyph widths, and
-renders every probe set that tight. The cut it ends on is then set as
+renders every probe set that tight. The truncation it ends on is then set as
 little tighter as it takes, as the full text is (by how far it would run
 over, then once more by how far that moved it). The ellipses, and the
 graphemes beside them in their joins, keep the element's spacing, so the
 gaps planned around them hold. The second search costs a few layouts each
 pass, and a tightened line isn't judged, so the pass after it renders its
 probes too. On more lines, where wrapping makes the gain uneven, and with
-`justify: 'spread'`, which sets the spacing itself, cuts are set as usual.
+`justify: 'spread'`, which sets the spacing itself, truncated text is set as usual.
 
 ## Short forms
 
@@ -286,15 +301,15 @@ as usual or tighter (`tighten` is tried at every level, so a line a hair too
 long tightens rather than loses a word). It starts at the first level whose
 glyph widths fit, then halves between the highest level known not to fit and
 the lowest known to, each probe a layout shared with other passes. Past the
-last level, the text is cut with every part at its shortest.
+last level, the text is truncated with every part at its shortest.
 
-A part showing short is a whole: no cut starts or ends inside it, so a cut
-beside it slides off it, or hides it all at an end of the text (a date alone
+A part showing short is a whole: no hidden run starts or ends inside it, so an
+ellipsis beside it moves off it, or hides it all at an end of the text (a date alone
 in a box too narrow for its shortest form is hidden whole, rather than shown
 as `10/1…`). For the search it's as wide as its form, all on its first
 grapheme, and next to an ellipsis its form is the glyph whose ink the gap is
 planned from. Grapheme indices stay those of the full text: `state.short`
-says which ranges show short, and `graphemeRect` has no box for a grapheme
+lists the ranges that show short, and `graphemeRect` has no box for a grapheme
 inside one (`shortRect` has the form's).
 
 In the line, a part showing short is an element of its own, kept on one
@@ -314,41 +329,39 @@ Known gaps:
 
 - Transitions don't animate a part changing form; it changes at once. A
   growing tooltip fades the forms out and the long forms in where they land.
-- A selection highlight doesn't paint generated content, so a selected form
-  looks unselected, though copying gives it.
 - `data-elide-short` gives one form; more need the option.
 
 ## Snapping
 
-Snapping and wholes come down to one thing: where a cut may start and where
-it may end (`Edges`). `words()` and `separators()` let one start where a
+Snapping and wholes come down to one thing: where a hidden run may start and
+where it may end (`Edges`). `words()` and `separators()` let one start where a
 segment starts and end where one ends; `whole` lets one start and end
 anywhere but inside its matches. Rules combine by both holding, and one
 search, `shortestRun`, finds the run that keeps to them: as few graphemes
-over what the cut hides as it can, each six it moves away from the cut
-counting as one more. So a cut through a whole slides off it, hiding as much
+over what plain truncation hides as it can, each six it moves away from it
+counting as one more. So an ellipsis through a whole moves off it, hiding as much
 just beside it, rather than hide all of it and leave a wide gap; at an end of
 the text, where nothing is beside it, the whole goes. With a snap, the snap
-gets the whole's edges and keeps to them too, and any cut that still splits
+gets the whole's edges and keeps to them too, and any hidden run that still splits
 one (a fragment, trimmed white space, a sliver paid for) is widened over it,
-never into a kept part. Wholes that touch stay two, so a cut can fall between
+never into a kept part. Wholes that touch stay two, so an ellipsis can fall between
 them.
 
-Each side of a cut moves to a boundary, and separators next to the cut stay
-visible. Moving both sides hides more than the plain cut, and the room that
+Each side of a hidden run moves to a boundary, and separators next to it stay
+visible. Moving both sides hides more than plain truncation, and the room that
 frees ends up in the gaps around the ellipsis. So one side may keep a fragment
-of its segment instead (`'head'` prefers the start of the segment the cut
-begins in, `'tail'` the end of the one it stops in, each falling back to the
+of its segment instead (`'head'` prefers the start of the segment the hidden
+run begins in, `'tail'` the end of the one it stops in, each falling back to the
 other). The fragment takes the room the other side gave up, through as many
 segments as it covers. Fewer than `min` graphemes (default 3) of a segment are
-never shown. A side with no separator in reach keeps the plain cut, and is the
+never shown. A side with no separator in reach keeps plain truncation, and is the
 fragment.
 
 Where whole segments go (`fragment: false`, or when neither side has room for
 a fragment), it's the shortest run of whole segments that hides enough. A
-shorter run a little further from the cut wins over a longer one right at it
-(each six graphemes it moves counts as one more left over), but a cut never
-moves past the cuts either side, nor takes the start or end of the text unless
+shorter run a little further from the plain one wins over a longer one right at
+it (each six graphemes it moves counts as one more left over), but a hidden run
+never moves past the ones either side, nor takes the start or end of the text unless
 it was already there.
 
 ## Context
@@ -374,7 +387,7 @@ passes pause for a fifth of a second (at once while find in page is keeping a
 match in sight, or when anything is read from the instance). With
 `find: false` the copy is out of the document until `expand()` shows it,
 which saves every layout of a crowded table a little.
-Browsers don't tell a page what was searched, but they do say which hidden
+Browsers don't tell a page what was searched, but they do report which hidden
 element a match starts in, so each word of the copy is an element of its own:
 with `find: 'keep'`, that word is kept as if it were in `keep`, with an
 ellipsis either side if need be.
@@ -388,14 +401,14 @@ Two known gaps:
 - With `find: 'keep'`, the next Enter after a kept match lands on the kept word
   again. The browser searches on from where the match was, in the hidden copy,
   and the kept word is drawn after that. `find: 'expand'` doesn't have this.
-- A word an ellipsis cuts in two isn't found: with `lan…` showing, `lantern`
+- A word an ellipsis splits in two isn't found: with `lan…` showing, `lantern`
   isn't, because `lan` is in the line and `tern` in the hidden copy, and a
   match can't span both.
 
 ## As many lines as fit
 
 With `lines: 'fit'`, a line fits when its line box ends above the element's
-content box, as laid out with that cut: a line box is the glyphs' box with
+content box, as laid out with that truncation: a line box is the glyphs' box with
 half the leading either side, `line-height` tall (or as tall as the glyphs
 with `normal`). The full text is always tried first, and how many of its
 lines fit the height is the room the search aims for. That only works while
@@ -413,16 +426,16 @@ seen; `refresh()` sees it. Text always shows at least one line.
 
 ## Suffixes and expanding
 
-A suffix is glued to the text's last line, and the text is cut to leave it
+A suffix is glued to the text's last line, and the text is truncated to leave it
 room; its own spacing (a margin) is yours. When its width changes, the text
-fits again. `expand()` keeps the cut, so collapsing is quick, and an expanded
-instance doesn't re-truncate on resize. Focus reaching a link the cut hides
+fits again. `expand()` keeps the truncation, so collapsing is quick, and an expanded
+instance doesn't re-truncate on resize. Focus reaching a link the ellipsis hides
 keeps it in sight while focused, or expands the text with `find: 'expand'`.
 
 ### Animating "Read more"
 
 The element's height can follow the toggle: opening, the box grows over the
-full text; closing, the text is cut at once, the button already in place, and
+full text; closing, the text is truncated at once, the button already in place, and
 the room it leaves closes up below it. (The demo's `toggleSmoothly`, in
 `demo/examples.ts`.)
 
@@ -450,7 +463,7 @@ function toggle(t) {
 
 Two things make closing differ from opening:
 
-- Cut text on several lines holds its height with an inline
+- Truncated text on several lines holds its height with an inline
   `height: … !important` (see [Stability](#a-layout-pass)), which overrides any
   animation of `height`. A larger `min-height` overrides the held height, so
   that's what shrinks. `margin-bottom` would collapse into the next element's
@@ -462,10 +475,10 @@ Two things make closing differ from opening:
 
 ## Lists
 
-`list()` is made of options the core already has. Its `snap` moves a cut
-from the end to the end of the last item before it, so items go whole, and
+`list()` is made of options the core already has. Its `snap` moves the start
+of the hidden run from the end to the end of the last item before it, so items go whole, and
 its `suffix` is the label. A suffix is measured with the line, and each pass
-shows it with the cut it is trying, before measuring; so every probe is
+shows it with the truncation it is trying, before measuring; so every probe is
 measured with its own label, `+9` and `+10` alike, and a label that changes
 width costs no layout of its own. The search starts from the label the last
 pass showed. A suffix that only shows while truncated isn't counted when
@@ -476,7 +489,7 @@ name twice is two items; what lies between them is a separator. An array is
 joined by `format`, and the label is joined as `format` joins a last item to
 the ones that show (`formatToParts`, so "Ada and 3 more" but "Ada, Grace,
 and 2 more"); found in the text, it takes the text's last separator. When no
-item fits whole, the first is cut, and fewer than three of its graphemes
+item fits whole, the first is truncated, and fewer than three of its graphemes
 aren't shown.
 
 The label is generated content (`::after`), hidden from screen readers,
@@ -489,9 +502,9 @@ part among the hidden items shows without the separators around it.
 
 An element sized by its content (an inline-block, a float, an absolutely
 positioned element, a flex item's basis, a `max-content` grid track) takes its
-width from what shows. A pass reads that width and cuts the text to it, so the
-cut sets the width the next pass reads: the element shrinks with the room but
-never grows back, and new, longer text is cut to the old width.
+width from what shows. A pass reads that width and truncates the text to it, so
+the truncation sets the width the next pass reads: the element shrinks with the
+room but never grows back, and new, longer text is truncated to the old width.
 
 `autoSize()` breaks the loop with a copy of the full text in the element: a
 block of no height, invisible, inert and hidden from screen readers. It is
@@ -508,7 +521,7 @@ its baseline (the last line's), and layout containment keeps them from giving
 the element its first, which flex and grid items align by.
 
 The line still counts towards the element's size. Kept on one line so it
-never wraps while the element narrows, a cut is as wide in its min-content
+never wraps while the element narrows, truncated text is as wide in its min-content
 as it is shown, so on one line the element only shrinks below it when
 something caps it (`max-width: 100%`, or `min-width: 0` on a flex item), as
 with `text-overflow`. The copy costs no layouts of its own: it is laid out in
@@ -519,12 +532,12 @@ make them differ.
 
 ## `elideText`
 
-It sums glyph widths to find the cut, then measures the result, so kerning is
+It sums glyph widths to find the truncation, then measures the result, so kerning is
 accounted for. It measures with a canvas in `font` (an `OffscreenCanvas` in
 workers) or with `measure`. `keep` classes are ignored, since a string has no
 room for them. `tighten` is in `measure`'s unit, and `tightened` is the
 letter-spacing to take off when drawing (twice that on spaces). With
-`tightenCuts`, that applies to the whole string, the ellipsis too: a cut
+`tightenCuts`, that applies to the whole string, the ellipsis too: a truncation
 fits if its width less `tighten` for each of its letters (three for a
 space) does.
 
@@ -587,7 +600,7 @@ and re-placed after every pass and on every frame while they play. Dots shift wi
 stays centred where layout puts it, and only the spacing between its dots
 glides, on a critically damped spring (velocity carries over, no overshoot).
 Every gap, outer ones included, takes the same share of the width as drawn,
-so a jump in the cut doesn't bunch the dots together.
+so a jump in the truncation doesn't bunch the dots together.
 Next to a glyph that's showing, the dots keep at least half the gap layout
 gives them, so they never crowd the text. Only jumps glide; the drift of a
 resize follows layout.
@@ -602,35 +615,35 @@ squeezes them out.
 `transitions` can be attached at any time; the first change after it animates
 from what's showing.
 
-## Text fields
+## Inputs
 
-`elideInput` doesn't touch the value. It puts an element after the field,
+`elideInput` doesn't touch the value. It puts an element after the input,
 over its border box (anchored with CSS anchor positioning, or moved into
-place where that's missing), with the field's padding, border widths and
-typography, and a line as tall as the field's content box, which centres the
-text as a field does. An instance cuts the value in it. While it shows, the
-field's own text is hidden with `-webkit-text-fill-color`, which leaves
+place where that's missing), with the input's padding, border widths and
+typography, and a line as tall as the input's content box, which centres the
+text as an input does. An instance truncates the value in it. While it shows,
+the input's own text is hidden with `-webkit-text-fill-color`, which leaves
 `color` (and the caret) alone; its native placeholder is always hidden that
-way, and the copy shows it cut, in the placeholder's colour and opacity. The
+way, and the copy shows it truncated, in the placeholder's colour and opacity. The
 copy is inert and hidden from screen readers, so find in page and assistive
-technology see the field alone. A field made before it's put in the page (or
+technology see the input alone. An input made before it's put in the page (or
 moved since) gets both when it next syncs, as its size first reports: the
 copy goes beside it, and the sheet hiding placeholders is adopted by its
 document or shadow root.
 
 A press is caught on `pointerdown`, before the browser places the caret: the
-copy says which glyph boundary is nearest the pointer (either side of what a
-pressed ellipsis hides, by which half was pressed), the field's own text is
+copy gives the glyph boundary nearest the pointer (either side of what a
+pressed ellipsis hides, by which half was pressed), the input's own text is
 shown, and it's scrolled so that boundary lies under the pointer, from the
 canvas width of the value before it. The browser's own press then puts the
-caret there, and a drag selects from it. Beside an ellipsis the field can't
-always scroll that far (the copy's gaps aren't in the field's text): then the
+caret there, and a drag selects from it. Beside an ellipsis the input can't
+always scroll that far (the copy's gaps aren't in the input's text): then the
 caret goes there when the press ends, unless it selected something. A touch
 places it on focus. A press the page cancels leaves the copy showing.
 
-The value changes without events when a script sets it: the field's own
+The value changes without events when a script sets it: the input's own
 `value` property is wrapped (over whatever was there, such as React's
-tracker, which still runs), and a form's reset is followed. A field whose
+tracker, which still runs), and a form's reset is followed. An input whose
 type turns to `password` hides the copy at once.
 
 A textarea's copy takes its wrapping too (`white-space`, `overflow-wrap`,
@@ -666,7 +679,7 @@ In a held tip, a double press selects the run between breaks and a triple
 press all of it. Text selected in the original is selected in the tip too,
 including all of what a touched ellipsis hides. Escape, a scroll, a press
 elsewhere or a re-layout that moves the text closes it. A pass that leaves
-the text where it was (the same cut, gaps within a quarter pixel) doesn't:
+the text where it was (the same truncation, gaps within a quarter pixel) doesn't:
 every instance refits when any web font loads, often one the text doesn't
 use, and a tip shouldn't close under the pointer for that.
 

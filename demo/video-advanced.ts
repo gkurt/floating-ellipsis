@@ -2,14 +2,14 @@ import { autoSize } from '#src/autosize.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type ElideOptions, type Keep, separators } from '#src/index.ts';
 import { elideInput } from '#src/input.ts';
-import { calm, fast, fileRows, inputFields, listRows, markRows, river, shortRows, unitRows, wholeRows } from './examples.ts';
+import { calm, fast, fewDots, fileRows, inputFields, listRows, markRows, river, shortRows, unitRows, wholeRows } from './examples.ts';
 import { Scene, at, box, el, film, moveTo, outro, pointer, press, rows, showCursor, tween, wait, widen } from './film.ts';
 
 /** The second video: a crowded table, then the features past the first video's. Harder to take in, so each stays longer. */
 
 async function intro() {
   const s = new Scene(null, '<h1>Past the <em>basics.</em></h1>');
-  const line = el('p', 'line', 'Tables, short forms, lists, numbers, emoji and every script, text fields and more.');
+  const line = el('p', 'line', 'Tables, short forms, lists, numbers, emoji and every script, inputs and more.');
   const b = box(1080, line);
   b.classList.add('quiet');
   s.section.append(b);
@@ -30,17 +30,21 @@ async function type(el: HTMLElement, text: string) {
 }
 
 const COLUMNS = ['File', 'Folder', 'Last commit', 'Hash', 'Size'];
-/** How each column is cut, as on the table page: what it always keeps, and the rest of its options. */
+/** How each column is truncated, as on the table page: what it always keeps, and the rest of its options. */
 const columns: { keep: Keep[]; options: ElideOptions }[] = [
   { keep: [/\.[^.]+$/], options: { position: 0.5 } },
-  { keep: [], options: { position: 0.5, snap: separators('/') } },
+  { keep: [], options: { position: 0.5, snap: separators('/'), ...fewDots } },
   { keep: [], options: {} },
   { keep: [], options: { position: 0.5 } },
 ];
 
-/** A table cut four ways, narrowed, searched (matches kept, other rows faded), and hovered for a tooltip. */
+/** A table truncated four ways, narrowed, searched (matches kept, other rows faded), and hovered for a tooltip. */
 async function table() {
-  const s = new Scene(1, 'Cut each column its <em>own way.</em>', "keep: «/\\.[^.]+$/»      snap: separators(«'/'»)      position: «0.5»");
+  const s = new Scene(
+    1,
+    'Truncate each column its <em>own way.</em>',
+    "keep: «/\\.[^.]+$/»      snap: separators(«'/'»)      position: «0.5»",
+  );
   s.stage.classList.add('roomy');
   const search = el(
     'div',
@@ -118,14 +122,50 @@ async function sweep(s: Scene, list: HTMLElement, narrow: number, wide: number) 
 async function shortening() {
   const s = new Scene(
     2,
-    'Shorter before it’s <em>cut.</em>',
+    'Shorten before <em>truncating.</em>',
     "shorten: [{ match: «'Wednesday'», to: [«'Wed'», «'W'»] }, { match: «' 2026'», to: «''» }]",
   );
-  await sweep(s, rows(s, shortRows).rows, 700, 920);
+  const { rows: list, lines } = rows(s, shortRows);
+  const clipboard = el('p', 'clipboard', '<span class="label">Copied</span><span class="text">&nbsp;</span>');
+  list.style.width = '1070px';
+  s.stage.append(list, clipboard);
+  await s.enter();
+  await wait(400);
+  await widen(list, 700, 2600);
+  await wait(1000);
+
+  // Select the first row as a drag would, copy it, and show what the clipboard got.
+  s.code("elide(el, { copy: «'full'» }) // the default");
+  const line = lines[0]!;
+  const [x0, y] = at(line, 0, 0.5);
+  pointer.x = x0 + 120;
+  pointer.y = y + 160;
+  await showCursor(true);
+  await moveTo([x0 + 1, y], 500);
+  const start = document.caretPositionFromPoint(x0 + 1, y)!;
+  const selection = getSelection()!;
+  // The pointer moves first in each frame, then the selection follows it.
+  await Promise.all([
+    moveTo([x0 + line.getBoundingClientRect().width - 1, y], 800),
+    tween(800, () => {
+      const end = document.caretPositionFromPoint(pointer.x, y);
+      if (end) selection.setBaseAndExtent(start.offsetNode, start.offset, end.offsetNode, end.offset);
+    }),
+  ]);
+  await wait(400);
+  const data = new DataTransfer();
+  line.dispatchEvent(new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: data }));
+  clipboard.querySelector('.text')!.textContent = data.getData('text/plain');
+  clipboard.animate({ opacity: [0, 1], translate: ['0 8px', '0 0'] }, { duration: 400, easing: 'ease-out', fill: 'forwards' });
+  await wait(2600);
+  selection.removeAllRanges();
+  await moveTo([pointer.x + 120, pointer.y + 160], 350);
+  await showCursor(false);
+  await s.leave();
 }
 
 async function lists() {
-  const s = new Scene(3, 'Lists say how many are <em>left.</em>', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
+  const s = new Scene(3, 'Count what a list <em>hides.</em>', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
   await sweep(s, rows(s, listRows).rows, 620, 900);
 }
 
@@ -143,13 +183,13 @@ async function units() {
   await sweep(s, rows(s, unitRows, calm).rows, 640, 940);
 }
 
-/** Text fields: cut until pressed, when the whole value shows with the caret where the pointer is; cut again once left. */
-async function fields() {
-  const s = new Scene(6, 'Fields stay cut until you <em>edit.</em>', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
+/** Inputs: truncated until pressed, when the whole value shows with the caret where the pointer is; truncated again on blur. */
+async function inputs() {
+  const s = new Scene(6, 'Inputs stay truncated until <em>focused.</em>', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
   const list = el('div', 'rows box');
   list.style.width = '1070px';
   s.stage.append(list);
-  const inputs = inputFields.map(({ label, value, placeholder, options }) => {
+  const made = inputFields.map(({ label, value, placeholder, options }) => {
     const row = el('div', 'row', `<code>${label}</code>`);
     const input = el('input', 'field');
     input.value = value;
@@ -158,16 +198,16 @@ async function fields() {
     input.tabIndex = -1;
     row.append(input);
     list.append(row);
-    const field = elideInput(input, options);
-    s.cleanup(() => field.destroy());
-    return { input, field };
+    const elided = elideInput(input, options);
+    s.cleanup(() => elided.destroy());
+    return { input, elided };
   });
   await s.enter();
   await wait(400);
   await widen(list, 700, 1600);
   await wait(500);
-  const { input, field } = inputs[0]!;
-  const ellipsis = field.instance.element.querySelector('[data-fp-ellipsis]')!;
+  const { input, elided } = made[0]!;
+  const ellipsis = elided.instance.element.querySelector('[data-fp-ellipsis]')!;
   pointer.x = 1000;
   pointer.y = 700;
   await showCursor(true);
@@ -177,7 +217,7 @@ async function fields() {
     const init = { bubbles: true, button: 0, clientX: x, clientY: y, pointerType: 'mouse' };
     input.dispatchEvent(new PointerEvent('pointerdown', init));
     input.focus();
-    // Where a real press would put the caret: the field is scrolled so the glyph pressed is under the pointer.
+    // Where a real press would put the caret: the input is scrolled so the glyph pressed is under the pointer.
     const caret = document.caretPositionFromPoint(x, y);
     if (caret?.offsetNode === input) input.setSelectionRange(caret.offset, caret.offset);
     input.dispatchEvent(new PointerEvent('pointerup', init));
@@ -206,7 +246,7 @@ async function marks() {
   await sweep(s, list, 660, 920);
 }
 
-/** Chips sized by their text: cut, the plain ones stay narrow, and the ones with `autoSize()` grow back. Then a card shows as many lines as it's tall. */
+/** Chips sized by their text: truncated, the plain ones stay narrow, and the ones with `autoSize()` grow back. Then a card shows as many lines as it's tall. */
 async function sizing() {
   const s = new Scene(8, 'Sized by <em>content.</em>', "elide(chip, { autoSize: autoSize() })   elide(p, { lines: «'fit'» })");
   const chips = ['feature/balanced-gaps', 'tokens/colors.json', 'release/2026-10-14'];
@@ -250,4 +290,4 @@ async function sizing() {
   await s.leave();
 }
 
-await film([intro, table, shortening, lists, wholes, units, fields, marks, sizing, outro], 8);
+await film([intro, table, shortening, lists, wholes, units, inputs, marks, sizing, outro], 8);

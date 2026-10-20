@@ -67,7 +67,7 @@ export type ElidedProps<T extends ElementType = 'div'> = Omit<BindingOptions, 's
   /** The full text. */
   text: string;
   /**
-   * Content that follows the text on its last line and is never cut: a
+   * Content that follows the text on its last line and is never truncated: a
    * string, any React node (a "Read more" button, a badge), or a `suffix()`
    * from `floating-ellipsis/suffix`. A node is rendered through a portal, and
    * shows once the page has hydrated.

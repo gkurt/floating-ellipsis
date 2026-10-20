@@ -6,20 +6,20 @@ Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](h
   the start, middle, end, any position, or several at once.
 - **Balanced and flush.** Even spacing on both sides of the ellipsis, and lines
   that end exactly at the edge, so resizing flows instead of stepping. Text a
-  hair too long can set tighter instead of being cut.
+  hair too long can set tighter instead of being truncated.
 - **Keep what matters.** Pin words, patterns or ranges so they stay visible,
   highlight them, and show words of context around them, like a search
   result's snippet.
-- **Words, paths and numbers.** Cuts can snap to whole words or path
+- **Words, paths and numbers.** Truncation can snap to whole words or path
   segments, and never split a number, a date or anything else you mark whole.
-- **Short forms first.** Parts can show shorter before anything is cut:
+- **Short forms first.** Parts can show shorter before anything is truncated:
   "Wednesday" as "Wed", a date down to "10/14/26".
-- **Rich text.** Links and inline markup survive the cut; a suffix ("Read
-  more", a badge) follows the text and is never cut.
+- **Rich text.** Links and inline markup survive truncation; a suffix ("Read
+  more", a badge) follows the text and is never truncated.
 - **Native behaviour.** Find in page finds hidden text, copying gives the full
   text, screen readers read it all.
 - **Lists.** Whole items, and a label for the rest: "Ada, Grace and 2 others".
-- **Add-ons.** Headless tooltips, glyph transitions, text fields cut until
+- **Add-ons.** Headless tooltips, glyph transitions, inputs truncated until
   you edit them, a DOM-free `elideText`, a CSS fallback, and bindings for
   custom elements, React, Vue and Svelte.
 - **Fast in bulk.** Thousands of instances share a few layouts.
@@ -60,10 +60,10 @@ block, or a flex or grid item with `min-width: 0`. For one sized by its text
 | `maxGap`      | `'0.75em'`      | The widest a justified gap gets; room past it stays at the line's end. `null`: no limit.                                                                                             |
 | `trim`        | `true`          | Drop whitespace next to an ellipsis.                                                                                                                                                 |
 | `snap`        | `null`          | `words()` or `separators(chars)`. See [Snapping](#snapping).                                                                                                                         |
-| `whole`       | `null`          | Parts shown whole or not at all, never cut: a string, a RegExp, `{ start, end }`, or an array. See [Wholes](#wholes).                                                                |
+| `whole`       | `null`          | Parts shown whole or not at all, never split: a string, a RegExp, `{ start, end }`, or an array. See [Wholes](#wholes).                                                              |
 | `tighten`     | `0`             | Letters may set this much closer (px or `'0.05em'`, word spaces twice that) so text a little too long shows whole. See [Tightening](#tightening).                                    |
-| `tightenCuts` | `false`         | On one line, set a cut tighter too, by up to `tighten`, to show more of the text.                                                                                                    |
-| `shorten`     | `null`          | Parts that show shorter before anything is cut: `{ match, to }` or `{ start, end, to }`, `to` a form or several, or an array. See [Short forms](#short-forms).                       |
+| `tightenCuts` | `false`         | On one line, set truncated text tighter too, by up to `tighten`, to show more of it.                                                                                                 |
+| `shorten`     | `null`          | Parts that show shorter before anything is truncated: `{ match, to }` or `{ start, end, to }`, `to` a form or several, or an array. See [Short forms](#short-forms).                 |
 | `observe`     | `true`          | Re-truncate on resize and when web fonts load.                                                                                                                                       |
 | `glyphs`      | `null`          | `glyphs` from `floating-ellipsis/glyphs`: each grapheme in its own element, for per-glyph styling and transitions. Meant for short text.                                             |
 | `title`       | `false`         | Put the full text in `title` while truncated or shortened.                                                                                                                           |
@@ -87,7 +87,7 @@ of the content box's width (`'50%'`) or a length from its start (`'120px'`,
 `'8em'`), for the ellipsis' middle, as far in as it needs. The text before it
 shows as much as fits before the place, and the text after it the rest, so
 the cells of a column put theirs within about a glyph of each other. It's
-still cut, spaced and justified as usual, so the text around it and its
+still truncated, spaced and justified as usual, so the text around it and its
 gaps move it that much. In an array with a place, a number is a share of the
 line too; on more than one line, `'50%'` is half the text, and a length the
 middle. `elideText` takes places too, along its `width`.
@@ -119,8 +119,8 @@ the dots would come from: three dots in one character's cell on one line, six
 over two on more. `align: 'middle'` sets marks in the middle of an
 ideograph's box; `cells` makes the ellipsis exactly as wide as that many
 ideographs, so the characters after it stay in their columns, even on a
-justified line. The text decides (more ideographs and kana than other
-letters), then the element's `lang`.
+justified line. The text's script is checked first (more ideographs and kana than
+other letters), then the element's `lang`.
 
 ### Highlights
 
@@ -142,7 +142,7 @@ Matches stay visible and are wrapped in a `<span>` with the class (and
 With `context`, words around every match show before any other text, a word
 at a time after each match and then before it, so each gets a word before
 any gets two: a search result's snippet. `Infinity` shows as many as fit; a
-number stops there, and the rest of the room goes where `position` says.
+number stops there, and the rest of the room goes where `position` puts the ellipsis.
 
 ```js
 elide(el, { keep: { match: /lantern/gi, class: 'hit', context: Infinity } }); // …by dusk the lantern by the gate…
@@ -157,10 +157,10 @@ elide(el, { snap: separators('/\\') }); // /Users/ada/Projects/anal…/notes/x.m
 elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/difference-engine/notes/x.md
 ```
 
-`words()` cuts between words in any language `Intl.Segmenter` knows.
+`words()` truncates between words in any language `Intl.Segmenter` supports.
 `separators(chars)` takes a string of characters or a RegExp. By default one
-side of a path cut keeps a piece of its segment (`fragment: 'head'`, or
-`'tail'`), so the cut shows about as much as a plain one; with `false` only
+side of a truncated path keeps a piece of its segment (`fragment: 'head'`, or
+`'tail'`), so it shows about as much as plain truncation; with `false` only
 whole segments go, as with `words()`.
 
 ### Wholes
@@ -169,9 +169,9 @@ whole segments go, as with `words()`.
 elide(el, { position: 'middle', whole: /[$€£]?\d[\d,.:/-]*\d%?/g }); // Invoice…ref 88412093, never Invoice 20…
 ```
 
-A cut that would split a match of `whole` slides off it, hiding as much just
+An ellipsis that would split a match of `whole` moves off it, hiding as much just
 beside it, or hides all of it at an end of the text. It's the same rule
-`words()` follows (where a cut may start and end), so the two combine:
+`words()` follows (where truncation may start and end), so the two combine:
 `{ snap: words(), whole: … }` keeps to both.
 
 ### Tightening
@@ -180,16 +180,16 @@ beside it, or hides all of it at an end of the text. It's the same rule
 elide(el, { tighten: '0.05em' });
 ```
 
-Text that runs over by a little shows whole, set tighter rather than cut,
+Text that runs over by a little shows whole, set tighter rather than truncated,
 word spaces by twice what letters are, and only as much as it takes, so a
-line ends at the edge. Past `tighten`, it's cut, and set as
-usual. `state.tightened` says by how much (px per letter).
+line ends at the edge. Past `tighten`, it's truncated, and set as
+usual. `state.tightened` is how much (px per letter).
 
 ```js
 elide(el, { tighten: '0.05em', tightenCuts: true });
 ```
 
-With `tightenCuts`, a cut on one line is set tighter too, by up to
+With `tightenCuts`, truncated text on one line is set tighter too, by up to
 `tighten`, to show as many more letters as that makes room for. The
 ellipsis and the letters beside it keep their spacing.
 
@@ -205,12 +205,12 @@ elide(el, {
 });
 ```
 
-Parts show shorter, a step at a time, before any text is cut: only as many
+Parts show shorter, a step at a time, before any text is truncated: only as many
 steps as it takes to fit. Every part takes its first form before any takes
 its second, and the last entry goes first, so list them from most to least
 important, as with `keep`. Text set tighter (`tighten`) counts as fitting.
-Past the last step, the text is cut with every part at its shortest. A part
-showing short is never cut, only hidden whole. Copying, find in page, the
+Past the last step, the text is truncated with every part at its shortest. A part
+showing short is never split, only hidden whole. Copying, find in page, the
 `title` and screen readers get the long form, and `expand()` shows it; a
 search for a long form shows it until a press elsewhere, as `find` does for
 hidden text.
@@ -272,7 +272,7 @@ more.onclick = () => (post.expanded ? post.collapse() : post.expand());
 ```
 
 The content is a string or a node, which follows the text on its last line and
-is never cut. A node is moved into place, keeping its listeners, and goes back
+is never truncated. A node is moved into place, keeping its listeners, and goes back
 on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
 shows all of the text until `collapse()`. To animate the height as it opens and
 closes, see [Animating "Read more"](docs/how-it-works.md#animating-read-more).
@@ -287,7 +287,7 @@ elide(el, { ...list(split(', '), { label: (n) => `+${n}`, joiner: ' ' }) }); // 
 ```
 
 Items show whole or not at all, from the start, and a label for the hidden
-ones follows the last that shows. When not even the first fits, it is cut and
+ones follows the last that shows. When not even the first fits, it is truncated and
 the label starts with an ellipsis (`Ada Lovel… and 3 others`). Items are an
 array, joined into the text by `Intl.ListFormat`, or a function that finds
 them in the text, in order; `split(separator)` takes a string or a RegExp.
@@ -300,7 +300,7 @@ your own options: it sets `snap`, `suffix`, `position`, `ellipsis`, `gap`,
 | `label`    | `` (n) => `${n} more` `` | What stands for the hidden items, given how many are hidden and how many there are. |
 | `joiner`   | the list's own           | What goes between the last item showing and the label.                              |
 | `format`   | `new Intl.ListFormat()`  | How an array is joined into the text, and how the label joins it.                   |
-| `ellipsis` | `'…'`                    | What ends the first item when it is cut.                                            |
+| `ellipsis` | `'…'`                    | What ends the first item when it is truncated.                                      |
 
 The label is `[data-fp-list]`, for styling. Screen readers read every item,
 and find in page and copying leave the label out.
@@ -316,7 +316,7 @@ elide(chip, { position: 'middle', autoSize: autoSize() });
 
 An inline-block, a float, an absolutely positioned element, or a flex or grid
 item sized by its content takes its width from the text that shows, so once
-cut it never grows back. With `autoSize()`, an invisible copy of the full text
+truncated it never grows back. With `autoSize()`, an invisible copy of the full text
 (with its elements, and a suffix that always shows) sizes it instead: as wide
 as the text, up to the room it has. On one line, as with `text-overflow`,
 something must cap that room: `max-width: 100%`, or `min-width: 0` on a flex
@@ -385,7 +385,7 @@ import 'floating-ellipsis/fallback.css';
 <p data-elide-fallback="2">Clamped to two lines with CSS until an instance takes over.</p>
 ```
 
-CSS can only cut at the end, and `data-elide-fallback="fit"` only clips. React's `<Elided>` renders this markup itself, so
+CSS can only truncate at the end, and `data-elide-fallback="fit"` only clips. React's `<Elided>` renders this markup itself, so
 server-rendered pages show truncated text before hydration.
 
 ## Text without the DOM
@@ -396,7 +396,7 @@ import { elideText } from 'floating-ellipsis/text';
 elideText(path, { width: 180, font: '13px Inter', position: 'middle', keep: /\.[^.]+$/ }).text;
 ```
 
-The same cuts as a string, on one line, for canvas, SVG, workers or the server.
+The same truncation as a string, on one line, for canvas, SVG, workers or the server.
 It takes `width`, `font` or your own `measure(text)`, `letterSpacing`, and
 `position`, `keep`, `ellipsis` (a string; `'auto'` is the midline `⋯` for
 Chinese and Japanese), `trim`, `snap`, `whole`, `shorten`,
@@ -476,7 +476,7 @@ instances with `update({ text })` or mount one per row; both cost the same.
 
 `floating-ellipsis/react` is a Client Component (`'use client'`), so Server
 Components render `<Elided>` as is. With `fallback.css` imported in the layout,
-static and server-rendered pages show the text cut at the end until they
+static and server-rendered pages show the text truncated at the end until they
 hydrate. Props from a Server Component must serialize: `keep` as a string, not
 a RegExp; set `snap`, `onChange`, `glyphs` and `instanceRef` in a Client
 Component. A `suffix` can come from the server as a string or an element (a
@@ -499,7 +499,7 @@ child of a Radix `asChild` or a Base UI `render` prop:
 ```
 
 In flex rows, give the text `min-w-0 flex-1`; in tables, use `table-fixed`. To
-open a tooltip only while the text is cut, check the trigger's `data-truncated`
+open a tooltip only while the text is truncated, check the trigger's `data-truncated`
 in `onOpenChange`. [`examples/next`](examples/next) is a file browser built
 from shadcn components (buttons, Radix and Base UI tooltips, a table, cards)
 with floating-ellipsis's own tooltips grown over the rows, static and
@@ -515,11 +515,11 @@ const t = elide(el, { position: 0.5, glyphs });
 const stop = transitions(t, { effect: 'merge' });
 ```
 
-| Option     | Default   |                                                                                   |
-| ---------- | --------- | --------------------------------------------------------------------------------- |
-| `effect`   | `'merge'` | `'merge'` (glyphs shrink and fade into the dots), `'fade'`, `'blur'` or `'none'`. |
-| `duration` | `460`     | Milliseconds. Leaving glyphs take less when squeezed or dragged fast.             |
-| `glide`    | `true`    | The ellipsis' spacing glides when the cut changes. Works without glyph mode.      |
+| Option     | Default   |                                                                                     |
+| ---------- | --------- | ----------------------------------------------------------------------------------- |
+| `effect`   | `'merge'` | `'merge'` (glyphs shrink and fade into the dots), `'fade'`, `'blur'` or `'none'`.   |
+| `duration` | `460`     | Milliseconds. Leaving glyphs take less when squeezed or dragged fast.               |
+| `glide`    | `true`    | The ellipsis' spacing glides when the truncation changes. Works without glyph mode. |
 
 Respects `prefers-reduced-motion`.
 
@@ -555,7 +555,8 @@ ellipsis hides. Pressing a tip makes its text selectable.
 | `onHide`     | —        | Called with the same.                                                   |
 
 `attach(instance, trigger?)` returns a detach function; `show(instance,
-ellipsis?)`, `hide()`, `update(options)` and `destroy()` do what they say.
+ellipsis?)` and `hide()` open and close the tooltip, `update(options)` changes
+its options and `destroy()` removes it.
 
 The looks are yours. Style `[data-fp-tip]` (padding, colour; its value is the
 reveal) and `[data-fp-tip-bg]` (background, border, shadow). A peek tip has
@@ -574,21 +575,21 @@ has `data-held`; the open trigger has `data-fp-tip-open`.
 }
 ```
 
-## Text fields
+## Inputs
 
 ```js
 import { elideInput } from 'floating-ellipsis/input';
 
-const field = elideInput(document.querySelector('input[name=path]'), { position: 'middle', keep: /[^/]+$/ });
+const elided = elideInput(document.querySelector('input[name=path]'), { position: 'middle', keep: /[^/]+$/ });
 elideInput(document.querySelector('textarea'), { position: 'end' });
 ```
 
-A text field shows its value cut while it isn't being edited, and its
-placeholder cut while it's empty. Press it anywhere, even on an ellipsis,
+An input shows its value truncated while it isn't being edited, and its
+placeholder truncated while it's empty. Press it anywhere, even on an ellipsis,
 and the whole value appears with the glyph you pressed still under the
 pointer and the caret beside it; dragging selects as usual. The value, the
-field and what a form submits stay as they are: a copy of the cut text lies
-over the field's own, which is hidden while the copy shows. It follows the
+input and what a form submits stay as they are: a copy of the truncated text
+lies over the input's own, which is hidden while the copy shows. It follows the
 value as you type, as a framework sets it, and as a form resets it.
 
 A textarea's value wraps as the textarea wraps it, on as many lines as its
@@ -597,13 +598,14 @@ truncated, it doesn't scroll.
 
 It takes `elide`'s options, but those about suffixes and find in page, and
 `lines` only for a textarea (`'fit'` by default). It returns
-`{ instance, update(options), refresh(), destroy() }`. A password field never
-shows its value cut, including one whose type a "show" button flips.
+`{ instance, update(options), refresh(), destroy() }`. A password input never
+shows its value truncated, including one whose type a "show" button flips.
 
 ## Accessibility
 
 Screen readers get the full text, links included, from a visually hidden copy.
-Visible text stays selectable, copying gives the hidden text, and the tooltip
+Visible text stays selectable, a selection highlights ellipses and short forms
+too, copying gives the hidden text, and the tooltip
 opens on focus and closes on Escape. Drawn marks survive forced-colors mode,
 and transitions respect reduced motion.
 
@@ -613,9 +615,9 @@ and transitions respect reduced motion.
 - A line whose leftover room exceeds `maxGap` isn't flush.
 - With `lines: 'fit'`, a `max-height` in percent that grows past the lines
   showing needs `refresh()`.
-- Find in page can't find a word an ellipsis cuts in two, and with
+- Find in page can't find a word an ellipsis splits in two, and with
   `find: 'keep'` moving past a kept match takes a second Enter.
-- `elideInput` lines the pressed glyph up only in fields set from the left;
+- `elideInput` lines the pressed glyph up only in inputs set from the left;
   in a textarea, the line pressed stays under the pointer, but its glyphs
   can move along it.
 

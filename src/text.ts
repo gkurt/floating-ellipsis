@@ -91,7 +91,7 @@ export interface ElideTextResult {
 
 /**
  * Fit `text` into `options.width` on one line, with the ellipsis wherever
- * `position` puts it: the same cuts `elide` makes, as a string.
+ * `position` puts it: the same truncation `elide` makes, as a string.
  *
  * ```js
  * elideText('/Users/ada/notes/2026/tables.md', { width: 120, font: '13px Inter', position: 'middle' }).text;

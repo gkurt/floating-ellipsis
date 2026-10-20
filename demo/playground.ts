@@ -104,7 +104,7 @@ const textDials = createDialKit('Text', {
   lines: [1, 1, 3, 1],
   keep: { type: 'text', default: '', placeholder: 'quiet, asked or /\\w+ly/g' },
   context: [0, 0, 8, 1],
-  cutAt: {
+  truncateAt: {
     type: 'select',
     options: [
       { value: 'glyph', label: 'any glyph' },
@@ -112,7 +112,14 @@ const textDials = createDialKit('Text', {
     ],
     default: 'glyph',
   },
-  numbers: { type: 'select', options: ['cut', 'whole'], default: 'cut' },
+  numbers: {
+    type: 'select',
+    options: [
+      { value: 'split', label: 'may split' },
+      { value: 'whole', label: 'stay whole' },
+    ],
+    default: 'split',
+  },
   tighten: [0, 0, 0.1, 0.01],
   tightenCuts: false,
 });
@@ -137,7 +144,7 @@ const ellipsisDials = createDialKit('Ellipsis', {
 });
 
 function update() {
-  const { text, position, lines, keep, context, cutAt, numbers, tighten, tightenCuts } = textDials.values;
+  const { text, position, lines, keep, context, truncateAt, numbers, tighten, tightenCuts } = textDials.values;
   const { style, dots, gap, justify, repeat } = ellipsisDials.values;
   hero.update({
     text,
@@ -151,7 +158,7 @@ function update() {
     gap: gap as Gap,
     justify: justify === 'off' ? false : (justify as ElideOptions['justify']),
     repeat,
-    snap: cutAt === 'words' ? byWords : null,
+    snap: truncateAt === 'words' ? byWords : null,
   });
 }
 textDials.subscribe(update, false);

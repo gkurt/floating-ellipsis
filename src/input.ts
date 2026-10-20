@@ -11,7 +11,7 @@ import { inside } from './inside.ts';
 import { applyTextTransform, fontOf, measure } from './metrics.ts';
 import type { ElideOptions } from './options.ts';
 
-/** `elide`'s options that make sense for a field's one line. */
+/** `elide`'s options that make sense for an input's one line. */
 export type InputOptions = Omit<ElideOptions, 'text' | 'lines' | 'find' | 'suffix' | 'autoSize' | 'glyphs' | 'title' | 'copy'>;
 
 /** A textarea's: an input's, and `lines` (`'fit'` by default: as many as its height holds). */
@@ -19,28 +19,28 @@ export type TextareaOptions = InputOptions & Pick<ElideOptions, 'lines'>;
 
 /** An input or a textarea whose value shows truncated while it isn't being edited. */
 export interface ElidedInput<O extends InputOptions = InputOptions> {
-  /** The instance cutting the value (or the placeholder) for show. */
+  /** The instance truncating the value (or the placeholder) for show. */
   readonly instance: Elide;
   update(options: O): void;
-  /** Read the field's style and value again, after a change nothing reports: a class that changes its font, say. */
+  /** Read the input's style and value again, after a change nothing reports: a class that changes its font, say. */
   refresh(): void;
-  /** Show the field as it was. */
+  /** Show the input as it was. */
   destroy(): void;
 }
 
 const FIELD = 'data-fp-input';
-/** What hides the field's own text: not its colour, which its caret and the copy take. */
+/** What hides the input's own text: not its colour, which its caret and the copy take. */
 const FILL = '-webkit-text-fill-color';
 
-/** Where CSS anchor positioning works, the copy follows the field wherever it goes. */
+/** Where CSS anchor positioning works, the copy follows the input wherever it goes. */
 const ANCHORED = typeof CSS !== 'undefined' && CSS.supports('anchor-name', '--a');
 
-/** The copy: over the field's text, unseen by pointers, screen readers and find in page. */
+/** The copy: over the input's text, unseen by pointers, screen readers and find in page. */
 const OVERLAY =
   'position:absolute;box-sizing:border-box;margin:0;border-style:solid;border-color:transparent;background:none;' +
   'pointer-events:none;overflow:hidden;white-space:pre;direction:ltr;z-index:auto';
 
-/** Typography the copy takes from the field, so its glyphs land on the field's. */
+/** Typography the copy takes from the input, so its glyphs land on the input's. */
 const TYPESET = [
   'font-family',
   'font-size',
@@ -62,7 +62,7 @@ const TYPESET = [
 const WRAPPING = ['white-space', 'overflow-wrap', 'word-break', 'line-break', 'hyphens', 'tab-size', 'text-indent', 'line-height'] as const;
 
 /**
- * The field's native placeholder gives way to the copy's, which is cut the
+ * The input's native placeholder gives way to the copy's, which is truncated the
  * same way. Its colour stays readable: only the fill goes.
  */
 let sheet: CSSStyleSheet | null | undefined;
@@ -92,13 +92,13 @@ function px(value: string): number {
 }
 
 /**
- * Show `input`'s value cut to fit, as `elide` would cut it, while it isn't
- * being edited, and its placeholder cut while it's empty. Pressing the
- * field shows the whole value under the pointer where the cut one was: the
- * caret lands on the glyph pressed (or beside what a pressed ellipsis hides)
- * and dragging selects as usual. The value, the field and what's submitted
- * stay as they are; a copy of the cut text lies over the field's own, which
- * is hidden while the copy shows.
+ * Show `input`'s value truncated to fit, as `elide` would truncate it, while
+ * it isn't being edited, and its placeholder truncated while it's empty.
+ * Pressing the input shows the whole value under the pointer where the
+ * truncated one was: the caret lands on the glyph pressed (or beside what a
+ * pressed ellipsis hides) and dragging selects as usual. The value, the input
+ * and what's submitted stay as they are; a copy of the truncated text lies
+ * over the input's own, which is hidden while the copy shows.
  *
  * A textarea's value wraps as the textarea wraps it, on as many lines as its
  * height holds (or `lines`), and a press keeps the line pressed under the
@@ -125,9 +125,9 @@ class Field implements ElidedInput<TextareaOptions> {
   readonly #observer: ResizeObserver | null;
   readonly #mutations: MutationObserver;
   readonly #undo: (() => void)[] = [];
-  /** A touch pressed this caret offset: placed once the field has focus. */
+  /** A touch pressed this caret offset: placed once the input has focus. */
   #touched: number | null = null;
-  /** The field couldn't scroll a pressed caret under the pointer: placed once the press ends, unless it dragged. */
+  /** The input couldn't scroll a pressed caret under the pointer: placed once the press ends, unless it dragged. */
   #unplaced: number | null = null;
   /** The input's own inline values (and priorities) of the properties `#toggle` sets. */
   readonly #own = new Map<string, [string, string]>();
@@ -178,7 +178,7 @@ class Field implements ElidedInput<TextareaOptions> {
             this.#sync();
           });
     this.#observer?.observe(input);
-    // A password field's "show" button flips its type: the copy never shows a password.
+    // A password input's "show" button flips its type: the copy never shows a password.
     this.#mutations = new MutationObserver(() => this.#sync());
     this.#mutations.observe(input, { attributes: true, attributeFilter: ['type', 'placeholder'] });
     this.#sync();
@@ -205,7 +205,7 @@ class Field implements ElidedInput<TextareaOptions> {
     this.#overlay.remove();
   }
 
-  /** Set a style property of the field, until `destroy` gives it back. */
+  /** Set a style property of the input, until `destroy` gives it back. */
   #hold(property: string, value: string) {
     const style = this.#input.style;
     const [before, priority] = [style.getPropertyValue(property), style.getPropertyPriority(property)];
@@ -219,7 +219,7 @@ class Field implements ElidedInput<TextareaOptions> {
     this.#input.style.setProperty(property, v, priority);
   }
 
-  /** Hide the field's own text, or show it as it was. */
+  /** Hide the input's own text, or show it as it was. */
   #hide(hidden: boolean) {
     this.#toggle(FILL, hidden ? 'transparent' : null);
   }
@@ -247,7 +247,7 @@ class Field implements ElidedInput<TextareaOptions> {
 
   /**
    * Programmatic changes (a framework setting the value) fire no event:
-   * the field's own `value` reports them. Whatever defined it before (React
+   * the input's own `value` reports them. Whatever defined it before (React
    * tracks values this way too) still runs, and comes back on `destroy`.
    */
   #watchValue() {
@@ -273,7 +273,7 @@ class Field implements ElidedInput<TextareaOptions> {
     });
   }
 
-  /** Copy the field's box and typography, so the copy's glyphs land where the field's would. */
+  /** Copy the input's box and typography, so the copy's glyphs land where the input's would. */
   #restyle() {
     const input = this.#input;
     const cs = getComputedStyle(input);
@@ -287,7 +287,7 @@ class Field implements ElidedInput<TextareaOptions> {
       for (const p of WRAPPING) s.setProperty(p, cs.getPropertyValue(p));
       this.#gutter(cs);
     } else {
-      // A field centres its line in its content box; a line as tall as the box does too.
+      // An input centres its line in its content box; a line as tall as the box does too.
       const inner = input.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
       s.lineHeight = `${Math.max(0, inner)}px`;
     }
@@ -316,7 +316,7 @@ class Field implements ElidedInput<TextareaOptions> {
     this.#padding = padding;
   }
 
-  /** Without anchor positioning: move the copy over the field (both are laid out in the same containing block). */
+  /** Without anchor positioning: move the copy over the input (both are laid out in the same containing block). */
   #place() {
     const s = this.#overlay.style;
     // From the containing block's corner, not where it would sit in the flow.
@@ -329,7 +329,7 @@ class Field implements ElidedInput<TextareaOptions> {
     s.height = `${field.height}px`;
   }
 
-  /** The copy's colour: the field's, or its placeholder's while it's empty. */
+  /** The copy's colour: the input's, or its placeholder's while it's empty. */
   #paint() {
     const input = this.#input;
     const s = this.#overlay.style;
@@ -343,16 +343,16 @@ class Field implements ElidedInput<TextareaOptions> {
     s.opacity = placeholder.opacity;
   }
 
-  /** Being edited (focused, with a value to edit), or a password: the field shows its own text. */
+  /** Being edited (focused, with a value to edit), or a password: the input shows its own text. */
   get #editing(): boolean {
     const input = this.#input;
     return (input.matches(':focus') && input.value !== '') || input.type === 'password';
   }
 
   /**
-   * The copy beside the field, and the sheet hiding the field's own
+   * The copy beside the input, and the sheet hiding the input's own
    * placeholder in its document (or shadow root): again whenever it syncs,
-   * for a field made before it was put in the page, or moved since.
+   * for an input made before it was put in the page, or moved since.
    */
   #settle() {
     const input = this.#input;
@@ -360,7 +360,7 @@ class Field implements ElidedInput<TextareaOptions> {
     adopt(input);
   }
 
-  /** Show the cut copy, or the field's own text, as the field is being edited or not. */
+  /** Show the truncated copy, or the input's own text, as the input is being edited or not. */
   #sync() {
     if (this.#destroyed) return;
     this.#settle();
@@ -383,12 +383,12 @@ class Field implements ElidedInput<TextareaOptions> {
   }
 
   /**
-   * A press on the field, not yet being edited: show its whole value now,
+   * A press on the input, not yet being edited: show its whole value now,
    * scrolled so the caret the press is about to place lands on the glyph
-   * the cut copy showed there. The browser then places it, and a drag
-   * selects, as on any field. A textarea is scrolled so the line pressed
+   * the truncated copy showed there. The browser then places it, and a drag
+   * selects, as on any input. A textarea is scrolled so the line pressed
    * stays under the pointer; its glyphs needn't, so the caret goes beside the
-   * one pressed once the press ends. A touch places it once the field has
+   * one pressed once the press ends. A touch places it once the input has
    * focus.
    */
   #pressed(e: PointerEvent) {
@@ -404,15 +404,15 @@ class Field implements ElidedInput<TextareaOptions> {
     this.#still(false);
     if (this.#area) this.#lineTo(caret, e.clientY);
     this.#unplaced = !this.#area && this.#scrollTo(caret, e.clientX) ? null : caret;
-    // (Wherever the press ends: a drag can leave the field.)
+    // (Wherever the press ends: a drag can leave the input.)
     if (this.#unplaced !== null) addEventListener('pointerup', () => this.#released(), { once: true, capture: true });
     // Pressed, but not focused (the page prevented it): back as it was.
     requestAnimationFrame(() => this.#sync());
   }
 
   /**
-   * The press ended. Where the field couldn't scroll far enough to put the
-   * caret under the pointer (beside an ellipsis, whose gaps the field's
+   * The press ended. Where the input couldn't scroll far enough to put the
+   * caret under the pointer (beside an ellipsis, whose gaps the input's
    * text doesn't have), the browser put it a glyph away: it goes where it
    * was pressed, unless a drag selected something.
    */
@@ -424,7 +424,7 @@ class Field implements ElidedInput<TextareaOptions> {
     try {
       input.setSelectionRange(caret, caret);
     } catch {
-      // (Email fields have no selection to set.)
+      // (Email inputs have no selection to set.)
     }
   }
 
@@ -436,7 +436,7 @@ class Field implements ElidedInput<TextareaOptions> {
     try {
       this.#input.setSelectionRange(caret, caret);
     } catch {
-      // (Email fields have no selection to set.)
+      // (Email inputs have no selection to set.)
     }
   }
 
@@ -499,7 +499,7 @@ class Field implements ElidedInput<TextareaOptions> {
   }
 
   /**
-   * Scroll the field so the caret at `offset` sits at `x`, as far as it
+   * Scroll the input so the caret at `offset` sits at `x`, as far as it
    * scrolls. Returns whether it got there. Only for text set from the left.
    */
   #scrollTo(offset: number, x: number): boolean {
@@ -512,7 +512,7 @@ class Field implements ElidedInput<TextareaOptions> {
       measure(fontOf(cs), applyTextTransform(before, cs.textTransform)).advance +
       px(cs.letterSpacing) * graphemes(before).length +
       px(cs.wordSpacing) * spaces;
-    // (Firefox counts a field's padding in its clientLeft.)
+    // (Firefox counts an input's padding in its clientLeft.)
     const start = input.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
     const want = width - (x - start);
     input.scrollLeft = Math.max(0, Math.min(input.scrollWidth - input.clientWidth, want));

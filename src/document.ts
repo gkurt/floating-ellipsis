@@ -39,6 +39,7 @@ export function hookDocument(): void {
   if (hooked || typeof document === 'undefined') return;
   hooked = true;
   document.addEventListener('copy', onCopy);
+  document.addEventListener('selectionchange', onSelectionChange);
   document.addEventListener('beforematch', onBeforeMatch, true);
   document.addEventListener('pointerdown', onPointerDown, true);
   if (typeof document.fonts === 'undefined') return;
@@ -97,6 +98,58 @@ function onCopy(event: ClipboardEvent) {
   event.clipboardData.setData('text/html', holder.innerHTML);
   holder.remove();
   event.preventDefault();
+}
+
+/** What a selection doesn't paint by itself: ellipses (drawn marks, and the gaps either side) and generated text (short forms, a list's label). */
+const PAINTED = `[data-fp-ellipsis],[${FORM}],[data-fp-list]`;
+/** The properties a selection paints: each element's own values go back when it's left. */
+const PAINT = ['background-color', 'color', 'box-shadow', 'padding-block'] as const;
+/** Firefox highlights a line's text; the others its whole height. */
+const textHigh = typeof CSS !== 'undefined' && CSS.supports('-moz-appearance', 'none');
+let painted = new Map<HTMLElement, string[]>();
+
+/**
+ * Paint the ellipses and generated text a selection crosses as it paints
+ * text: in the element's `::selection` colours where the page sets them,
+ * otherwise in `Highlight` and `HighlightText`. These are what copying
+ * expands.
+ */
+function onSelectionChange() {
+  const selection = document.getSelection();
+  const range = selection && !selection.isCollapsed && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const next = new Map<HTMLElement, string[]>();
+  const root = range?.commonAncestorContainer;
+  const scope = root instanceof Element ? root : root?.parentElement;
+  if (range && scope) {
+    const near = scope.closest<HTMLElement>(PAINTED);
+    for (const el of near ? [near] : scope.querySelectorAll<HTMLElement>(PAINTED))
+      if (range.intersectsNode(el)) next.set(el, painted.get(el) ?? paint(el));
+  }
+  for (const [el, own] of painted) if (!next.has(el)) PAINT.forEach((p, i) => el.style.setProperty(p, own[i]!));
+  painted = next;
+}
+
+/** Paint `el` as selected text, returning its own values of what's painted. */
+function paint(el: HTMLElement): string[] {
+  const own = PAINT.map((p) => el.style.getPropertyValue(p));
+  const selected = getComputedStyle(el, '::selection');
+  const page = selected.backgroundColor !== 'rgba(0, 0, 0, 0)' && selected.backgroundColor !== 'transparent';
+  const background = page ? selected.backgroundColor : 'Highlight';
+  const color = page ? (selected.color !== getComputedStyle(el).color ? selected.color : '') : 'HighlightText';
+  const cs = getComputedStyle(el);
+  el.style.backgroundColor = background;
+  if (color) el.style.color = color;
+  // As tall as the selection is painted: an inline element's padding moves nothing.
+  const leading = (parseFloat(cs.lineHeight) - el.getBoundingClientRect().height) / 2;
+  if (!textHigh && leading > 0) el.style.paddingBlock = `${leading}px`;
+  if (el.hasAttribute('data-fp-ellipsis')) {
+    // Its gaps are margins, which a background doesn't reach: shadows its size cover them.
+    const [left, right] = [parseFloat(cs.marginLeft), parseFloat(cs.marginRight)];
+    el.style.boxShadow = [left > 0 ? `${-left}px 0 ${background}` : '', right > 0 ? `${right}px 0 ${background}` : '']
+      .filter(Boolean)
+      .join(',');
+  }
+  return own;
 }
 
 /** The entry of the instance find in page last expanded. */

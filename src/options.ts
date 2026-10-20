@@ -70,7 +70,7 @@ export interface ElideOptions {
   justify?: 'ellipsis' | 'dots' | 'spread' | false;
   /**
    * Fill the room left on a line with more marks, so a lot of it (a word or
-   * a path segment cut whole) doesn't spread the marks far apart: a number
+   * a path segment hidden whole) doesn't spread the marks far apart: a number
    * from 0 to 1, the share of the marks that would fit at their own spacing
    * (the ellipsis' own included) that are drawn. 1 (or true) adds one
    * wherever it fits; 0.75 lets the gaps grow a little first (3 dots stay 3
@@ -96,34 +96,34 @@ export interface ElideOptions {
   /** Move cuts to nicer boundaries: `words()`, or `separators()` for paths. */
   snap?: Snap | null;
   /**
-   * Parts shown whole or not at all, never cut: numbers, dates, versions,
+   * Parts shown whole or not at all, never split: numbers, dates, versions,
    * hashes. A string (first match), a RegExp (every match if global) or
-   * `{ start, end }` string offsets, or an array. A cut that would split one
-   * slides off it, hiding as much elsewhere, or hides all of it at an end.
+   * `{ start, end }` string offsets, or an array. An ellipsis that would split
+   * one moves off it, hiding as much elsewhere, or hides all of it at an end.
    * Combines with `snap`. Default null.
    */
   whole?: Whole | readonly Whole[] | null;
   /**
    * Text a little too long for its lines shows whole, set tighter, rather
-   * than cut: letters closer by up to this much (px, or a string like
+   * than truncated: letters closer by up to this much (px, or a string like
    * '0.02em'), and word spaces by up to twice as much. Only as much as it
-   * takes, so one line ends at the edge. Text that's cut is set as usual,
+   * takes, so one line ends at the edge. Truncated text is set as usual,
    * unless `tightenCuts`. Default 0: never.
    */
   tighten?: Length;
   /**
-   * On one line, a cut is set tighter too, by up to `tighten`, to show as
+   * On one line, truncated text is set tighter too, by up to `tighten`, to show as
    * much more of the text as that makes room for. Default false.
    */
   tightenCuts?: boolean;
   /**
-   * Parts that show shorter before any text is cut: `{ match, to }` (a
+   * Parts that show shorter before any text is truncated: `{ match, to }` (a
    * string's first match, or every match of a global RegExp) or
    * `{ start, end, to }` (string offsets), with `to` the short form, or
    * several from longer to shorter. Forms are taken a step at a time, the
    * fewest that let the text fit: every part takes its first before any
    * takes its second, and the last entry goes first. A part showing short is
-   * never cut; copying, find in page, the title and screen readers get its
+   * never split; copying, find in page, the title and screen readers get its
    * long form. Default null.
    */
   shorten?: Shorten | readonly Shorten[] | null;
@@ -148,7 +148,7 @@ export interface ElideOptions {
    */
   copy?: 'full' | 'visible';
   /**
-   * Content that follows the text on its last line and is never cut: a
+   * Content that follows the text on its last line and is never truncated: a
    * "Read more" button, a badge, a timestamp. Made by `suffix()` from
    * `floating-ellipsis/suffix`. Default null.
    */
@@ -234,9 +234,9 @@ export interface SuffixSlot {
   /** Its width now, for fitting. Reads layout. */
   measure(): number;
   /**
-   * Show it (`on`) or not, as a pass renders `graphemes` with `hidden` cut:
-   * before the pass measures what has to fit, so content that depends on
-   * the cut (as a list's label does) is measured as it shows.
+   * Show it (`on`) or not, as a pass renders `graphemes` with `hidden` left
+   * out: before the pass measures what has to fit, so content that depends
+   * on the truncation (as a list's label does) is measured as it shows.
    */
   show(on: boolean, hidden: readonly Range[], graphemes: readonly string[]): void;
   /** Put a node back where it came from; one of the host's own comes back with its content on `destroy` (`destroying`). */
@@ -321,7 +321,7 @@ export type ChangeReason = 'init' | 'resize' | 'update' | 'fonts' | 'refresh';
 
 /**
  * The state of `text` (whose grapheme `i` starts at `offsets[i]`) with
- * `hidden` cut and `pins` kept.
+ * `hidden` left out and `pins` kept.
  */
 export function stateOf(
   text: string,

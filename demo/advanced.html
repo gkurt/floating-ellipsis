@@ -6,7 +6,7 @@
     <title>floating-ellipsis — advanced features</title>
     <meta
       name="description"
-      content="floating-ellipsis, further: content-sized elements, icons and emoji, lists, search snippets, whole numbers, tightening, text fields, quotations, Chinese and Japanese, and short forms."
+      content="floating-ellipsis, further: content-sized elements, icons and emoji, lists, search snippets, whole numbers, tightening, inputs, quotations, Chinese and Japanese, and short forms."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,8 +34,8 @@
       </nav>
       <h1>Advanced <em>features.</em></h1>
       <p class="lede">
-        Past the basics: elements sized by their content, icons and every script, lists, search snippets, whole numbers, tightening, text
-        fields, quotations, Chinese and Japanese, and short forms. Drag any handle on this page.
+        Past the basics: elements sized by their content, icons and every script, lists, search snippets, whole numbers, tightening, inputs,
+        quotations, Chinese and Japanese, and short forms. Drag any handle on this page.
       </p>
     </header>
 
@@ -45,8 +45,8 @@
           <p class="num">01</p>
           <h2 id="autosize-title">Sized by <em>content.</em></h2>
           <p>
-            A chip or a flex item takes its width from its text, so once cut it stays narrow. With <code>autoSize()</code> it takes the
-            width its full text would, and grows back when there is room. Narrow the box, then widen it again. And with
+            A chip or a flex item takes its width from its text, so once truncated it stays narrow. With <code>autoSize()</code> it takes
+            the width its full text would, and grows back when there is room. Narrow the box, then widen it again. And with
             <code>lines: 'fit'</code>, text shows as many lines as its box is tall: drag the card's corner.
           </p>
         </div>
@@ -64,7 +64,7 @@
           <h2 id="units-title">Icons, emoji and every <em>script.</em></h2>
           <p>
             Images, icons and elements marked <code>data-elide-unit</code> show whole or not at all. Emoji, skin tones and the letters of
-            any script are never split, wherever the cut falls.
+            any script are never split, wherever the ellipsis falls.
           </p>
         </div>
         <p class="code" id="unitsCode"></p>
@@ -78,10 +78,10 @@
       <section class="block scene" aria-labelledby="list-title">
         <div class="scene-head">
           <p class="num">03</p>
-          <h2 id="list-title">Lists say how many are <em>left.</em></h2>
+          <h2 id="list-title">Count what a list <em>hides.</em></h2>
           <p>
-            With <code>floating-ellipsis/list</code>, items show whole or not at all, and a label counts the rest, joined as the list joins
-            its last item. When not even the first fits, it's cut. Screen readers still read every item.
+            With <code>floating-ellipsis/list</code>, items show whole or not at all, followed by a label with the number of hidden items,
+            joined as the list joins its last item. When not even the first fits, it's truncated. Screen readers still read every item.
           </p>
         </div>
         <p class="code" id="listCode"></p>
@@ -115,8 +115,8 @@
           <p class="num">05</p>
           <h2 id="whole-title">Numbers stay <em>whole.</em></h2>
           <p>
-            A cut through <q>$12,345.67</q> that shows <q>$12,3…</q> misreports it. With <code>whole</code>, matches show whole or not at
-            all: a cut that would split one slides off it, hiding as much elsewhere. It's the rule <code>words()</code> follows, and the two
+            Truncating <q>$12,345.67</q> to <q>$12,3…</q> misreports it. With <code>whole</code>, matches show whole or not at all: an
+            ellipsis that would split one moves off it, hiding as much elsewhere. It's the rule <code>words()</code> follows, and the two
             combine.
           </p>
         </div>
@@ -131,11 +131,11 @@
       <section class="block scene" aria-labelledby="tighten-title">
         <div class="scene-head">
           <p class="num">06</p>
-          <h2 id="tighten-title">Tighten before you <em>cut.</em></h2>
+          <h2 id="tighten-title">Tighten before <em>truncating.</em></h2>
           <p>
             Text a few pixels too long loses a whole ellipsis' worth of letters. With <code>tighten</code>, it's set a little tighter
-            instead, word spaces most, just enough to end at the edge, and only cut once that isn't enough. With <code>tightenCuts</code>, a
-            cut line is set tighter too, to show a few more letters.
+            instead, word spaces most, just enough to end at the edge, and only truncated once that isn't enough. With
+            <code>tightenCuts</code>, a truncated line is set tighter too, to show a few more letters.
           </p>
         </div>
         <p class="code" id="tightenCode"></p>
@@ -149,9 +149,9 @@
       <section class="block scene" aria-labelledby="input-title">
         <div class="scene-head">
           <p class="num">07</p>
-          <h2 id="input-title">Fields stay cut until you <em>edit.</em></h2>
+          <h2 id="input-title">Inputs stay truncated until <em>focused.</em></h2>
           <p>
-            <code>floating-ellipsis/input</code> shows a field's value cut while it isn't being edited. Click anywhere, even on the
+            <code>floating-ellipsis/input</code> shows an input's value truncated while it isn't being edited. Click anywhere, even on the
             ellipsis: the whole value appears with the glyph you pressed still under the pointer, and the caret beside it. A textarea
             truncates on as many lines as its height holds: drag its corner to give it more.
           </p>
@@ -159,7 +159,7 @@
         <p class="code" id="inputCode"></p>
         <div class="stage">
           <div class="resizable labeled" id="inputBox">
-            <button class="handle" aria-label="Resize the fields (left and right arrow keys)"></button>
+            <button class="handle" aria-label="Resize the inputs (left and right arrow keys)"></button>
           </div>
         </div>
       </section>
@@ -169,10 +169,10 @@
           <p class="num">08</p>
           <h2 id="marks-title">Quotations, Chinese and <em>Japanese.</em></h2>
           <p>
-            Words left out of a quotation are marked <q>[…]</q>: the brackets hug the dots, and the room goes either side, from a word
-            space. Chinese and Japanese set their ellipsis in the middle of the line, six dots over two characters' cells.
-            <code>'auto'</code> does that for their text, whatever font the dots would come from, and takes exactly as many cells as it
-            says, so the characters after it stay in their columns, even on a justified line.
+            Words left out of a quotation are marked <q>[…]</q>: the brackets sit tight around the dots, and the room goes either side, from
+            a word space. Chinese and Japanese set their ellipsis in the middle of the line, six dots over two characters' cells.
+            <code>'auto'</code> does that for their text, whatever font the dots would come from, and takes exactly two cells, so the
+            characters after it stay in their columns, even on a justified line.
           </p>
         </div>
         <p class="code" id="marksCode"></p>
@@ -186,12 +186,12 @@
       <section class="block scene" aria-labelledby="short-title">
         <div class="scene-head">
           <p class="num">09</p>
-          <h2 id="short-title">Shorter before it's <em>cut.</em></h2>
+          <h2 id="short-title">Shorten before <em>truncating.</em></h2>
           <p>
             <q>Wednesday</q> can be <q>Wed</q> long before anything needs an ellipsis. With <code>shorten</code>, parts take their short
-            forms a step at a time, as few as fit, the least important first; past the last, the text is cut. Copying, find in page and
-            screen readers get the long forms, and so does the tooltip. <code>dateForms</code> writes a date down to <q>10/14/26</q> as its
-            locale does, and <code>data-elide-short</code> gives markup its own.
+            forms a step at a time, as few as fit, the least important first; past the last, the text is truncated. Copying, find in page
+            and screen readers get the long forms, and so does the tooltip. <code>dateForms</code> returns a date's forms, down to
+            <q>10/14/26</q>, in its locale's format, and <code>data-elide-short</code> gives markup short forms of its own.
           </p>
         </div>
         <p class="code" id="shortCode"></p>

@@ -90,7 +90,11 @@ async function lines() {
 }
 
 async function suffixes() {
-  const s = new Scene(3, 'Suffixes are <em>never cut.</em>', "elide(el, { lines: «2», suffix: suffix(button, { show: «'truncated'» }) })");
+  const s = new Scene(
+    3,
+    'Suffixes are never <em>truncated.</em>',
+    "elide(el, { lines: «2», suffix: suffix(button, { show: «'truncated'» }) })",
+  );
   const post = el('p', 'para', postText);
   const more = el('button', 'more', 'Read more');
   post.append(more);
@@ -125,7 +129,7 @@ async function suffixes() {
 }
 
 async function snapping() {
-  const s = new Scene(4, 'Cut between words or path <em>segments.</em>', "snap: words()      snap: separators(«'/'»)");
+  const s = new Scene(4, 'Truncate between words or path <em>segments.</em>', "snap: words()      snap: separators(«'/'»)");
   const { rows: list } = rows(s, snapRows);
   list.style.width = '1000px';
   s.stage.append(list);
@@ -165,9 +169,9 @@ function files(s: Scene, paths: string[], options: ElideOptions, fits = false) {
   });
 }
 
-/** Rows that fit show no tooltip; cut ones grow theirs out of the line. */
+/** Rows that fit show no tooltip; truncated ones grow theirs out of the line. */
 async function tooltips() {
-  const s = new Scene(5, 'Tooltips only where text is <em>cut.</em>', "tooltip({ reveal: «'grow'» }).attach(instance)");
+  const s = new Scene(5, 'Tooltips only where text is <em>truncated.</em>', "tooltip({ reveal: «'grow'» }).attach(instance)");
   const items = files(s, tooltipPaths, tooltipOptions, true);
   s.stage.querySelector<HTMLElement>('.files')!.style.width = '860px';
   // Wide enough for the second row's tip to stay on one line; the last one wraps.
@@ -243,9 +247,9 @@ async function find() {
   await s.leave();
 }
 
-/** Siblings cut in the middle all look alike; keeping what differs tells them apart. */
+/** Sibling paths truncated in the middle all look alike; keeping what differs tells them apart. */
 async function shared() {
-  const s = new Scene(8, 'Customize: cut what’s <em>shared.</em>', "keep: differing(path, siblings), snap: separators(«'/'»)");
+  const s = new Scene(8, 'Customize: truncate what’s <em>shared.</em>', "keep: differing(path, siblings), snap: separators(«'/'»)");
   const split = el('div', 'split box');
   for (const { label, baseline, options } of sharedColumns) {
     const column = el('div', `rows${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);

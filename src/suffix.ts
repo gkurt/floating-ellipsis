@@ -1,12 +1,12 @@
 /**
  * Suffixes (`floating-ellipsis/suffix`): content after the text, on its last
- * line, never cut.
+ * line, never truncated.
  */
 import { WORD_JOINER } from './join.ts';
 import type { Suffix, SuffixSlot } from './options.ts';
 
 /**
- * Content to follow the text on its last line, never cut, for the `suffix`
+ * Content to follow the text on its last line, never truncated, for the `suffix`
  * option: a "Read more" button, a badge, a timestamp. A string, or a node,
  * which is moved there (and back on `destroy()`). `show`: 'always'
  * (default), or only while the text is 'truncated'.

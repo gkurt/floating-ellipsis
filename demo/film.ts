@@ -208,7 +208,7 @@ export function box(width: number, ...children: Node[]) {
   return b;
 }
 
-/** Labeled rows in a box, each line cut by its options; the baseline ones muted. */
+/** Labeled rows in a box, each line truncated by its options; the baseline ones muted. */
 export function rows(s: Scene, list: readonly Row[], motion: TransitionOptions | null = null) {
   const made = el('div', 'rows box');
   const lines = list.map(({ label, text, mono, baseline, options }) => {
@@ -222,7 +222,7 @@ export function rows(s: Scene, list: readonly Row[], motion: TransitionOptions |
   return { rows: made, lines };
 }
 
-/** The last scene of every video: the name, cut and whole again, and where to get it. */
+/** The last scene of every video: the name, truncated and whole again, and where to get it. */
 export async function outro() {
   const s = new Scene(
     null,

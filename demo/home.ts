@@ -199,7 +199,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
 }
 
 // ---------------------------------------------------------------------------
-// 08 Cut what's shared
+// 08 Truncate what's shared
 
 {
   const box = $('#sharedBox');

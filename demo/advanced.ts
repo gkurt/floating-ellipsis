@@ -125,7 +125,7 @@ import { $ } from './ui.ts';
 }
 
 // ---------------------------------------------------------------------------
-// 06 Tighten before you cut
+// 06 Tighten before truncating
 
 {
   const box = $('#tightenBox');
@@ -137,7 +137,7 @@ import { $ } from './ui.ts';
     box.insertBefore(row, $('.handle', box));
     elide(line, options).onRender(({ tightened, truncated }) => {
       const by = tightened > 0 ? `−${tightened.toFixed(2)}px` : '';
-      readout.textContent = truncated ? `cut ${by}`.trim() : by;
+      readout.textContent = truncated ? `truncated ${by}`.trim() : by;
     });
   }
   setCode('tightenCode', "elide(el, { tighten: «'0.05em'» }) // letters up to 0.05em closer, word spaces 0.1em");
@@ -145,7 +145,7 @@ import { $ } from './ui.ts';
 }
 
 // ---------------------------------------------------------------------------
-// 07 Fields stay cut until you edit
+// 07 Inputs stay truncated until focused
 
 {
   const box = $('#inputBox');
@@ -193,7 +193,7 @@ import { $ } from './ui.ts';
 }
 
 // ---------------------------------------------------------------------------
-// 09 Shorter before it's cut
+// 09 Shorten before truncating
 
 {
   const box = $('#shortBox');
@@ -206,7 +206,7 @@ import { $ } from './ui.ts';
     box.insertBefore(row, $('.handle', box));
     const t = elide(line, options);
     t.onRender(({ short, truncated }) => {
-      readout.textContent = truncated ? 'cut' : short.length > 0 ? `${short.length} short` : '';
+      readout.textContent = truncated ? 'truncated' : short.length > 0 ? `${short.length} short` : '';
     });
     tips.attach(t, row);
   }

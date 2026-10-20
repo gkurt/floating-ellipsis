@@ -1,5 +1,5 @@
 /**
- * Lists (`floating-ellipsis/list`): items cut whole from the end, and a label
+ * Lists (`floating-ellipsis/list`): items hidden whole from the end, and a label
  * for the ones hidden, as one more item: "Ada, Grace and 2 more".
  */
 import type { Range, Snap } from './cut.ts';
@@ -44,7 +44,7 @@ interface Located {
 /**
  * Lay out a list: items show whole or not at all, from the start, and a
  * label for the hidden ones follows the last that shows. When even the first
- * doesn't fit, it's cut, and the label starts with an ellipsis: "Ada Lovel…
+ * doesn't fit, it's truncated, and the label starts with an ellipsis: "Ada Lovel…
  * and 3 more". Items are strings, joined into the text by `format`, or a
  * function that finds them in the text, in order (`split(', ')`).
  *

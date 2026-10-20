@@ -663,3 +663,27 @@ body {
 .fit-card [data-fp-ellipsis] {
   color: var(--accent);
 }
+
+/* What the clipboard got from a selection across short forms and an ellipsis. */
+.clipboard {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 28px 0 0;
+  padding: 12px 18px;
+  border: 1px solid #3f3a33;
+  border-radius: 12px;
+  background: var(--raised);
+  font: 400 24px/1.35 var(--sans);
+  opacity: 0;
+}
+.clipboard .label {
+  flex: none;
+  font: 500 15px/1 var(--mono);
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+::selection {
+  background: rgba(110, 164, 255, 0.4);
+}

@@ -1,6 +1,6 @@
 /**
  * Short forms (`shorten`): parts of the text that show shorter, a step at a
- * time, before any of it is cut. Which parts there are, the order they
+ * time, before any of it is truncated. Which parts there are, the order they
  * shorten in, and what shows at each level. DOM-free.
  */
 import { type Range, asArray, matches, toGraphemeRanges } from './cut.ts';

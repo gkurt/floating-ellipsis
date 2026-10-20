@@ -4,14 +4,21 @@ import type { InputOptions, TextareaOptions } from '#src/input.ts';
 import { list, split } from '#src/list.ts';
 import type { TransitionOptions } from '#src/transitions.ts';
 
-/** The examples the home and advanced pages and the video share: their text, and the options that cut it. */
+/** The examples the home and advanced pages and the video share: their text, and the options that truncate it. */
 
 /** Glyphs merge into the dots, and the spacing between the dots glides: for one change at a time. */
 export const calm: TransitionOptions = { effect: 'merge' };
 /** For text that changes every frame: gliding spacing would trail behind it. */
 export const fast: TransitionOptions = { effect: 'merge', glide: false };
-/** For a cut that follows a slider: glyphs merging behind it read as smears, so they fade in place. */
+/** For an ellipsis that follows a slider: glyphs merging behind it read as smears, so they fade in place. */
 export const fading: TransitionOptions = { effect: 'fade', glide: false };
+
+/**
+ * For text truncated a whole word, path segment or unit at a time, which can
+ * leave a lot of room at once: only the dots that keep the gaps under
+ * `maxGap`, rather than the default's tens.
+ */
+export const fewDots = { repeat: 0.1 } as const satisfies ElideOptions;
 
 /** Markup for code: `f(…)` functions, `k:` keys, `«…»` values, `//` comments. */
 export function code(src: string) {
@@ -56,7 +63,7 @@ export const post =
 
 /**
  * Expand or collapse `t`, the space it takes following: opening, the text is
- * all there and the box grows over it; closing, it's cut at once, its suffix
+ * all there and the box grows over it; closing, it's truncated at once, its suffix
  * in place, and the room it leaves closes up below it.
  */
 export function toggleSmoothly(t: Elide) {
@@ -75,7 +82,7 @@ export function toggleSmoothly(t: Elide) {
   const to = el.getBoundingClientRect().height;
   const motion = { duration: 480, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' };
   if (!opening) {
-    // A cut element's height is held (`!important`, over any animation), but a min-height overrules it.
+    // A truncated element's height is held (`!important`, over any animation), but a min-height overrules it.
     const held = parseFloat(getComputedStyle(el).height);
     el.animate({ minHeight: [`${held + from - to}px`, `${held}px`] }, motion);
     return;
@@ -107,12 +114,12 @@ export interface Row {
 
 export const snapRows: Row[] = [
   { label: 'any glyph', text: sentence, baseline: true, options: { position: 0.5 } },
-  { label: 'words()', text: sentence, options: { position: 0.5, snap: words() } },
+  { label: 'words()', text: sentence, options: { position: 0.5, snap: words(), ...fewDots } },
   {
     label: "separators('/')",
     text: '/Users/ada/Projects/difference-engine/src/notes/bernoulli-numbers.md',
     mono: true,
-    options: { position: 0.5, snap: separators('/', { fragment: false }) },
+    options: { position: 0.5, snap: separators('/', { fragment: false }), ...fewDots },
   },
 ];
 
@@ -122,7 +129,7 @@ export const tooltipPaths = [
   'package.json',
   'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal\\LocalState\\settings\\backups\\2026-10-14\\campbell-powershell.json',
 ];
-export const tooltipOptions: ElideOptions = { position: [0.3, 0.7], snap: separators('/\\') };
+export const tooltipOptions: ElideOptions = { position: [0.3, 0.7], snap: separators('/\\'), ...fewDots };
 
 /** Search results: the query is kept with a few words around it. */
 export const snippets = [
@@ -161,7 +168,7 @@ export const lantern = [
   'Thanks to everyone who sent traces, and to whoever found that a paper lantern emoji made the whole row wrap',
   'The lantern fixture still assumes the old metrics, so regenerate it before the release and pin the font',
 ];
-/** A cut right where the word is, so all of it is hidden. */
+/** An ellipsis right where the word is, so all of it is hidden. */
 export const lanternPosition = (text: string) => (text.indexOf('lantern') + 3.5) / text.length;
 
 export const siblings = [
@@ -201,18 +208,18 @@ export const unitRows: Row[] = [
   {
     label: '&lt;svg&gt;',
     text: `${folderIcon} Projects / engine / ${pdfIcon} Bernoulli notes (2).pdf`,
-    // Just past the icon: the cut eats the text beside it, then takes it whole.
-    options: { position: 0.6 },
+    // Just past the icon: the text beside it is hidden first, then the icon, whole.
+    options: { position: 0.6, ...fewDots },
   },
   {
     label: 'data-elide-unit',
     text: `Waiting on ${mention('ada.lovelace')} and ${mention('charles.babbage')} before Thursday's release`,
-    options: { position: 0.7 },
+    options: { position: 0.7, ...fewDots },
   },
   {
     label: 'emoji',
     text: 'Weekend: 🏔️ hike with the 👨‍👩‍👧‍👦, then 🍜 by 🧑🏽‍🍳 in Kyoto and ☕ with 👩🏻‍💻 in Istanbul 👍🏽',
-    options: { position: 'middle' },
+    options: { position: 'middle', ...fewDots },
   },
   {
     label: 'scripts',
@@ -251,14 +258,14 @@ export const sharedColumns: { label: string; baseline?: boolean; options: (path:
   { label: "position: 'middle'", baseline: true, options: () => ({ position: 'middle' }) },
   {
     label: 'keep: differing(…)',
-    options: (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/') }),
+    options: (path) => ({ position: 'middle', keep: differing(path, siblings), snap: separators('/'), ...fewDots }),
   },
 ];
 
 export const quote =
   'We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard loom weaves flowers and leaves.';
 
-/** Amounts, dates, versions, ids: a cut through one would misreport it. */
+/** Amounts, dates, versions, ids: truncating one partway would misreport it. */
 export const NUMBERS = /[$€£]?\d[\d,.:/-]*\d%?|[$€£]?\d/g;
 
 export const wholeRows: Row[] = [
@@ -271,12 +278,12 @@ export const wholeRows: Row[] = [
   {
     label: 'whole: NUMBERS',
     text: 'Invoice 2026-0412 · $12,345.67 due 14 Oct 2026 · ref 88412093',
-    options: { position: 'middle', whole: NUMBERS },
+    options: { position: 'middle', whole: NUMBERS, ...fewDots },
   },
   {
     label: 'with words()',
     text: 'Deployed v2.14.3 to 12 regions in 4m 31s, 99.98% healthy, build 7781203',
-    options: { position: 'middle', whole: NUMBERS, snap: words() },
+    options: { position: 'middle', whole: NUMBERS, snap: words(), ...fewDots },
   },
 ];
 
@@ -304,7 +311,7 @@ export const inputFields: { label: string; value: string; placeholder: string; o
     label: 'url',
     value: 'https://github.com/gkurt/floating-ellipsis/blob/main/docs/how-it-works.md#find-in-page',
     placeholder: '',
-    options: { position: 'middle', snap: separators('/') },
+    options: { position: 'middle', snap: separators('/'), ...fewDots },
   },
   {
     label: 'placeholder',
@@ -340,7 +347,7 @@ export const markRows: (Row & { lang?: string })[] = [
 
 const due = dateForms(new Date(2026, 9, 14, 15, 30), { locale: 'en-US', time: true });
 
-/** Parts that show shorter before anything is cut: names and days, a date as its locale writes it, and markup's own. */
+/** Parts that show shorter before anything is truncated: names and days, a date as its locale writes it, and markup's own. */
 export const shortRows: Row[] = [
   {
     label: 'shorten',

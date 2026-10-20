@@ -7,7 +7,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 export const metadata: Metadata = {
   title: 'floating-ellipsis with Next.js and shadcn/ui',
-  description: 'A file browser built from shadcn/ui, its long paths cut in the middle and grown back on hover.',
+  description: 'A file browser built from shadcn/ui, its long paths truncated in the middle and grown back on hover.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

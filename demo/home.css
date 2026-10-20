@@ -421,7 +421,7 @@ input.track:focus-visible {
   margin-bottom: 14px;
 }
 .labeled-row:has(.tightness) {
-  grid-template-columns: 130px minmax(0, 1fr) 96px;
+  grid-template-columns: 130px minmax(0, 1fr) 132px;
 }
 .labeled-row .tightness {
   color: var(--muted);
@@ -497,7 +497,7 @@ input.track:focus-visible {
     text-align: left;
   }
   .labeled-row:has(.tightness) {
-    grid-template-columns: minmax(0, 1fr) 96px;
+    grid-template-columns: minmax(0, 1fr) 132px;
   }
   .labeled-row:has(.tightness) > code {
     grid-column: 1 / -1;

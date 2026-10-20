@@ -1,6 +1,6 @@
 import { type Elide, type ElideOptions, type Keep, type Snap, elide, separators } from '#src/index.ts';
 import { tooltip } from '#src/tooltip.ts';
-import { type FileRow, fileRows } from './examples.ts';
+import { type FileRow, fewDots, fileRows } from './examples.ts';
 import { $, resizable, segmented } from './ui.ts';
 
 // ---------------------------------------------------------------------------
@@ -33,17 +33,19 @@ const bySlash = separators('/');
 let markup: 'table' | 'grid' = 'grid';
 let count = 1000;
 let lines = 1;
-/** Whether the cells cut in the middle put the ellipsis in the middle of the cell, rather than at half of the text. */
+/** Whether the cells truncated in the middle put the ellipsis in the middle of the cell, rather than at half of the text. */
 let placed = false;
 /**
- * The options of a cell cut in the middle, snapped by `snap` at half of the
+ * The options of a cell truncated in the middle, snapped by `snap` at half of the
  * text. In the middle of the cell, the ellipsis stays where the text before
  * it ends: no room is spread around it and no marks added beside it (what's
  * left stays at the line's end), and paths aren't snapped, which would move
- * the cut off its place.
+ * the ellipsis off its place.
  */
 const middle = (snap: Snap | null = null): ElideOptions =>
-  placed ? { position: '50%', justify: false, repeat: false, snap: null } : { position: 0.5, justify: 'dots', repeat: 0.75, snap };
+  placed
+    ? { position: '50%', justify: false, repeat: false, snap: null }
+    : { position: 0.5, justify: 'dots', repeat: snap ? fewDots.repeat : 0.75, snap };
 let folders: Elide[] = [];
 let instances: Elide[] = [];
 let messages: Elide[] = [];
@@ -53,7 +55,7 @@ let headers: HTMLElement[] = [];
 let built = 0;
 let lastResize: { ms: number; passes: number } | null = null;
 let passes = 0;
-// The playground's tip grown from the line, on every cut-off cell, in the
+// The playground's tip grown from the line, on every truncated cell, in the
 // cell's own font. After the first one's delay, the next cell's shows at
 // once; press on one to select its text.
 const tips = tooltip({ delay: 400 });

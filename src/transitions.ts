@@ -37,7 +37,7 @@ export interface TransitionOptions {
   /** Blur radius in px. Default 4. */
   blur?: number;
   /**
-   * When the cut changes, let the ellipsis' spacing glide instead of jump.
+   * When the truncation changes, let the ellipsis' spacing glide instead of jump.
    * The marks always sit evenly in the space between their neighbouring
    * glyphs; it is that space's edges that glide, on a critically damped
    * spring (velocity carries over when the target moves again, and it never

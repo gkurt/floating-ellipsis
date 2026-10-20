@@ -8,7 +8,7 @@ import type { AutoSize, AutoSizeSlot } from './options.ts';
 /**
  * For the `autoSize` option, on an element whose width comes from its
  * content: an inline-block, a float, an absolutely positioned element, a
- * flex or grid item sized by it. Its width would otherwise come from the cut
+ * flex or grid item sized by it. Its width would otherwise come from the truncated text
  * that shows, so it could shrink but never grow back. An invisible copy of
  * the full text (with its elements, and a suffix that always shows) sizes it
  * instead, as the text would, up to the room it has.

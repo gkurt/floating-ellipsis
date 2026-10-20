@@ -30,7 +30,7 @@ panels, ink guides and a readout of its state; `window.hero` is the instance,
 to try from the console. `/table.html` is a crowded table
 (up to 2,500 rows, four truncated cells each, as a `<table>` or grid rows) with
 tooltips, a search that keeps and highlights matches, and a switch between ellipses at half the text and in the middle of the cell (unjustified, without repeated marks or snapping: what keeps them nearest their place). `/justify.html` shows each `justify` mode with
-`repeat: false`, `0.75` (the default) and `1`, on cuts that leave a lot of room (whole words, path
+`repeat: false`, `0.75` (the default) and `1`, on truncations that leave a lot of room (whole words, path
 segments), under a slider for the width.
 
 `/video.html` plays a short video of the features, scene by scene (`?scene=N`
@@ -54,7 +54,7 @@ runs Playwright (`examples/next/tests`) against `next start` in Chromium,
 Firefox and WebKit and against `next dev` in Chromium: the HTML carries the
 text for `fallback.css`, the page hydrates with nothing logged, every instance
 fits its box, the window refits what it holds as it's dragged, the tips grow
-and peek, and the Radix and Base UI tooltips open only while text is cut. It
+and peek, and the Radix and Base UI tooltips open only while text is truncated. It
 uses ports 4191 and 4192 (`bun run --cwd examples/next dev` serves it on 4191).
 
 ## Releasing
