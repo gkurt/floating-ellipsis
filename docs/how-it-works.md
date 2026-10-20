@@ -35,8 +35,11 @@ Implementation details behind the behaviour described in the
    highlights or inline elements is judged too when each kind showing sets
    text as the element does: the same font, spacing and case, and no padding,
    border or margin. If the check finds the widths were off (three-letter
-   ligatures, `font-kerning: none`), the truncation is found again by rendering, and
-   that text isn't judged again. The full text is only tried when its summed
+   ligatures, `font-kerning: none`, glyphs hinted to whole pixels as Chromium
+   on Linux sets them, where the widths, measured large and scaled down, are
+   not), the truncation is found again by rendering, and that text isn't judged
+   again. So it is if a truncation rendered in the search ends too far from
+   where the widths put it: what was judged before it may be wrong. The full text is only tried when its summed
    glyph widths could fit. Where spaces are kept (`white-space: pre-wrap`, as
    in a textarea), the space a line wraps at hangs past the edge, and
    Chromium and WebKit count it in the line's box: a line may run past the

@@ -136,11 +136,15 @@ export class Predictor {
     this.#margin = margin;
   }
 
-  /** `cut`, rendered, ends at `right`. */
-  saw(cut: readonly Range[], right: number): void {
+  /**
+   * `cut`, rendered, ends at `right`: from now on, other cuts are placed by
+   * it. Whether the model was too far off where it placed `cut` (see `off`),
+   * so that what it judged before may be wrong.
+   */
+  saw(cut: readonly Range[], right: number): boolean {
     const expected = this.right(cut);
-    if (expected !== null) this.#margin.check(expected - right);
     this.#measured = { right, width: cutWidth(this.#model, this.#n, cut) };
+    return expected !== null && this.off(expected, right);
   }
 
   /**

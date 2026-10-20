@@ -1631,6 +1631,9 @@ export class Elide {
       // The predictor has measured a cut of this pass: it judges the ones
       // around it as well as rendering them would, if it is close enough.
       let probed = false;
+      // A cut rendered in the search ended too far from where the predictor
+      // placed it: what it judged before may be wrong.
+      let slipped = false;
       // Short forms (see `shorten`): the steps the parts that may show shorter
       // take, how many show (`level`), and the edges that keep them whole. Not
       // while expanded, nor for a part find in page or focus keeps in sight.
@@ -1666,7 +1669,7 @@ export class Elide {
         yield* phase.read();
         fit = this.#measure(run);
         if (predictor) {
-          predictor.saw(cut, fit.end);
+          slipped ||= predictor.saw(cut, fit.end);
           probed = true;
         }
         return { fits: fit.ok, room: fit.room };
@@ -1816,9 +1819,9 @@ export class Elide {
         tried = null;
         outcomes.clear();
       };
-      // A judgement shouldn't be wrong, but if the final measurement says
-      // the model was off, the cut is found again without judging (and this
-      // text, set this way, isn't judged again).
+      // A judgement shouldn't be wrong, but if the final measurement, or one
+      // in the search, says the model was off, the cut is found again without
+      // judging (and this text, set this way, isn't judged again).
       for (;;) {
         pins = pinned();
         cuts = cutting(pins);
@@ -1930,7 +1933,7 @@ export class Elide {
         } else if (!measured) {
           fit = { ok: true, lines: 1, max: 1, end: expected! + added, room: 0 };
         }
-        const off = checked && predictor!.off(expected + added, fit.end);
+        const off = (checked && predictor!.off(expected + added, fit.end)) || slipped;
         if (off) this.#misjudged = run.glyphs;
         // Not off, the judgement holds (the cut fits by more than the
         // error), but the line may end a little off the edge: justified
@@ -1943,6 +1946,7 @@ export class Elide {
         if ((fit.ok && !off) || !judged) break;
         predictor = null;
         judged = false;
+        slipped = false;
         outcomes.clear();
       }
       if (hidden.length > 0 && !ahead) ({ gaps, slack } = yield* justify(this.#justified(run, plans, fit.lines, hidden), phase));

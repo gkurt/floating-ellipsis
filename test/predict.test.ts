@@ -79,6 +79,14 @@ describe('Predictor', () => {
     expect(p.fits([[5, 7]])).toBe(false);
   });
 
+  it('says when a cut rendered after the first ends too far from where it was placed', () => {
+    const p = new Predictor(model(kerns), n, 80, new Margin(0.5));
+    expect(p.saw([], slow([]))).toBe(false);
+    expect(p.saw([[5, 8]], slow([[5, 8]]) + 0.2)).toBe(false);
+    // Placed by the cut before, which ended 0.2px past its width.
+    expect(p.saw([[2, 8]], slow([[2, 8]]) + 0.5)).toBe(true);
+  });
+
   it('leaves a cut within the margin of the edge to be rendered', () => {
     const p = new Predictor(model(kerns), n, slow([[5, 8]]) + 0.2, new Margin(0.5));
     p.saw([], slow([]));
