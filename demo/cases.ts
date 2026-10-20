@@ -209,3 +209,41 @@ const github: { folder: ElideOptions; file: ElideOptions } = {
 const tips = tooltip({ reveal: 'grow', breaks: '/', delay: 150, maxWidth: 0.9 });
 for (const { row, name, folder } of fileTree(document.querySelector<HTMLElement>('#github-after')!))
   tips.attach(elide(name, folder ? github.folder : github.file), row);
+
+// ---------------------------------------------------------------------------
+// Vercel's domain search (vercel.com/domains/search?q=toolongtofithereprobably).
+// A name too long for its cell keeps its last three letters and its TLD, and
+// the rest is truncated by CSS, which can only drop whole letters: what the
+// last one would have taken shows as a gap after the ellipsis, wider or
+// narrower from one name to the next.
+
+const searched = 'toolongtofithereprobably';
+const all: [string, string][] = [
+  ['net', '13.50'],
+  ['tech', '7.99'],
+  ['studio', '21.99'],
+  ['academy', '21.99'],
+  ['accountants', '43.99'],
+  ['airforce', '117.35'],
+];
+
+const cart =
+  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.3667 1.36667H2.70003L4.47337 9.64667C4.53842 9.94991 4.70715 10.221 4.95051 10.4132C5.19387 10.6055 5.49664 10.7069 5.8067 10.7H12.3267C12.6302 10.6995 12.9244 10.5955 13.1607 10.4052C13.3971 10.2149 13.5615 9.94969 13.6267 9.65334L14.1767 7.17667M9.33333 4.7H3.41337M11 3H15M13 1V5"/><circle cx="12" cy="14.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="5.5" cy="14.5" r="1.5" fill="currentColor" stroke="none"/></svg>';
+
+/** Fills `root` with a column of results; returns each name. */
+function results(root: HTMLElement, shipped: boolean): HTMLElement[] {
+  const domain = (tld: string) =>
+    shipped
+      ? `<span class="domain shipped" title="${searched}.${tld}"><span class="head-part">${searched.slice(0, -3)}</span><span>${searched.slice(-3)}</span><b>.${tld}</b></span>`
+      : `<span class="domain">${searched}<b>.${tld}</b></span>`;
+  const buy = (price: string) => `<span class="buy"><span class="price">US$${price}</span><span class="cart">${cart}</span></span>`;
+  root.innerHTML = all.map(([tld, price]) => `<div class="row">${domain(tld)}${buy(price)}</div>`).join('');
+  return [...root.querySelectorAll<HTMLElement>('.domain')];
+}
+
+results(document.querySelector<HTMLElement>('#vercel-before')!, true);
+
+// The same three letters and TLD kept, and as many letters as fit before
+// them: the ellipsis follows the last one as closely as its own dots do.
+for (const name of results(document.querySelector<HTMLElement>('#vercel-after')!, false))
+  elide(name, { keep: /.{3}\.\w+$/, justify: false, title: true });
