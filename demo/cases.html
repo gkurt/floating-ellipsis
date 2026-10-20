@@ -21,8 +21,25 @@
       }
       body {
         margin: 0;
-        padding: 32px;
+        padding: 12px;
         background: rgb(252, 252, 251);
+      }
+      .case {
+        display: inline-block;
+        padding: 20px 24px 24px;
+      }
+      .source {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin: 0 0 18px 4px;
+      }
+      .source b {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .source span {
+        color: var(--muted);
       }
       .compare {
         display: flex;
@@ -117,16 +134,19 @@
     </style>
   </head>
   <body>
-    <div class="compare">
-      <figure>
-        <figcaption>As shipped</figcaption>
-        <div class="panel" id="before"></div>
-      </figure>
-      <figure>
-        <figcaption>With floating-ellipsis</figcaption>
-        <div class="panel" id="after"></div>
-      </figure>
-    </div>
+    <section class="case">
+      <p class="source"><b>Claude Code</b><span>Background tasks panel, on claude.ai</span></p>
+      <div class="compare">
+        <figure>
+          <figcaption>As shipped</figcaption>
+          <div class="panel" id="before"></div>
+        </figure>
+        <figure>
+          <figcaption>With floating-ellipsis</figcaption>
+          <div class="panel" id="after"></div>
+        </figure>
+      </div>
+    </section>
     <script type="module" src="./cases.ts"></script>
   </body>
 </html>
