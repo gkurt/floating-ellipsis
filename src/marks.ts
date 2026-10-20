@@ -77,8 +77,8 @@ export interface MarkLayout {
   rhythm: number | null;
   /** For a single text mark: its separate parts (the dots of '…'), in px from its ink's left edge. */
   runs: [number, number][] | null;
-  /** Drawn marks: their inline style (see `styleMarks`). */
-  css: string | null;
+  /** Drawn marks: the inline style of each mark, and of the shape inside it (see `styleMarks`). */
+  css: { mark: string; shape: string } | null;
   /** Every mark is the same, so `repeat` can add more of them. */
   repeats: boolean;
   /** Set like a word (dots in brackets): `rhythm` is a word space. */
@@ -168,6 +168,7 @@ export function buildMarks(style: EllipsisStyle): HTMLSpanElement[] {
   return Array.from({ length: markCount(style) }, () => {
     const el = make('');
     el.setAttribute('data-fp-shape', style.shape);
+    el.append(document.createElement('span'));
     return el;
   });
 }
@@ -282,17 +283,26 @@ function measureMarks(
         : (own ?? (dotSpacing(font, '…') ?? diameter(period) * 0.8) * (d / Math.max(0.01, diameter(period))));
   const m: GlyphMetrics = { advance: d, left: 0, right: d, ascent: bottom + d, descent: -bottom };
 
-  const shapeCss =
+  const paint =
     style.shape === 'ring'
-      ? `box-sizing:border-box;border:${Math.max(1, d * 0.16)}px solid currentColor;border-radius:50%`
+      ? `box-sizing:border-box;border:${Math.max(1, d * 0.16) * SHAPE_SCALE}px solid currentColor;border-radius:50%`
       : `background:currentColor;border-radius:${style.shape === 'square' ? 0 : '50%'}`;
   // On cells, marks are set over the ideographs that take the room (see
   // `onCells`), from the top of the ellipsis' box, its font's ascent above
   // the baseline.
-  const place = cells > 0 ? `position:absolute;top:${ascent - bottom - d}px` : `display:inline-block;vertical-align:${bottom}px`;
+  const place =
+    cells > 0 ? `position:absolute;top:${ascent - bottom - d}px` : `display:inline-block;position:relative;vertical-align:${bottom}px`;
+  // Browsers paint a box's background and border on whole pixels, rounding
+  // its edges separately, so a mark a pixel and a half wide would paint one
+  // or two wide by where it lands. The shape is painted SHAPE_SCALE times
+  // as large and scaled down, so that rounding shrinks with it.
   // In forced-colors mode backgrounds are overridden, which would erase the
   // marks; opting out keeps them in the (forced) text colour.
-  const css = `${place};white-space:pre;width:${d}px;height:${d}px;forced-color-adjust:none;${shapeCss}`;
+  const big = d * SHAPE_SCALE;
+  const css = {
+    mark: `${place};white-space:pre;width:${d}px;height:${d}px`,
+    shape: `position:absolute;left:0;top:0;width:${big}px;height:${big}px;transform:scale(${1 / SHAPE_SCALE});transform-origin:0 0;forced-color-adjust:none;${paint}`,
+  };
   return {
     font,
     fontSize,
@@ -310,6 +320,9 @@ function measureMarks(
     span,
   };
 }
+
+/** How many times larger than drawn a mark's shape is painted (see `measureMarks`). */
+const SHAPE_SCALE = 64;
 
 /** The ideograph whose box is a cell. */
 const CELL = '一';
@@ -340,18 +353,20 @@ function wordGap(font: Font, mark: GlyphMetrics, spaced: (m: GlyphMetrics, n: nu
 }
 
 /** Give drawn marks their shape (see `MarkLayout.css`), keeping the margins set by spacing. */
-export function styleMarks(marks: readonly HTMLElement[], css: string): void {
+export function styleMarks(marks: readonly HTMLElement[], css: NonNullable<MarkLayout['css']>): void {
   for (const el of marks) {
     if (styled.get(el) === css) continue;
     const margin = el.style.marginLeft;
-    el.style.cssText = css;
+    el.style.cssText = css.mark;
     el.style.marginLeft = margin;
+    const shape = el.firstElementChild;
+    if (shape instanceof HTMLElement) shape.style.cssText = css.shape;
     styled.set(el, css);
   }
 }
 
 /** The style `styleMarks` last gave each mark. */
-const styled = new WeakMap<HTMLElement, string>();
+const styled = new WeakMap<HTMLElement, NonNullable<MarkLayout['css']>>();
 
 /**
  * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`.

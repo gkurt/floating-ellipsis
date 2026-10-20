@@ -169,6 +169,18 @@ passes share, so it costs no layout of its own.
 the size of the font's dot rhythm, balanced and justified like any other. The
 spacing defaults to the font's own ellipsis rhythm, scaled to the mark size.
 
+Browsers paint a box's background and border on whole pixels, rounding its
+left and right edges separately (device pixels; whole CSS pixels in
+Chromium's device emulation, as Playwright screenshots use). A dot about a
+pixel and a half wide would paint one or two pixels wide, round or
+flattened, by the fraction of a pixel it lands on, and dots spread by
+`justify: 'dots'` would look uneven. So each mark is a box that only takes
+the room, holding the shape painted 64 times as large and scaled down by a
+`transform`: the rounding shrinks with it, and every dot paints the same.
+Where a mark lands is still rounded to a whole pixel, as any box's is, so
+the gaps between dots can differ by a pixel; text alone is placed at
+fractions of one.
+
 ## Dots in brackets
 
 A string ellipsis is a mark per character, so `justify: 'dots'` would space
