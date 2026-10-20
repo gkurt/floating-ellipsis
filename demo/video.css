@@ -619,6 +619,20 @@ body {
 .row:has(.field) {
   align-items: center;
 }
+textarea.field {
+  display: block;
+  height: 128px;
+  resize: none;
+}
+.row:has(textarea) {
+  align-items: start;
+}
+.row:has(textarea) > code {
+  padding-top: 18px;
+}
+.rows.dense {
+  gap: 14px;
+}
 
 /* Chips sized by their text, in a row that may not wrap; a card whose text fits its height. */
 .chips {
