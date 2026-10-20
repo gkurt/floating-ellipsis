@@ -1,5 +1,6 @@
 import { type Elide, type ElideOptions, type Keep, type Snap, elide, separators } from '#src/index.ts';
 import { tooltip } from '#src/tooltip.ts';
+import { type FileRow, fileRows } from './examples.ts';
 import { $, resizable, segmented } from './ui.ts';
 
 // ---------------------------------------------------------------------------
@@ -17,89 +18,6 @@ const before = new ResizeObserver((entries) => {
   for (const e of entries) seen.add(e.target);
 });
 let after: ResizeObserver | null = null;
-
-// ---------------------------------------------------------------------------
-// Data: seeded, so every visit shows the same table.
-
-function random(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const words = (s: string) => s.split(' ');
-const NAMES = words(
-  'quarterly revenue forecast draft final review notes meeting design spec roadmap budget invoice contract summary report backup export migration onboarding interview retro launch pricing insights dashboard survey proposal brief checklist',
-);
-const EXTENSIONS = words('pdf docx xlsx png md ts json csv fig mov zip sql');
-const FOLDERS = words(
-  'src components docs assets archive 2026 q3 reports shared team design legacy old tmp exports marketing finance engineering platform web mobile vendor fixtures snapshots screenshots',
-);
-const VERBS = [
-  'Fix',
-  'Add',
-  'Remove',
-  'Refactor',
-  'Rename',
-  'Speed up',
-  'Document',
-  'Revert',
-  'Simplify',
-  'Handle',
-  'Guard against',
-  'Cache',
-];
-const OBJECTS = [
-  'upload retry',
-  'the date picker',
-  'table virtualization',
-  'font loading',
-  'the export queue',
-  'pagination',
-  'dark mode tokens',
-  'the search index',
-  'session refresh',
-  'image thumbnails',
-  'the billing webhook',
-  'keyboard shortcuts',
-];
-const TAILS = [
-  'when the network drops mid-chunk',
-  'for right-to-left locales',
-  'behind a feature flag',
-  'on slow devices',
-  'after the schema migration',
-  'so the tests stop flaking',
-  'in the settings panel',
-  'for very long file names',
-  'without blocking the main thread',
-  'and add regression tests',
-  '(follow-up to the last release)',
-  '',
-];
-
-/** A row's cells: four truncated, then the size. */
-type Row = [file: string, folder: string, message: string, hash: string, size: string];
-
-function makeRows(count: number): Row[] {
-  const r = random(42);
-  const pick = <T>(list: readonly T[]) => list[Math.floor(r() * list.length)]!;
-  const many = <T>(list: readonly T[], min: number, max: number) =>
-    Array.from({ length: min + Math.floor(r() * (max - min + 1)) }, () => pick(list));
-  return Array.from({ length: count }, (): Row => {
-    const bytes = Math.floor(2 ** (8 + r() * 22));
-    return [
-      `${many(NAMES, 2, 6).join('-')}.${pick(EXTENSIONS)}`,
-      `/${many(FOLDERS, 3, 9).join('/')}/`,
-      `${pick(VERBS)} ${pick(OBJECTS)} ${pick(TAILS)}`.trim(),
-      Array.from({ length: 40 }, () => Math.floor(r() * 16).toString(16)).join(''),
-      bytes < 1 << 20 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1 << 20)).toFixed(1)} MB`,
-    ];
-  });
-}
 
 // ---------------------------------------------------------------------------
 // The table: a <table>, or rows of CSS grid that `content-visibility: auto`
@@ -143,11 +61,11 @@ const tips = tooltip({ delay: 400 });
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const handle = '<span class="col-handle" aria-hidden="true"></span>';
 
-function render(rows: Row[]) {
+function render(rows: FileRow[]) {
   const table = markup === 'table';
   const [cell, head] = table ? ['td', 'th'] : ['div', 'div'];
   const [cellRole, headRole] = table ? ['', ''] : [' role="cell"', ' role="columnheader"'];
-  const cells = (row: Row) =>
+  const cells = (row: FileRow) =>
     row
       .map((text, i) =>
         i < 4
@@ -174,7 +92,7 @@ function setWidths() {
 
 function build() {
   for (const instance of instances) instance.destroy();
-  const rows = makeRows(count);
+  const rows = fileRows(count);
   render(rows);
   const start = performance.now();
   tips.hide();

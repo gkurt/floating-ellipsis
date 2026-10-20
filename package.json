@@ -163,6 +163,7 @@
     "build": "tsdown",
     "build:site": "vite build demo --base ./ --outDir ../out/site --emptyOutDir",
     "video": "node scripts/video.ts",
+    "video:advanced": "node scripts/video.ts --video advanced",
     "typecheck": "tsc",
     "lint": "oxlint",
     "format": "oxfmt",

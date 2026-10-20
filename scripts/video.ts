@@ -1,10 +1,11 @@
 /**
- * Records the demo's video (`demo/video.html`) frame by frame into an MP4
- * for sharing (H.264, 1920×1080, 60fps). The page's clock is driven from
- * here, one frame at a time, so every frame is complete however long it
- * takes to capture.
+ * Records one of the demo's videos (`demo/video.html`, or
+ * `demo/video-<name>.html`) frame by frame into an MP4 for sharing (H.264,
+ * 1920×1080, 60fps). The page's clock is driven from here, one frame at a
+ * time, so every frame is complete however long it takes to capture.
  *
  *   node scripts/video.ts                     → out/video/floating-ellipsis.mp4
+ *   node scripts/video.ts --video advanced    → out/video/floating-ellipsis-advanced.mp4
  *   node scripts/video.ts --scene 7           start at scene 7
  *   node scripts/video.ts --stills 250        PNGs every 250ms in out/video/stills, no video
  *   node scripts/video.ts --until 4000        stop after 4s
@@ -19,13 +20,16 @@ import { createServer } from 'vite';
 
 const { values } = parseArgs({
   options: {
+    video: { type: 'string' },
     scene: { type: 'string', default: '0' },
     stills: { type: 'string' },
     until: { type: 'string' },
     fps: { type: 'string', default: '60' },
-    out: { type: 'string', default: 'out/video/floating-ellipsis.mp4' },
+    out: { type: 'string' },
   },
 });
+const name = values.video ? `-${values.video}` : '';
+const out = values.out ?? `out/video/floating-ellipsis${name}.mp4`;
 const fps = Number(values.fps);
 const until = values.until ? Number(values.until) : Infinity;
 const stills = values.stills ? Number(values.stills) : null;
@@ -37,7 +41,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, dev
 page.on('pageerror', (e) => console.error('page error:', e));
 page.on('console', (m) => m.type() === 'error' && console.error('console:', m.text()));
 await page.clock.install();
-await page.goto(`http://localhost:4190/video.html?record&scene=${values.scene}`);
+await page.goto(`http://localhost:4190/video${name}.html?record&scene=${values.scene}`);
 await page.waitForFunction(() => 'videoReady' in window);
 const cdp = await page.context().newCDPSession(page);
 await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
@@ -57,7 +61,7 @@ const ffmpeg =
         // PNG frames in, H.264 out as X/Twitter takes it.
         `-y -loglevel error -f image2pipe -framerate ${fps} -c:v png -i - -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -profile:v high -movflags +faststart`
           .split(' ')
-          .concat(values.out),
+          .concat(out),
         { stdio: ['pipe', 'inherit', 'inherit'] },
       )
     : null;
@@ -93,6 +97,6 @@ if (ffmpeg) {
   ffmpeg.stdin.end();
   await new Promise((resolve) => ffmpeg.on('close', resolve));
 }
-console.log(`\n${stills === null ? values.out : dir}`);
+console.log(`\n${stills === null ? out : dir}`);
 await browser.close();
 await server.close();

@@ -34,9 +34,11 @@ tooltips, a search that keeps and highlights matches, and a switch between ellip
 segments), under a slider for the width.
 
 `/video.html` plays a short video of the features, scene by scene (`?scene=N`
-starts at one). `bun run video` records it frame by frame into
-`out/video/floating-ellipsis.mp4` (1920×1080, 60fps, H.264, for sharing); it
-needs ffmpeg on the PATH.
+starts at one), and `/video-advanced.html` a second one: the table, then the
+advanced features, each held longer. `bun run video` and `bun run video:advanced`
+record them frame by frame into `out/video/floating-ellipsis.mp4` and
+`out/video/floating-ellipsis-advanced.mp4` (1920×1080, 60fps, H.264, for
+sharing); they need ffmpeg on the PATH.
 
 ## Next.js example
 

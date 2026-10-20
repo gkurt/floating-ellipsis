@@ -118,11 +118,25 @@ export const snapRows: Row[] = [
 
 export const tooltipPaths = [
   'README.md',
-  '/Users/adalovelace/Projects/difference-engine/notes/bernoulli.md',
+  '/Users/ada/Projects/difference-engine/notes/bernoulli.md',
   'package.json',
   'C:\\Users\\grace\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal\\LocalState\\settings\\backups\\2026-10-14\\campbell-powershell.json',
 ];
 export const tooltipOptions: ElideOptions = { position: [0.3, 0.7], snap: separators('/\\') };
+
+/** Search results: the query is kept with a few words around it. */
+export const snippets = [
+  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill, and by dusk the lamp by the gate was the only light left on the bank.',
+  'Notes from the workshop: the brass gears arrived on Tuesday, the engine turned for the first time on Friday, and somebody hung a paper lamp over the bench to celebrate.',
+  'We waited on the bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning.',
+];
+
+/** A keep for every match of `query`, highlighted, with two words either side of it. */
+export function snippetKeep(query: string): ElideOptions['keep'] {
+  const q = query.trim();
+  if (!q) return null;
+  return { match: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), class: 'hit', context: 2 };
+}
 
 export const keepRows: { text: string; mono?: boolean; options: ElideOptions }[] = [
   {
@@ -138,6 +152,8 @@ export const keepRows: { text: string; mono?: boolean; options: ElideOptions }[]
     mono: true,
     options: { keep: [/^\S+ \S+/, { match: /ERR_\w+/, class: 'hit' }], position: 'middle' },
   },
+  // A search result: the match, and the words around it while there's room.
+  { text: snippets[0]!, options: { keep: snippetKeep('lamp') } },
 ];
 
 export const lantern = [
@@ -242,20 +258,6 @@ export const sharedColumns: { label: string; baseline?: boolean; options: (path:
 export const quote =
   'We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard loom weaves flowers and leaves.';
 
-/** Search results: the query is kept with a few words around it. */
-export const snippets = [
-  'The river was higher than anyone remembered, brown and fast, carrying whole branches past the old mill, and by dusk the lamp by the gate was the only light left on the bank.',
-  'Notes from the workshop: the brass gears arrived on Tuesday, the engine turned for the first time on Friday, and somebody hung a paper lamp over the bench to celebrate.',
-  'We waited on the bridge until the light went, counting herons, arguing about whether the water would reach the second step by morning.',
-];
-
-/** A keep for every match of `query`, highlighted, with two words either side of it. */
-export function snippetKeep(query: string): ElideOptions['keep'] {
-  const q = query.trim();
-  if (!q) return null;
-  return { match: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), class: 'hit', context: 2 };
-}
-
 /** Amounts, dates, versions, ids: a cut through one would misreport it. */
 export const NUMBERS = /[$€£]?\d[\d,.:/-]*\d%?|[$€£]?\d/g;
 
@@ -347,3 +349,84 @@ export const shortRows: Row[] = [
     options: { position: 'middle' },
   },
 ];
+
+/** Seeded, so every visit shows the same rows. */
+function random(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const wordsOf = (s: string) => s.split(' ');
+const NAMES = wordsOf(
+  'quarterly revenue forecast draft final review notes meeting design spec roadmap budget invoice contract summary report backup export migration onboarding interview retro launch pricing insights dashboard survey proposal brief checklist',
+);
+const EXTENSIONS = wordsOf('pdf docx xlsx png md ts json csv fig mov zip sql');
+const FOLDERS = wordsOf(
+  'src components docs assets archive 2026 q3 reports shared team design legacy old tmp exports marketing finance engineering platform web mobile vendor fixtures snapshots screenshots',
+);
+const VERBS = [
+  'Fix',
+  'Add',
+  'Remove',
+  'Refactor',
+  'Rename',
+  'Speed up',
+  'Document',
+  'Revert',
+  'Simplify',
+  'Handle',
+  'Guard against',
+  'Cache',
+];
+const OBJECTS = [
+  'upload retry',
+  'the date picker',
+  'table virtualization',
+  'font loading',
+  'the export queue',
+  'pagination',
+  'dark mode tokens',
+  'the search index',
+  'session refresh',
+  'image thumbnails',
+  'the billing webhook',
+  'keyboard shortcuts',
+];
+const TAILS = [
+  'when the network drops mid-chunk',
+  'for right-to-left locales',
+  'behind a feature flag',
+  'on slow devices',
+  'after the schema migration',
+  'so the tests stop flaking',
+  'in the settings panel',
+  'for very long file names',
+  'without blocking the main thread',
+  'and add regression tests',
+  '(follow-up to the last release)',
+  '',
+];
+
+/** A row of the table: four cells truncated, then the size. */
+export type FileRow = [file: string, folder: string, message: string, hash: string, size: string];
+
+export function fileRows(count: number): FileRow[] {
+  const r = random(42);
+  const pick = <T>(list: readonly T[]) => list[Math.floor(r() * list.length)]!;
+  const many = <T>(list: readonly T[], min: number, max: number) =>
+    Array.from({ length: min + Math.floor(r() * (max - min + 1)) }, () => pick(list));
+  return Array.from({ length: count }, (): FileRow => {
+    const bytes = Math.floor(2 ** (8 + r() * 22));
+    return [
+      `${many(NAMES, 2, 6).join('-')}.${pick(EXTENSIONS)}`,
+      `/${many(FOLDERS, 3, 9).join('/')}/`,
+      `${pick(VERBS)} ${pick(OBJECTS)} ${pick(TAILS)}`.trim(),
+      Array.from({ length: 40 }, () => Math.floor(r() * 16).toString(16)).join(''),
+      bytes < 1 << 20 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1 << 20)).toFixed(1)} MB`,
+    ];
+  });
+}

@@ -1,0 +1,253 @@
+import { autoSize } from '#src/autosize.ts';
+import { glyphs } from '#src/glyphs.ts';
+import { type Elide, type ElideOptions, type Keep, separators } from '#src/index.ts';
+import { elideInput } from '#src/input.ts';
+import { calm, fast, fileRows, inputFields, listRows, markRows, river, shortRows, unitRows, wholeRows } from './examples.ts';
+import { Scene, at, box, el, film, moveTo, outro, pointer, press, rows, showCursor, tween, wait, widen } from './film.ts';
+
+/** The second video: a crowded table, then the features past the first video's. Harder to take in, so each stays longer. */
+
+async function intro() {
+  const s = new Scene(null, '<h1>Past the <em>basics.</em></h1>');
+  const line = el('p', 'line', 'Tables, short forms, lists, numbers, emoji and every script, text fields and more.');
+  const b = box(1080, line);
+  b.classList.add('quiet');
+  s.section.append(b);
+  s.elide(line, { position: 0.5, glyphs }, fast);
+  await s.enter();
+  await wait(250);
+  await widen(b, 560, 1500);
+  await wait(500);
+  await s.leave();
+}
+
+/** Type `text` into `el`, a key at a time. */
+async function type(el: HTMLElement, text: string) {
+  for (const ch of text) {
+    el.textContent += ch;
+    await wait(70);
+  }
+}
+
+const COLUMNS = ['File', 'Folder', 'Last commit', 'Hash', 'Size'];
+/** How each column is cut, as on the table page: what it always keeps, and the rest of its options. */
+const columns: { keep: Keep[]; options: ElideOptions }[] = [
+  { keep: [/\.[^.]+$/], options: { position: 0.5 } },
+  { keep: [], options: { position: 0.5, snap: separators('/') } },
+  { keep: [], options: {} },
+  { keep: [], options: { position: 0.5 } },
+];
+
+/** A table cut four ways, narrowed, searched (matches kept, other rows faded), and hovered for a tooltip. */
+async function table() {
+  const s = new Scene(1, 'Cut each column its <em>own way.</em>', "keep: «/\\.[^.]+$/»      snap: separators(«'/'»)      position: «0.5»");
+  s.stage.classList.add('roomy');
+  const search = el(
+    'div',
+    'searchbar',
+    '<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg><span class="query"></span>',
+  );
+  const query = search.querySelector<HTMLElement>('.query')!;
+  const grid = el('div', 'table box');
+  grid.append(el('div', 'tr head', COLUMNS.map((name) => `<span class="th">${name}</span>`).join('')));
+  const all = fileRows(7);
+  // Rows a search for "report" finds in their names and their folders, and two it doesn't.
+  const picked = [0, 1, 2, 5, 6].map((i) => all[i]!);
+  const cells: { t: Elide; text: string; keep: Keep[]; tr: HTMLElement }[] = [];
+  for (const row of picked) {
+    const tr = el('div', 'tr');
+    grid.append(tr);
+    for (const [i, text] of row.entries()) {
+      const td = el('div', i === 4 ? 'td num' : 'td');
+      const cell = el('div', i === 1 || i === 3 ? 'cell mono' : 'cell');
+      cell.textContent = text;
+      td.append(cell);
+      tr.append(td);
+      if (i === 4) continue;
+      const { keep, options } = columns[i]!;
+      cells.push({ t: s.elide(cell, { ...options, keep }, calm), text, keep, tr });
+    }
+  }
+  s.stage.append(search, grid);
+  const tips = s.tooltip({ delay: 300, grace: 0, duration: 600, breaks: '/', maxWidth: 0.75 });
+  for (const { t } of cells) tips.attach(t);
+  await s.enter();
+  await wait(500);
+  await widen(grid, 780, 2400);
+  await wait(1000);
+  await widen(grid, 1000, 1100);
+  await wait(500);
+
+  await type(query, 'report');
+  s.code("keep: [{ match: «/report/gi», class: «'hit'» }, ...keep]");
+  const hits = new Set<HTMLElement>();
+  for (const { t, text, keep, tr } of cells) {
+    if (!/report/i.test(text)) continue;
+    hits.add(tr);
+    t.update({ keep: [{ match: /report/gi, class: 'hit' }, ...keep] });
+  }
+  grid.classList.add('searching');
+  for (const tr of grid.querySelectorAll<HTMLElement>('.tr:not(.head)')) tr.classList.toggle('miss', !hits.has(tr));
+  await wait(2000);
+
+  s.code('tooltip().attach(instance)');
+  const folder = cells.find(({ text }) => text.includes('/reports/'))!.t.element;
+  pointer.x = 1100;
+  pointer.y = 700;
+  await showCursor(true);
+  await moveTo(at(folder, 0.35, 0.55), 600);
+  await wait(1900);
+  await moveTo([pointer.x + 160, 720], 400);
+  await showCursor(false);
+  await s.leave();
+}
+
+/** Labeled rows, narrowed slowly enough to follow, held there, then widened again. */
+async function sweep(s: Scene, list: HTMLElement, narrow: number, wide: number) {
+  list.style.width = '1070px';
+  s.stage.append(list);
+  await s.enter();
+  await wait(400);
+  await widen(list, narrow, 2600);
+  await wait(1300);
+  await widen(list, wide, 1200);
+  await wait(900);
+  await s.leave();
+}
+
+async function shortening() {
+  const s = new Scene(
+    2,
+    'Shorter before it’s <em>cut.</em>',
+    "shorten: [{ match: «'Wednesday'», to: [«'Wed'», «'W'»] }, { match: «' 2026'», to: «''» }]",
+  );
+  await sweep(s, rows(s, shortRows).rows, 700, 920);
+}
+
+async function lists() {
+  const s = new Scene(3, 'Lists say how many are <em>left.</em>', 'elide(el, { ...list(names, { label: (n) => `${n} others` }) })');
+  await sweep(s, rows(s, listRows).rows, 620, 900);
+}
+
+async function wholes() {
+  const s = new Scene(4, 'Numbers stay <em>whole.</em>', "elide(el, { position: «'middle'», whole: «/[$€£]?\\d[\\d,.:/-]*\\d%?/g» })");
+  await sweep(s, rows(s, wholeRows, calm).rows, 660, 920);
+}
+
+async function units() {
+  const s = new Scene(
+    5,
+    'Icons, emoji and every <em>script.</em>',
+    "elide(el, { position: «'middle'» }) // <svg> and [data-elide-unit] stay whole",
+  );
+  await sweep(s, rows(s, unitRows, calm).rows, 640, 940);
+}
+
+/** Text fields: cut until pressed, when the whole value shows with the caret where the pointer is; cut again once left. */
+async function fields() {
+  const s = new Scene(6, 'Fields stay cut until you <em>edit.</em>', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
+  const list = el('div', 'rows box');
+  list.style.width = '1070px';
+  s.stage.append(list);
+  const inputs = inputFields.map(({ label, value, placeholder, options }) => {
+    const row = el('div', 'row', `<code>${label}</code>`);
+    const input = el('input', 'field');
+    input.value = value;
+    input.placeholder = placeholder;
+    input.spellcheck = false;
+    input.tabIndex = -1;
+    row.append(input);
+    list.append(row);
+    const field = elideInput(input, options);
+    s.cleanup(() => field.destroy());
+    return { input, field };
+  });
+  await s.enter();
+  await wait(400);
+  await widen(list, 700, 1600);
+  await wait(500);
+  const { input, field } = inputs[0]!;
+  const ellipsis = field.instance.element.querySelector('[data-fp-ellipsis]')!;
+  pointer.x = 1000;
+  pointer.y = 700;
+  await showCursor(true);
+  await moveTo(at(ellipsis, 0.7, 0.6), 700);
+  await press(() => {
+    const { x, y } = pointer;
+    const init = { bubbles: true, button: 0, clientX: x, clientY: y, pointerType: 'mouse' };
+    input.dispatchEvent(new PointerEvent('pointerdown', init));
+    input.focus();
+    // Where a real press would put the caret: the field is scrolled so the glyph pressed is under the pointer.
+    const caret = document.caretPositionFromPoint(x, y);
+    if (caret?.offsetNode === input) input.setSelectionRange(caret.offset, caret.offset);
+    input.dispatchEvent(new PointerEvent('pointerup', init));
+  });
+  await wait(1900);
+  await moveTo([pointer.x + 60, at(s.stage, 0.5, 0.9)[1]], 500);
+  await press(() => input.blur());
+  await wait(800);
+  await showCursor(false);
+  await s.leave();
+}
+
+async function marks() {
+  const s = new Scene(
+    7,
+    'Quotations, Chinese and <em>Japanese.</em>',
+    "ellipsis: «'[…]'», snap: words()      ellipsis: «'auto'» // 中文, 日本語",
+  );
+  // (One quotation is enough.)
+  const shown = markRows.filter(({ label }) => label !== "'(…)', 2 lines");
+  const { rows: list, lines } = rows(s, shown);
+  for (const [i, { lang, options }] of shown.entries()) {
+    if (lang) lines[i]!.lang = lang;
+    if (options.lines !== undefined) lines[i]!.classList.add('wraps');
+  }
+  await sweep(s, list, 660, 920);
+}
+
+/** Chips sized by their text: cut, the plain ones stay narrow, and the ones with `autoSize()` grow back. Then a card shows as many lines as it's tall. */
+async function sizing() {
+  const s = new Scene(8, 'Sized by <em>content.</em>', "elide(chip, { autoSize: autoSize() })   elide(p, { lines: «'fit'» })");
+  const chips = ['feature/balanced-gaps', 'tokens/colors.json', 'release/2026-10-14'];
+  const list = el('div', 'rows box');
+  for (const [label, baseline, options] of [
+    ['without', true, { position: 'middle' }],
+    ['autoSize()', false, { position: 'middle', autoSize: autoSize() }],
+  ] as const) {
+    const row = el('div', `row${baseline ? ' baseline' : ''}`, `<code>${label}</code>`);
+    const strip = el('div', 'chips');
+    for (const text of chips) {
+      const chip = el('span', 'chip', text);
+      strip.append(chip);
+      s.elide(chip, options);
+    }
+    row.append(strip);
+    list.append(row);
+  }
+  const row = el('div', 'row', "<code>lines: 'fit'</code>");
+  const card = el('div', 'fit-card');
+  const para = el('p', '', river);
+  card.append(para);
+  row.append(card);
+  list.append(row);
+  s.elide(para, { lines: 'fit', position: 0.6 }, calm);
+  list.style.width = '1070px';
+  s.stage.append(list);
+  s.pin();
+  await s.enter();
+  await wait(400);
+  await widen(list, 640, 2000);
+  await wait(700);
+  await widen(list, 1070, 1300);
+  await wait(900);
+  s.code("elide(p, { lines: «'fit'» }) // as many lines as it's tall");
+  const tall = card.getBoundingClientRect().height;
+  await tween(1100, (k) => (card.style.height = `${tall - (tall - 52) * k}px`));
+  await wait(500);
+  await tween(1100, (k) => (card.style.height = `${52 + (tall + 40 - 52) * k}px`));
+  await wait(1000);
+  await s.leave();
+}
+
+await film([intro, table, shortening, lists, wholes, units, fields, marks, sizing, outro], 8);

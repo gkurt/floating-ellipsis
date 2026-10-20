@@ -144,7 +144,7 @@ import { $ } from './ui.ts';
 }
 
 // ---------------------------------------------------------------------------
-// 07 Fields, cut until you edit
+// 07 Fields stay cut until you edit
 
 {
   const box = $('#inputBox');

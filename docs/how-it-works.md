@@ -610,7 +610,10 @@ field's own text is hidden with `-webkit-text-fill-color`, which leaves
 `color` (and the caret) alone; its native placeholder is always hidden that
 way, and the copy shows it cut, in the placeholder's colour and opacity. The
 copy is inert and hidden from screen readers, so find in page and assistive
-technology see the field alone.
+technology see the field alone. A field made before it's put in the page (or
+moved since) gets both when it next syncs, as its size first reports: the
+copy goes beside it, and the sheet hiding placeholders is adopted by its
+document or shadow root.
 
 A press is caught on `pointerdown`, before the browser places the caret: the
 copy says which glyph boundary is nearest the pointer (either side of what a

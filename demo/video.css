@@ -458,6 +458,8 @@ body {
   pointer-events: none;
   opacity: 0;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+  /* A press shrinks it toward its tip, which stays on the point pressed. */
+  transform-origin: 5px 3.5px;
 }
 .cursor.down path {
   fill: #ddd;
@@ -479,4 +481,185 @@ body {
 }
 .split .line.mono {
   font-size: 24px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* The advanced video */
+
+/* Labels as long as `data-elide-short`. */
+.advanced .row {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+
+.stage.roomy {
+  padding: 26px 32px;
+  justify-content: flex-start;
+}
+
+/* The table: a search above it, rows of grid, a column cut each way. */
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 340px;
+  margin-bottom: 16px;
+  padding: 9px 16px;
+  border: 1px solid #3f3a33;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--faint);
+  font: 400 21px/1.2 var(--sans);
+}
+.searchbar .query {
+  color: var(--ink);
+}
+.searchbar .query::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--accent-2);
+}
+.table .tr {
+  display: grid;
+  grid-template-columns: 20% 25% 31% 13% 11%;
+  border-bottom: 1px solid var(--line);
+  transition: opacity 0.3s;
+}
+.table .tr.hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.table .th {
+  padding: 10px 14px;
+  font: 500 14px/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.table .td {
+  min-width: 0;
+  padding: 10px 14px;
+}
+.table .cell {
+  font: 400 23px/32px var(--sans);
+  white-space: nowrap;
+}
+.table .cell.mono {
+  font: 400 20px/32px var(--mono);
+  color: var(--muted);
+}
+.table .num {
+  font: 400 20px/32px var(--sans);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.table [data-fp-ellipsis] {
+  color: var(--accent);
+}
+.table .hit {
+  color: var(--ink);
+  background: var(--accent-2-soft);
+  border-radius: 0;
+  box-shadow: none;
+}
+.table.searching .miss {
+  opacity: 0.3;
+}
+[data-fp-tip] .hit {
+  color: inherit;
+  background: rgba(110, 164, 255, 0.45);
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* Icons and mentions, kept whole; the label counting what a list hides. */
+.line .icon {
+  vertical-align: -0.12em;
+  color: var(--accent-2);
+}
+.mention {
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--accent-2-soft);
+  color: var(--accent-2);
+  font-size: 0.86em;
+}
+[data-fp-list] {
+  color: var(--muted);
+}
+.row .line.wraps {
+  font-size: 28px;
+  white-space: normal;
+}
+
+/* Text fields */
+.field {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 16px;
+  border: 1px solid #3f3a33;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  font: 400 26px/1.3 var(--sans);
+  outline: none;
+}
+.field::placeholder {
+  color: var(--muted);
+}
+.field:focus {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 4px var(--accent-2-soft);
+}
+.row:has(.field) {
+  align-items: center;
+}
+
+/* Chips sized by their text, in a row that may not wrap; a card whose text fits its height. */
+.chips {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: var(--accent-2-soft);
+  font: 400 20px/30px var(--mono);
+  white-space: nowrap;
+}
+.baseline .chip {
+  color: var(--muted);
+  background: var(--line);
+}
+.row:has(.chips),
+.row:has(.fit-card) {
+  align-items: center;
+}
+.fit-card {
+  display: flex;
+  flex-direction: column;
+  height: 168px;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raised);
+  font: 400 22px/1.5 var(--sans);
+  color: #d9d3c8;
+  overflow: hidden;
+}
+.fit-card p {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+.fit-card [data-fp-ellipsis] {
+  color: var(--accent);
 }

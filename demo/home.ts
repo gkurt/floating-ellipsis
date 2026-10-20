@@ -180,7 +180,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
     box.insertBefore(line, $('.handle', box));
     elide(line, options);
   }
-  setCode('keepCode', "keep: [/\\.pdf$/, { match: /fox|porch/, class: «'hit'» }]");
+  setCode('keepCode', "keep: [/\\.pdf$/, { match: /fox|porch/, class: «'hit'» }, { match: /lamp/, context: «2» }]");
   stage(box, [0.45, 0.8]);
 }
 
