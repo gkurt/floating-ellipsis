@@ -124,12 +124,11 @@ class Field implements ElidedInput {
     overlay.setAttribute('aria-hidden', 'true');
     overlay.inert = true;
     overlay.style.cssText = OVERLAY;
-    input.after(overlay);
     input.setAttribute(FIELD, '');
     const own: [string, string] = [input.style.getPropertyValue(FILL), input.style.getPropertyPriority(FILL)];
     this.#own = own;
     this.#undo.push(() => input.style.setProperty(FILL, ...own));
-    adopt(input);
+    this.#settle();
     this.instance = elide(overlay, { ...options, text: '', find: false });
     this.#restyle();
     if (ANCHORED) {
@@ -285,9 +284,21 @@ class Field implements ElidedInput {
     return (input.matches(':focus') && input.value !== '') || input.type === 'password';
   }
 
+  /**
+   * The copy beside the field, and the sheet hiding the field's own
+   * placeholder in its document (or shadow root): again whenever it syncs,
+   * for a field made before it was put in the page, or moved since.
+   */
+  #settle() {
+    const input = this.#input;
+    if (this.#overlay.parentNode !== input.parentNode) input.after(this.#overlay);
+    adopt(input);
+  }
+
   /** Show the cut copy, or the field's own text, as the field is being edited or not. */
   #sync() {
     if (this.#destroyed) return;
+    this.#settle();
     const input = this.#input;
     const shown = input.getClientRects().length > 0;
     const secret = input.type === 'password';

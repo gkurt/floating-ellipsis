@@ -121,6 +121,23 @@ describe.each(FONTS)('elideInput, in %s', (font) => {
     expect(copy.style.visibility).toBe('');
   });
 
+  it('settles in once a field made outside the page is put in it', async () => {
+    // A shadow root: the document has the sheet hiding placeholders from the other tests already.
+    const host = track(document.createElement('div'));
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const input = document.createElement('input');
+    input.placeholder = 'Search every note, file and folder in the difference engine project';
+    input.style.cssText = `font:${font};width:240px;padding:4px 8px;border:1px solid #888;`;
+    const f = elideInput(input, { position: 'middle' });
+    fields.push(f);
+    root.append(input);
+    await frames();
+    expect(input.nextElementSibling).toBe(f.instance.element);
+    expect(f.instance.truncated).toBe(true);
+    expect(getComputedStyle(input, '::placeholder').getPropertyValue('-webkit-text-fill-color')).toBe('rgba(0, 0, 0, 0)');
+  });
+
   it('never shows a password', async () => {
     const { input, t, copy } = field('correct horse battery staple, and then some', font, {}, '');
     input.type = 'password';
