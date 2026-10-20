@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { commands } from 'vitest/browser';
 import { ellipsisRect, graphemeRect } from '#src/geometry.ts';
 import { type ElidedInput, type InputOptions, type TextareaOptions, elideInput } from '#src/input.ts';
+import type { Part } from '#src/options.ts';
 import { FONTS, PATH, PROSE, content, expectFits, frames, track } from './helpers.ts';
 
 const fields: ElidedInput<TextareaOptions>[] = [];
@@ -223,8 +224,10 @@ describe.each(FONTS)('elideInput on a textarea, in %s', (font) => {
   it('puts the caret where the truncated text was pressed', async () => {
     const text = `${PROSE}\n${PROSE}\n${PROSE}`;
     const { input, t } = area(text, font, { position: 'middle' });
-    const cut = t.state.hidden[0]!;
-    for (const i of [2, cut.start - 2, cut.end + 1, text.length - 3]) {
+    // Wrapped lines can truncate a little differently after a focus (the search starts from the last), so each press aims at the truncation showing.
+    const picks = [() => 2, (c: Part) => c.start - 2, (c: Part) => c.end + 1, () => text.length - 3];
+    for (const pick of picks) {
+      const i = pick(t.state.hidden[0]!);
       const r = graphemeRect(t, i)!;
       await press(r.left + r.width * 0.25, r.top + r.height / 2);
       expect(document.activeElement).toBe(input);
