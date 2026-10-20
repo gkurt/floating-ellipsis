@@ -310,6 +310,27 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
+  it.each<[string, ElideOptions]>([
+    ['the middle', { position: 'middle', lines: 2 }],
+    ['two places', { position: [0.3, 0.7], lines: 3 }],
+  ])('truncates wrapped lines at %s the same whatever came before', (_, options) => {
+    const text = `${PROSE} ${PROSE} ${PROSE}`;
+    const cut = (t: Elide) => t.state.hidden.map((p) => `${p.start}-${p.end}`).join();
+    const t = make(box(text, `font:${font}`), options);
+    for (let width = 120; width < 300; width += 9) {
+      const fresh = make(box(text, `font:${font};width:${width}px`), options);
+      // Narrower first, then wider: each search starts from a different cut.
+      for (const by of [-13, 11]) {
+        t.element.style.width = `${width + by}px`;
+        t.refresh();
+        t.element.style.width = `${width}px`;
+        t.refresh();
+        expect(cut(t)).toBe(cut(fresh));
+      }
+      fresh.destroy();
+    }
+  });
+
   it('fills its lines where spaces are kept, though the space a line wraps at hangs past the edge', () => {
     const t = make(box(`${PROSE} ${PROSE}`, `font:${font};white-space:pre-wrap`), { position: 'middle', lines: 3 });
     let before = -1;

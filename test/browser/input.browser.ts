@@ -221,10 +221,23 @@ describe.each(FONTS)('elideInput on a textarea, in %s', (font) => {
     expect(input.scrollTop).toBe(0);
   });
 
+  it('truncates the same after a focus as before', async () => {
+    // Focused, it shows its scrollbar (where scrollbars take room), and the copy's lines take the room back while it does.
+    for (let width = 160; width < 400; width += 7) {
+      const { input, t, copy } = area(`${PROSE}\n${PROSE}\n${PROSE}`, font, { position: 'middle' }, `width:${width}px`);
+      const [before, padding] = [t.state.hidden, copy.style.paddingRight];
+      input.focus();
+      await frames();
+      input.blur();
+      await frames();
+      expect(copy.style.paddingRight).toBe(padding);
+      expect(t.state.hidden).toEqual(before);
+    }
+  });
+
   it('puts the caret where the truncated text was pressed', async () => {
     const text = `${PROSE}\n${PROSE}\n${PROSE}`;
     const { input, t } = area(text, font, { position: 'middle' });
-    // Wrapped lines can truncate a little differently after a focus (the search starts from the last), so each press aims at the truncation showing.
     const picks = [() => 2, (c: Part) => c.start - 2, (c: Part) => c.end + 1, () => text.length - 3];
     for (const pick of picks) {
       const i = pick(t.state.hidden[0]!);

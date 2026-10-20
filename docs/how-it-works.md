@@ -8,12 +8,23 @@ Implementation details behind the behaviour described in the
 1. **Fit.** The text is rendered into the element and measured with
    `getClientRects()`, so every CSS property that affects layout is respected.
    A search finds the most graphemes that fit in `lines` lines. It starts from
-   what the summed glyph widths predict fits, shifted by how far off that was last
-   time, so it usually only has to confirm it. Each truncation it renders shows
-   how much room it left on the lines, or how much spilled past them, and the
-   next aims where the glyph widths put the end of that room, one past it first, so
-   that a true aim ends on the answer already rendered: two or three layouts
-   for several lines, where halving took five or more. On one line, once one
+   what the glyph widths predict fits, one past it first, so that when the
+   prediction holds the last probe is the answer, already rendered. On one
+   line the prediction is the summed widths shifted by how far off they were
+   last time. On more, showing more doesn't always take more room: a word
+   that wrapped can move back up a line once the truncation around it
+   changes, so a truncation that fits can follow one that doesn't, and where
+   the search starts decides which of them it ends on. There the prediction
+   never depends on the last answer: the glyph widths are wrapped as a
+   browser wraps them, a line at a time (words that don't fit start the
+   next line, spaces hang past the edge, an ellipsis is as wide as it will
+   show with the gaps planned around it, joined to the words either side),
+   so the same box, text and options always get the same truncation,
+   whatever was shown before, and the prediction is usually exact. Each
+   truncation the search renders shows how much room it left on the lines,
+   or how much spilled past them, and the next aims where the glyph widths
+   put the end of that room: two layouts for several lines most of the
+   time, where halving took five or more. On one line, once one
    truncation has been measured, any other is judged from glyph widths and kerning
    pairs alone when it clears the edge by a margin, so a resize or new text
    usually needs no layout but the one that checks the answer. The margin

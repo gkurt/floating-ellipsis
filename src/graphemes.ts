@@ -20,6 +20,11 @@ export function graphemes(text: string): string[] {
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}]/u;
 const LETTER = /\p{L}/u;
 
+/** Whether `g` is an ideograph or kana: Chinese and Japanese text breaks around each. */
+export function isIdeograph(g: string): boolean {
+  return g.charCodeAt(0) >= 0x2e80 && CJK.test(g);
+}
+
 /**
  * Whether text is Chinese or Japanese, for `ellipsis: 'auto'`: more of its
  * letters are ideographs or kana than not, or with no letters at all,
@@ -29,7 +34,7 @@ export function isCJK(text: readonly string[], lang = ''): boolean {
   let cjk = 0;
   let other = 0;
   for (const g of text) {
-    if (CJK.test(g)) cjk++;
+    if (isIdeograph(g)) cjk++;
     else if (LETTER.test(g)) other++;
   }
   return cjk + other > 0 ? cjk > other : /^(zh|ja)\b/i.test(lang);

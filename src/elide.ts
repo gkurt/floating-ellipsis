@@ -9,6 +9,7 @@ import {
   bothEdges,
   contextOf,
   estimateKept,
+  estimateWrapped,
   hiddenRanges,
   keepContexts,
   maxKept,
@@ -301,7 +302,7 @@ export class Elide {
   #owed: ChangeReason | null = null;
   /** Something is being read from the instance, so its passes can't wait. */
   #reading = false;
-  /** How far the search's starting estimate was off last time, in graphemes; null before a first search. */
+  /** How far the search's starting estimate was off last time, in graphemes (only used on one line); null before a first search. */
   #bias: number | null = null;
   #current: ElideState | null = null;
   #lastRun: Run | null = null;
@@ -1873,18 +1874,25 @@ export class Elide {
             cuts = cutting(pins);
           }
           yield* phase.write();
-          // Where the search starts: what the canvas widths say fits. Kerning,
-          // wrapping and rounding make that a guess, but a steady one, so it
-          // is shifted by how far off it was last time. From there each probe
-          // aims at what the room it left (or lacked) says fits, by the same
-          // widths: the room wrapping wastes changes little from one to the next.
+          // Where the search starts: what the canvas widths say fits. On one
+          // line, kerning and rounding make that a guess, but a steady one, so
+          // it is shifted by how far off it was last time. On more, a cut that
+          // fits can follow one that doesn't (a word that wrapped moves back
+          // up), so where the search starts decides which it finds: the widths
+          // are wrapped as the browser wraps them instead, each ellipsis as
+          // wide as it will show, and never shifted, so the same box gets the
+          // same cut whatever came before. From there each probe aims at what
+          // the room it left (or lacked) says fits, by the same widths: the
+          // room wrapping wastes changes little from one to the next.
           const mark = layout ? groupMetrics(layout, layout.inner).advance : 0;
           const kept = (width: number, near?: number) => estimateKept(cuts, run.sums, mark, width, near);
-          const guess = kept(room);
+          const marks = (cut: readonly Range[]) => (layout ? this.#plan(run, cut).map((p) => mark + p.marginLeft + p.marginRight) : []);
+          const wrap = { width, lines: lines === 'fit' ? fit.max : lines, breaks: /^pre|break-spaces/.test(whiteSpace) };
+          const guess = wraps(lines) ? estimateWrapped(cuts, run.sums, marks, wrap, run.suffix) : kept(room);
           // One past the expected answer first: when the expectation holds,
           // the last probe is the answer, already rendered and measured.
           const most = maxKept(cuts);
-          const first = Math.max(0, Math.min(most, guess + (this.#bias ?? 0) + 1));
+          const first = Math.max(0, Math.min(most, guess + (wraps(lines) ? 0 : (this.#bias ?? 0)) + 1));
           const search = steeredSteps(0, most, first, (k, left) => kept(keptWidth(run.sums, mark, at(k)) + left, k));
           let step = search.next();
           while (!step.done) step = search.next(yield* attempt.call(this, at(step.value)));

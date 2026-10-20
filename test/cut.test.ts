@@ -10,6 +10,7 @@ import {
   allocationOrder,
   complement,
   estimateKept,
+  estimateWrapped,
   segmentEdges,
   shortestRun,
   wholeEdges,
@@ -36,6 +37,7 @@ import {
   toGraphemeRanges,
   union,
   words,
+  wrapsInto,
 } from '#src/cut.ts';
 import { graphemes } from '#src/graphemes.ts';
 
@@ -727,6 +729,79 @@ describe('steeredSteps', () => {
   it('without rooms, steps out from the first probe as searchSteps does', () => {
     expect(probes(41, 40, exact, false)).toEqual({ tried: [40, 41, 43, 42], answer: 41 });
     expect(probes(41, 42, exact, false)).toEqual({ tried: [42, 41], answer: 41 });
+  });
+});
+
+describe('wrapsInto', () => {
+  // Every grapheme 10 wide.
+  const tens = (g: readonly string[]) => g.map((_, i) => i * 10).concat(g.length * 10);
+  const fits = (text: string, width: number, lines: number, hidden: Range[] = [], marks: number[] = [], breaks = false, end = 0) => {
+    const g = graphemes(text);
+    return wrapsInto(g, tens(g), hidden, marks, { width, lines, breaks }, end);
+  };
+
+  it('puts a word that runs past the edge on the next line, and lets spaces hang', () => {
+    expect(fits('ab cd', 50, 1)).toBe(true);
+    expect(fits('ab cd', 40, 1)).toBe(false);
+    expect(fits('ab cd', 40, 2)).toBe(true);
+    // 'ab ' is 30, but the space hangs: 'cd' is on the next line either way.
+    expect(fits('ab cd', 20, 2)).toBe(true);
+    expect(fits('abc de', 20, 2)).toBe(false);
+  });
+
+  it('breaks a word wider than a line anywhere', () => {
+    expect(fits('abcdef', 20, 3)).toBe(true);
+    expect(fits('abcdef', 20, 2)).toBe(false);
+    expect(fits('x abcdef', 20, 4)).toBe(true);
+  });
+
+  it('breaks around ideographs', () => {
+    expect(fits('漢字漢字', 20, 2)).toBe(true);
+    expect(fits('ab漢', 20, 2)).toBe(true);
+  });
+
+  it('starts a line at a line break when told to', () => {
+    expect(fits('ab\ncd', 60, 1)).toBe(true);
+    expect(fits('ab\ncd', 60, 1, [], [], true)).toBe(false);
+    expect(fits('ab\ncd', 60, 2, [], [], true)).toBe(true);
+  });
+
+  it('joins a mark to the words either side, and the end to the last word', () => {
+    // 'ab…ef' is one word 45 wide.
+    expect(fits('abcd ef', 45, 1, [[2, 5]], [5])).toBe(true);
+    expect(fits('abcd ef', 44, 1, [[2, 5]], [5])).toBe(false);
+    // Between spaces, '…' is a word of its own: 'ab …' on the first line, 'ef' on the next.
+    expect(fits('ab cd ef', 35, 2, [[3, 5]], [5])).toBe(true);
+    expect(fits('ab cd ef', 34, 2, [[3, 5]], [5])).toBe(false);
+    // Spaces that hang past the edge don't start a line of their own.
+    expect(fits('ab      cd', 20, 2)).toBe(true);
+    expect(fits('ab cd', 50, 1, [], [], false, 5)).toBe(false);
+    expect(fits('ab cd', 50, 2, [], [], false, 5)).toBe(true);
+  });
+});
+
+describe('estimateWrapped', () => {
+  const g = graphemes('aaaa bb cccc dd eeee');
+  const sums = g.map((_, i) => i * 10).concat(g.length * 10);
+  const c = cutting(g, layoutFor(g.length, ['end']), [], null, true);
+
+  it('keeps the most that wraps into the lines, each cut as wide as it shows', () => {
+    // 'aaaa bb' on the first line, then 'cccc dd…' (75), its space trimmed: 'cccc dd e…' (95) doesn't fit 80.
+    const wrap = { width: 80, lines: 2, breaks: false };
+    expect(estimateWrapped(c, sums, (hidden) => hidden.map(() => 5), wrap, 0)).toBe(16);
+    // A wider ellipsis: 'cccc…' (65).
+    expect(estimateWrapped(c, sums, (hidden) => hidden.map(() => 25), wrap, 0)).toBe(13);
+  });
+
+  it('ends on a cut that wraps into the lines, and one more grapheme that does not', () => {
+    const marks = (hidden: readonly Range[]) => hidden.map(() => 10);
+    for (const width of [40, 50, 60, 70, 90]) {
+      const wrap = { width, lines: 2, breaks: false };
+      const k = estimateWrapped(c, sums, marks, wrap, 0);
+      const fits = (k: number) => wrapsInto(g, sums, hiddenRanges(c, k), marks(hiddenRanges(c, k)), wrap);
+      expect(fits(k)).toBe(true);
+      expect(fits(k + 1)).toBe(false);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { isWhitespace } from './graphemes.ts';
+import { isIdeograph, isWhitespace } from './graphemes.ts';
 
 /** Grapheme range `[start, end)`. */
 export type Range = readonly [start: number, end: number];
@@ -387,6 +387,96 @@ export function hiddenRanges(c: Cutting, kept: number): Range[] {
  */
 export function estimateKept(c: Cutting, sums: ArrayLike<number>, mark: number, room: number, hint?: number): number {
   return searchMax(0, maxKept(c), (k) => keptWidth(sums, mark, hiddenRanges(c, k)) <= room, hint);
+}
+
+/** How text wraps, for `wrapsInto`: lines `width` wide, at most `lines` of them, and whether a line break in the text starts a line. */
+export interface Wrapping {
+  width: number;
+  lines: number;
+  breaks: boolean;
+}
+
+/**
+ * Whether the graphemes `hidden` leaves (`sums`: as for `estimateKept`) fit
+ * `wrap`, set as a browser sets them one line after another: words go on
+ * the line they fit on, or start the next; spaces hang past the edge; a
+ * line break starts a line (with `wrap.breaks`); Chinese and Japanese
+ * characters break anywhere, and a word wider than a line does too. Each cut
+ * shows as `marks[j]` (its ellipsis and the room around it), joined to the
+ * words either side, and `end` (a suffix) joins the last word.
+ */
+export function wrapsInto(
+  graphemes: readonly string[],
+  sums: ArrayLike<number>,
+  hidden: readonly Range[],
+  marks: readonly number[],
+  wrap: Wrapping,
+  end = 0,
+): boolean {
+  const { width, lines } = wrap;
+  if (!(width > 0)) return false;
+  let line = 1;
+  let x = 0;
+  let word = 0;
+  let j = 0;
+  /** Set `w` (a word, or what breaks around itself) where it fits. */
+  const place = (w: number) => {
+    word = 0;
+    if (w === 0) return;
+    if (x > 0 && x + w > width) {
+      line++;
+      x = 0;
+    }
+    const over = Math.max(0, Math.ceil(w / width) - 1);
+    line += over;
+    x += w - over * width;
+  };
+  for (let i = 0; i < graphemes.length && line <= lines; i++) {
+    const cut = hidden[j];
+    if (cut?.[0] === i) {
+      word += marks[j++] ?? 0;
+      i = cut[1] - 1;
+      continue;
+    }
+    const g = graphemes[i]!;
+    const w = sums[i + 1]! - sums[i]!;
+    if (!isWhitespace(g) && !isIdeograph(g)) {
+      word += w;
+      continue;
+    }
+    place(word);
+    if (g === '\n' && wrap.breaks) {
+      line++;
+      x = 0;
+    } else if (isWhitespace(g)) {
+      x += w;
+    } else {
+      place(w);
+    }
+  }
+  if (j < hidden.length) word += marks[j] ?? 0;
+  place(word + end);
+  return line <= lines;
+}
+
+/**
+ * `estimateKept` on more than one line: the most graphemes `hiddenRanges`
+ * can keep while `wrapsInto` says they fit, `marks(hidden)` giving each cut's
+ * width. A longer cut can fit where a shorter one doesn't (a word that
+ * wrapped moves back up), so the search can find one of several answers:
+ * which it finds depends only on what's passed.
+ */
+export function estimateWrapped(
+  c: Cutting,
+  sums: ArrayLike<number>,
+  marks: (hidden: readonly Range[]) => readonly number[],
+  wrap: Wrapping,
+  end: number,
+): number {
+  return searchMax(0, maxKept(c), (k) => {
+    const hidden = hiddenRanges(c, k);
+    return wrapsInto(c.graphemes, sums, hidden, marks(hidden), wrap, end);
+  });
 }
 
 /** The width of the graphemes `hidden` leaves (`sums`: as for `estimateKept`), with `mark` for each cut. */
