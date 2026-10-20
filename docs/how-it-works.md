@@ -71,8 +71,8 @@ Implementation details behind the behaviour described in the
    (so only marks that are all the same repeat: drawn ones, `'...'`, and a
    single `'…'`, which is drawn as dots for it). How many is `repeat`'s share
    of as many as would fit at the marks' own spacing, the ellipsis' own
-   counted, rounded down and never fewer than its own: with the default
-   0.75, three dots stay three until six would fit, then four, five at
+   counted, rounded down and never fewer than its own: with 0.75,
+   three dots stay three until six would fit, then four, five at
    seven, six at eight. So a few more letters of room only widen the gaps a
    little, rather than bringing a dot in and out at every glyph as the box
    resizes, and a long run of marks settles a third sparser than the

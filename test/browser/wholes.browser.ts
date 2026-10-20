@@ -28,7 +28,8 @@ describe.each(FONTS)('whole, in %s', (font) => {
     ['the middle', 'middle'],
     ['two places', [0.3, 0.7]],
   ])('never shows part of one, cut at %s', (_, position) => {
-    const t = make(box(INVOICE, `font:${font}`), { position, whole: NUMBERS });
+    // A whole dropped at the end leaves more room than `maxGap` spreads: unlimited, every cut ends flush.
+    const t = make(box(INVOICE, `font:${font}`), { position, whole: NUMBERS, maxGap: null });
     let cuts = 0;
     for (const _ of sweep(t, 60, 600, 3)) {
       expectFits(t);

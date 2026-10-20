@@ -48,7 +48,8 @@ function expectWhole(t: Elide) {
 
 describe.each(FONTS)('shorten, in %s', (font) => {
   it.each(['end', 'middle'] as const)('takes fewer steps the more room, and cuts only once all are taken, at the %s', (position) => {
-    const t = make(box(MEETING, `font:${font}`), { shorten: SHORTEN, position });
+    // A part dropped at the end leaves more room than `maxGap` spreads: unlimited, every cut ends flush.
+    const t = make(box(MEETING, `font:${font}`), { shorten: SHORTEN, position, maxGap: null });
     let last = Infinity;
     const seen = new Set<number>();
     for (const _ of sweep(t, 60, 700, 3)) {

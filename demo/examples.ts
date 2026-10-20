@@ -16,7 +16,7 @@ export const fading: TransitionOptions = { effect: 'fade', glide: false };
 /**
  * For text truncated a whole word, path segment or unit at a time, which can
  * leave a lot of room at once: only the dots that keep the gaps under
- * `maxGap`, rather than the default's tens.
+ * `maxGap`, rather than tens.
  */
 export const fewDots = { repeat: 0.1 } as const satisfies ElideOptions;
 

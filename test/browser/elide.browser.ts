@@ -285,8 +285,8 @@ describe.each(FONTS)('elide in %s', (font) => {
   it.each(['dots', 'ellipsis'] as const)('draws the share of the marks that fit that repeat says, with justify %s', (justify) => {
     const long = 'Internationalization accessibility, localization and globalization considerations';
     for (const position of ['end', 'middle'] as const) {
-      // By default 0.75 of them: 3 dots stay 3 until 6 would fit.
-      const t = make(box(long, `font:${font}`), { position, snap: words(), justify, maxGap: null });
+      // 0.75 of them: 3 dots stay 3 until 6 would fit.
+      const t = make(box(long, `font:${font}`), { position, snap: words(), justify, maxGap: null, repeat: 0.75 });
       const every = make(box(long, `font:${font}`), { position, snap: words(), justify, maxGap: null, repeat: 1 });
       let fewer = 0;
       for (const w of sweep(t, 140, 420, 7)) {

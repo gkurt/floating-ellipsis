@@ -43,9 +43,7 @@ let placed = false;
  * the ellipsis off its place.
  */
 const middle = (snap: Snap | null = null): ElideOptions =>
-  placed
-    ? { position: '50%', justify: false, repeat: false, snap: null }
-    : { position: 0.5, justify: 'dots', repeat: snap ? fewDots.repeat : 0.75, snap };
+  placed ? { position: '50%', justify: false, snap: null } : { position: 0.5, justify: 'dots', repeat: snap ? fewDots.repeat : 0.75, snap };
 let folders: Elide[] = [];
 let instances: Elide[] = [];
 let messages: Elide[] = [];

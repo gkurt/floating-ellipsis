@@ -30,7 +30,7 @@ panels, ink guides and a readout of its state; `window.hero` is the instance,
 to try from the console. `/table.html` is a crowded table
 (up to 2,500 rows, four truncated cells each, as a `<table>` or grid rows) with
 tooltips, a search that keeps and highlights matches, and a switch between ellipses at half the text and in the middle of the cell (unjustified, without repeated marks or snapping: what keeps them nearest their place). `/justify.html` shows each `justify` mode with
-`repeat: false`, `0.75` (the default) and `1`, on truncations that leave a lot of room (whole words, path
+`repeat: false` (the default), `0.75` and `1`, on truncations that leave a lot of room (whole words, path
 segments), under a slider for the width.
 
 `/video.html` plays a short video of the features, scene by scene (`?scene=N`

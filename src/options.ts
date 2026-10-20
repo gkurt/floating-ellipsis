@@ -82,7 +82,7 @@ export interface ElideOptions {
    * spacing and the two gaps around them take the rest; with 'spread' the
    * letters spread by what's left; with false, it stays at the end. Only
    * marks that are all the same are repeated (drawn marks, '...', and '…'
-   * split into dots). Default 0.75.
+   * split into dots). Default false.
    */
   repeat?: boolean | number;
   /**
@@ -181,7 +181,7 @@ export const DEFAULTS: Settings = {
   ellipsis: '…',
   gap: 'dots',
   justify: 'dots',
-  repeat: 0.75,
+  repeat: false,
   maxGap: '0.75em',
   trim: true,
   snap: null,
