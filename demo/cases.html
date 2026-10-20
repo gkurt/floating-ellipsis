@@ -3,7 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>floating-ellipsis — case: background tasks</title>
+    <title>floating-ellipsis — cases</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@400;600&display=swap" rel="stylesheet" />
     <style>
       :root {
         --ink: rgb(11, 11, 11);
@@ -25,7 +28,7 @@
         background: rgb(252, 252, 251);
       }
       .case {
-        display: inline-block;
+        width: fit-content;
         padding: 20px 24px 24px;
       }
       .source {
@@ -131,19 +134,134 @@
         width: 20px;
         color: var(--muted);
       }
+
+      /* GitHub's pull request file tree (Primer's ActionList), as on github.com. */
+      .gh .tree {
+        position: relative;
+        width: 296px;
+        margin: 0;
+        padding: 8px 0;
+        list-style: none;
+        font:
+          400 14px/20px 'Mona Sans',
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: rgb(31, 35, 40);
+        background: #fff;
+        border-radius: 6px;
+        box-shadow: 0 0 0 1px #d1d9e0;
+      }
+      .gh .tree li {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 8px 0 calc(var(--depth) * 8px);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .gh .tree li:hover {
+        background: rgb(129 139 152 / 0.1);
+      }
+      .gh .tree svg {
+        flex: none;
+        fill: currentColor;
+      }
+      .gh .chevron,
+      .gh .file {
+        color: rgb(89, 99, 110);
+      }
+      .gh .dir {
+        color: rgb(84, 174, 255);
+      }
+      .gh .modified {
+        color: rgb(154, 103, 0);
+      }
+      .gh .added {
+        color: rgb(26, 127, 55);
+      }
+      .gh .spacer {
+        flex: none;
+        width: 16px;
+      }
+      .gh .name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .gh .guide {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: rgb(209 217 224 / 0.7);
+      }
+      /* GitHub's own tooltip (Primer's TooltipV2), on the shipped tree. */
+      .gh-tip {
+        position: fixed;
+        z-index: 10;
+        max-width: 250px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: rgb(37, 41, 46);
+        color: #fff;
+        font:
+          400 12px/1.5 'Mona Sans',
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        overflow-wrap: break-word;
+        pointer-events: none;
+        animation: gh-tip 0.1s ease-in;
+      }
+      @keyframes gh-tip {
+        from {
+          opacity: 0;
+        }
+      }
+      /* floating-ellipsis's tips go on <body>; these look like GitHub's overlays. */
+      [data-fp-tip] {
+        z-index: 10;
+        padding: 6px 8px;
+        color: rgb(31, 35, 40);
+      }
+      [data-fp-tip-bg] {
+        background: #fff;
+        border-radius: 6px;
+        box-shadow:
+          0 0 0 1px #d1d9e0,
+          0 8px 24px rgb(66 74 83 / 0.12);
+      }
     </style>
   </head>
   <body>
-    <section class="case">
+    <section class="case" id="claude">
       <p class="source"><b>Claude Code</b><span>Background tasks panel, on claude.ai</span></p>
       <div class="compare">
         <figure>
           <figcaption>As shipped</figcaption>
-          <div class="panel" id="before"></div>
+          <div class="panel" id="claude-before"></div>
         </figure>
         <figure>
           <figcaption>With floating-ellipsis</figcaption>
-          <div class="panel" id="after"></div>
+          <div class="panel" id="claude-after"></div>
+        </figure>
+      </div>
+    </section>
+    <section class="case gh" id="github">
+      <p class="source"><b>GitHub</b><span>Files changed in a pull request (spring-projects/spring-boot#52249)</span></p>
+      <div class="compare">
+        <figure>
+          <figcaption>As shipped</figcaption>
+          <ul class="tree" id="github-before" role="tree"></ul>
+        </figure>
+        <figure>
+          <figcaption>With floating-ellipsis</figcaption>
+          <ul class="tree" id="github-after" role="tree"></ul>
         </figure>
       </div>
     </section>
