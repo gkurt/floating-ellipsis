@@ -430,10 +430,19 @@ describe('showSlivers', () => {
     expect(showSlivers(g, [[13, 15]], [])).toEqual([[13, 15]]);
   });
 
+  it("keeps a sliver that's the only cut", () => {
+    // "The quick bro…fox jumps over": no other cut could pay for "wn ", and
+    // showing it would leave nothing truncated.
+    expect(showSlivers(g, [[13, 16]], [fox])).toEqual([[13, 16]]);
+  });
+
   it('applies through hiddenRanges', () => {
     const layout = layoutFor(g.length, ['middle']);
     for (let kept = 0; kept < g.length; kept++) {
-      for (const [s, e] of hide(g, layout, kept, [fox], null, true)) {
+      const cuts = hide(g, layout, kept, [fox], null, true);
+      // A line's only cut has nowhere else to pay for a sliver.
+      if (cuts.length < 2) continue;
+      for (const [s, e] of cuts) {
         const beside = e === fox[0] || s === fox[1];
         const letters = g.slice(s, e).filter((c) => c.trim()).length;
         expect(beside && letters <= 3).toBe(false);

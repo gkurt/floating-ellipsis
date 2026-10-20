@@ -2,7 +2,20 @@ import { autoSize } from '#src/autosize.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { type Elide, type ElideOptions, type Keep, separators } from '#src/index.ts';
 import { elideInput } from '#src/input.ts';
-import { calm, fast, fewDots, fileRows, inputFields, listRows, markRows, river, shortRows, unitRows, wholeRows } from './examples.ts';
+import {
+  calm,
+  fast,
+  fewDots,
+  fileRows,
+  inputFields,
+  inputNote,
+  listRows,
+  markRows,
+  river,
+  shortRows,
+  unitRows,
+  wholeRows,
+} from './examples.ts';
 import { Scene, at, box, el, film, moveTo, outro, pointer, press, rows, showCursor, tween, wait, widen } from './film.ts';
 
 /** The second video: a crowded table, then the features past the first video's. Harder to take in, so each stays longer. */
@@ -186,7 +199,7 @@ async function units() {
 /** Inputs: truncated until pressed, when the whole value shows with the caret where the pointer is; truncated again on blur. */
 async function inputs() {
   const s = new Scene(6, 'Inputs stay truncated until <em>focused.</em>', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
-  const list = el('div', 'rows box');
+  const list = el('div', 'rows box dense');
   list.style.width = '1070px';
   s.stage.append(list);
   const made = inputFields.map(({ label, value, placeholder, options }) => {
@@ -202,6 +215,17 @@ async function inputs() {
     s.cleanup(() => elided.destroy());
     return { input, elided };
   });
+  const row = el('div', 'row', `<code>${inputNote.label}</code>`);
+  const area = el('textarea', 'field');
+  area.value = inputNote.value;
+  area.spellcheck = false;
+  area.tabIndex = -1;
+  row.append(area);
+  list.append(row);
+  const note = elideInput(area, inputNote.options);
+  s.cleanup(() => note.destroy());
+  // The textarea shrinks later: what's above it stays put.
+  s.pin();
   await s.enter();
   await wait(400);
   await widen(list, 700, 1600);
@@ -223,10 +247,19 @@ async function inputs() {
     input.dispatchEvent(new PointerEvent('pointerup', init));
   });
   await wait(1900);
-  await moveTo([pointer.x + 60, at(s.stage, 0.5, 0.9)[1]], 500);
+  await moveTo([list.getBoundingClientRect().right + 140, pointer.y + 40], 500);
   await press(() => input.blur());
-  await wait(800);
+  await wait(600);
   await showCursor(false);
+
+  // A textarea: truncated on as many lines as its height holds.
+  s.code("elideInput(textarea, { position: «'middle'», snap: words() })");
+  const tall = area.getBoundingClientRect().height;
+  const line = parseFloat(getComputedStyle(area).lineHeight);
+  await tween(1000, (k) => (area.style.height = `${tall - line * k}px`));
+  await wait(900);
+  await tween(1000, (k) => (area.style.height = `${tall - line + line * k}px`));
+  await wait(1200);
   await s.leave();
 }
 

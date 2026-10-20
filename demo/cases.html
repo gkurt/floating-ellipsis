@@ -6,7 +6,10 @@
     <title>floating-ellipsis — cases</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@400;600&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Mona+Sans:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         --ink: rgb(11, 11, 11);
@@ -236,6 +239,81 @@
           0 0 0 1px #d1d9e0,
           0 8px 24px rgb(66 74 83 / 0.12);
       }
+      /* Vercel's domain search (Geist), as on vercel.com/domains. */
+      .vc {
+        font-family: Geist, Arial, sans-serif;
+        color: rgb(23, 23, 23);
+      }
+      .vc .table {
+        width: 328px;
+        background: #fff;
+        border: 1px solid rgb(230, 230, 230);
+        border-radius: 6px;
+      }
+      .vc .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        height: 56px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+      }
+      .vc .row + .row {
+        border-top: 1px solid rgb(235, 235, 235);
+      }
+      .vc .row .buy {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 8px;
+        padding-left: 8px;
+      }
+      .vc .domain {
+        flex: 1;
+        min-width: 0;
+        font-size: 14px;
+        line-height: 21px;
+        letter-spacing: -0.015em;
+        font-variant-ligatures: none;
+        font-kerning: none;
+        white-space: nowrap;
+      }
+      .vc .domain b {
+        font-weight: 600;
+      }
+      /* As shipped: the name less its last three letters truncates on its own. */
+      .vc .shipped {
+        display: inline-flex;
+        align-items: center;
+      }
+      .vc .shipped .head-part {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .vc .shipped span:not(.head-part) {
+        flex: none;
+      }
+      .vc .price {
+        font-size: 14px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Hovered, a row's price shows a renewal icon before it: its cell is always that wide. */
+      .vc .row .price {
+        padding-left: 16px;
+      }
+      .vc .cart {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        box-sizing: border-box;
+        border: 1px solid rgb(230, 230, 230);
+        border-radius: 6px;
+        background: #fff;
+      }
     </style>
   </head>
   <body>
@@ -262,6 +340,19 @@
         <figure>
           <figcaption>With floating-ellipsis</figcaption>
           <ul class="tree" id="github-after" role="tree"></ul>
+        </figure>
+      </div>
+    </section>
+    <section class="case vc" id="vercel">
+      <p class="source"><b>Vercel</b><span>Domain search (vercel.com/domains/search?q=toolongtofithereprobably)</span></p>
+      <div class="compare">
+        <figure>
+          <figcaption>As shipped</figcaption>
+          <div class="table" id="vercel-before"></div>
+        </figure>
+        <figure>
+          <figcaption>With floating-ellipsis</figcaption>
+          <div class="table" id="vercel-after"></div>
         </figure>
       </div>
     </section>

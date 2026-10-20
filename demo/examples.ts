@@ -330,7 +330,7 @@ export const inputNote: { label: string; value: string; options: TextareaOptions
     'Check the carriage of tens on the third axis before the next run, and note every column the engine has to hold at once.',
     'Send the result to Charles by Friday.',
   ].join('\n'),
-  options: { position: 'middle', snap: words() },
+  options: { position: 'middle', snap: words(), ...fewDots },
 };
 
 const chinese = '我们在桥上一直等到天黑，数着白鹭，争论河水明天早上会不会涨到第二级台阶。结果并没有。';
