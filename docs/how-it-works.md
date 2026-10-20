@@ -36,7 +36,8 @@ Implementation details behind the behaviour described in the
    to the positions, so every island only grows as space grows. Kept parts are
    added on top, and each gap left over becomes an ellipsis. A gap beside a
    kept part that would hide three letters or fewer is shown instead, its room
-   taken from the nearest other gap. A gap no wider than the ellipsis that
+   taken from the nearest other gap; the only gap on the line stays, since
+   no other could pay for it. A gap no wider than the ellipsis that
    would replace it is shown too.
 3. **Balance.** Glyphs are measured on a canvas at 128px and scaled down,
    because browsers round glyph boxes to whole pixels. Where the canvas

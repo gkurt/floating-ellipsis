@@ -441,7 +441,11 @@ export function showSlivers(graphemes: readonly string[], cuts: readonly Range[]
     const rank = (c: Range) => (byPin(c) ? n : 0) + distance(c);
     let best: [number, number] | null = null;
     for (const c of kept) if (!best || rank(c) < rank(best)) best = c;
-    if (!best) continue;
+    // With no other cut to pay at, it's the line's only ellipsis: keep it.
+    if (!best) {
+      kept.push([cut[0], cut[1]]);
+      continue;
+    }
     let owed = cut[1] - cut[0];
     let end = true;
     while (owed > 0) {
