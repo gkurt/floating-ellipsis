@@ -101,6 +101,11 @@ export interface Run extends Typeset {
   fontSize: number;
   /** Lines break with the whole paragraph in view (`text-wrap: balance` or `pretty`), not one after another. */
   rebreaks: boolean;
+  /**
+   * How far a line may run past the right edge: with spaces kept
+   * (`pre-wrap`), the space a line wraps at hangs there, and its box counts it.
+   */
+  hang: number;
   /** The bottom border and padding, and the line height in px (null for `normal`): where lines fit with `lines: 'fit'`. */
   inset: number;
   lineHeight: number | null;
@@ -911,6 +916,10 @@ export class Elide {
     const { left, right } = contentEdges(this.element, cs, box);
     const typeset = typesetOf(cs);
     const sums = this.#sumsOf(typeset);
+    const wordSpacing = finite(parseFloat(cs.wordSpacing));
+    const kept =
+      cs.whiteSpace === 'pre-wrap' ||
+      (cs.getPropertyValue('white-space-collapse') === 'preserve' && cs.getPropertyValue('text-wrap-mode') === 'wrap');
     return {
       ...typeset,
       box,
@@ -922,8 +931,9 @@ export class Elide {
       sums,
       long: sums,
       suffix: this.#suffix?.measure() ?? 0,
-      wordSpacing: finite(parseFloat(cs.wordSpacing)),
+      wordSpacing,
       fontSize: parseFloat(cs.fontSize),
+      hang: kept ? glyphIn(typeset, ' ').advance + wordSpacing : 0,
       // While truncated, the style read is `greedy`'s own, not the page's.
       rebreaks:
         this.#ungreedy !== null || /balance|pretty/.test(cs.getPropertyValue('text-wrap-style') || cs.getPropertyValue('text-wrap')),
@@ -1063,7 +1073,7 @@ export class Elide {
     const { lines } = this.#settings;
     const max = lines === 'fit' ? this.#fitting(run, boxes) : lines;
     const width = run.right - run.left;
-    const inside = boxes.every((l) => l.right <= run.right + 0.05 && l.left >= run.left - 0.05);
+    const inside = boxes.every((l) => l.right <= run.right + run.hang + 0.05 && l.left >= run.left - 0.05);
     const end = boxes.reduce((end, l) => Math.max(end, l.right), -Infinity);
     const ok = inside && boxes.length <= max;
     const used = (l: LineBox) => l.right - l.left;

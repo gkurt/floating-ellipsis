@@ -580,6 +580,7 @@ has `data-held`; the open trigger has `data-fp-tip-open`.
 import { elideInput } from 'floating-ellipsis/input';
 
 const field = elideInput(document.querySelector('input[name=path]'), { position: 'middle', keep: /[^/]+$/ });
+elideInput(document.querySelector('textarea'), { position: 'end' });
 ```
 
 A text field shows its value cut while it isn't being edited, and its
@@ -590,10 +591,14 @@ field and what a form submits stay as they are: a copy of the cut text lies
 over the field's own, which is hidden while the copy shows. It follows the
 value as you type, as a framework sets it, and as a form resets it.
 
-It takes `elide`'s options, but those about lines, suffixes and find in page,
-and returns `{ instance, update(options), refresh(), destroy() }`. A password
-field never shows its value cut, including one whose type a "show" button
-flips.
+A textarea's value wraps as the textarea wraps it, on as many lines as its
+height holds, and a press keeps the line pressed under the pointer. While
+truncated, it doesn't scroll.
+
+It takes `elide`'s options, but those about suffixes and find in page, and
+`lines` only for a textarea (`'fit'` by default). It returns
+`{ instance, update(options), refresh(), destroy() }`. A password field never
+shows its value cut, including one whose type a "show" button flips.
 
 ## Accessibility
 
@@ -610,8 +615,9 @@ and transitions respect reduced motion.
   showing needs `refresh()`.
 - Find in page can't find a word an ellipsis cuts in two, and with
   `find: 'keep'` moving past a kept match takes a second Enter.
-- `elideInput` is for one-line `<input>`s, and lines the pressed glyph up
-  only in fields set from the left.
+- `elideInput` lines the pressed glyph up only in fields set from the left;
+  in a textarea, the line pressed stays under the pointer, but its glyphs
+  can move along it.
 
 More in [How it works](docs/how-it-works.md). To work on the library, see
 [CONTRIBUTING.md](CONTRIBUTING.md).

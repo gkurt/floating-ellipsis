@@ -6,6 +6,7 @@ import { transitions } from '#src/transitions.ts';
 import {
   calm,
   inputFields,
+  inputNote,
   listRows,
   markRows,
   river,
@@ -158,6 +159,16 @@ import { $ } from './ui.ts';
     row.append(input);
     box.insertBefore(row, $('.handle', box));
     elideInput(input, options);
+  }
+  {
+    const row = el('div', 'labeled-row', `<code>${inputNote.label}</code>`);
+    const area = el('textarea', 'field');
+    area.value = inputNote.value;
+    area.spellcheck = false;
+    area.setAttribute('aria-label', inputNote.label);
+    row.append(area);
+    box.insertBefore(row, $('.handle', box));
+    elideInput(area, inputNote.options);
   }
   setCode('inputCode', "elideInput(input, { position: «'middle'», keep: «/[^/]+$/» })");
   stage(box, [0.5, 0.75]);

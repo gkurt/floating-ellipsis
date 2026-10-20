@@ -16,7 +16,7 @@ Fluid, balanced truncation for the DOM, for one line or many.
 - **Rich text.** Links and other inline elements survive the cut; images, icons and `data-elide-unit` elements show whole or not at all.
 - **Suffixes.** A "Read more" button, badge or time follows the text on its last line and is never cut (`floating-ellipsis/suffix`), with `expand()` and `collapse()`.
 - **Lists.** Items cut whole, with a label for the rest, joined as the list joins its last item: "Ada, Grace and 2 others" (`floating-ellipsis/list`).
-- **Text fields.** `elideInput` (`floating-ellipsis/input`) shows a field's value cut until it's edited; a press puts the caret on the glyph pressed.
+- **Text fields.** `elideInput` (`floating-ellipsis/input`) shows a field's or a textarea's value cut until it's edited, a textarea's on as many lines as its height holds; a press puts the caret on the glyph pressed.
 - **Sized by content.** `autoSize()` (`floating-ellipsis/autosize`) lets an inline-block, float or flex item take its full text's width, so it grows back.
 - **Native behaviour.** Find in page finds hidden text, copying gives the full text, and screen readers read it all.
 - **Fast in bulk.** Passes run in lockstep, so thousands of instances share a few layouts, and single-line cuts are judged from glyph widths without rendering.

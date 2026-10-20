@@ -26,7 +26,10 @@ Implementation details behind the behaviour described in the
    border or margin. If the check finds the widths were off (three-letter
    ligatures, `font-kerning: none`), the cut is found again by rendering, and
    that text isn't judged again. The full text is only tried when its summed
-   glyph widths could fit.
+   glyph widths could fit. Where spaces are kept (`white-space: pre-wrap`, as
+   in a textarea), the space a line wraps at hangs past the edge, and
+   Chromium and WebKit count it in the line's box: a line may run past the
+   edge by a space.
 2. **Islands.** With N ellipses, the kept text forms N + 1 islands: the first
    anchored at the start, the last at the end, the ones in between centred
    where they sit. Kept graphemes are handed out one at a time in proportion
@@ -629,6 +632,20 @@ The value changes without events when a script sets it: the field's own
 `value` property is wrapped (over whatever was there, such as React's
 tracker, which still runs), and a form's reset is followed. A field whose
 type turns to `password` hides the copy at once.
+
+A textarea's copy takes its wrapping too (`white-space`, `overflow-wrap`,
+`word-break`, `line-height`, `text-indent` and the like) and starts its lines
+at the top, and the instance truncates to `lines: 'fit'`. While the copy
+shows, the textarea's `overflow-y` is held at `hidden`, so the wheel goes on to
+the page and no scrollbar shows beside text that fits; where its whole value
+would need a scrollbar, `scrollbar-gutter: stable` keeps the room for it, and
+the copy's right padding takes that room too. The value then wraps the same
+whether the copy shows or not. A press can't line its glyph up by scrolling
+sideways: after the truncation, the lines break in other places. So the
+textarea is scrolled so the line holding the caret is under the pointer,
+found in a hidden copy of the whole value laid out as the textarea lays it
+out (the copy's styles, measured with a `Range`), and the caret goes beside
+the glyph pressed when the press ends, unless it selected something.
 
 ## Tooltips
 

@@ -12,7 +12,7 @@ const BUDGETS: Record<string, number> = {
   suffix: 0.75 * 1024,
   list: 1.75 * 1024,
   dates: 0.5 * 1024,
-  input: 27.25 * 1024,
+  input: 28 * 1024,
   autosize: 0.5 * 1024,
   transitions: 6.5 * 1024,
   tooltip: 7.5 * 1024,

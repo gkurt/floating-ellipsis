@@ -310,6 +310,18 @@ describe.each(FONTS)('elide in %s', (font) => {
     }
   });
 
+  it('fills its lines where spaces are kept, though the space a line wraps at hangs past the edge', () => {
+    const t = make(box(`${PROSE} ${PROSE}`, `font:${font};white-space:pre-wrap`), { position: 'middle', lines: 3 });
+    let before = -1;
+    for (const _w of sweep(t, 120, 520, 23)) {
+      expectFits(t);
+      expectConsistent(t);
+      if (t.truncated) expect(t.state.lines).toBe(3);
+      expect(shown(t)).toBeGreaterThanOrEqual(before);
+      before = shown(t);
+    }
+  });
+
   it('keeps what it is told to', () => {
     const t = make(box(PATH, `font:${font}`), { position: 'middle', keep: /\.[^.]+$/ });
     for (const _w of sweep(t, 90, 400, 31)) {

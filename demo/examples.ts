@@ -1,6 +1,6 @@
 import { dateForms } from '#src/dates.ts';
 import { type Elide, type ElideOptions, type Keep, separators, words } from '#src/index.ts';
-import type { InputOptions } from '#src/input.ts';
+import type { InputOptions, TextareaOptions } from '#src/input.ts';
 import { list, split } from '#src/list.ts';
 import type { TransitionOptions } from '#src/transitions.ts';
 
@@ -313,6 +313,18 @@ export const inputFields: { label: string; value: string; placeholder: string; o
     options: { position: 'middle' },
   },
 ];
+
+/** A textarea's note, truncated on as many lines as its height holds. */
+export const inputNote: { label: string; value: string; options: TextareaOptions } = {
+  label: 'textarea',
+  value: [
+    'Bernoulli numbers, from the table of differences:',
+    'B1 = -1/2, B2 = 1/6, B4 = -1/30, B6 = 1/42, B8 = -1/30.',
+    'Check the carriage of tens on the third axis before the next run, and note every column the engine has to hold at once.',
+    'Send the result to Charles by Friday.',
+  ].join('\n'),
+  options: { position: 'middle', snap: words() },
+};
 
 const chinese = '我们在桥上一直等到天黑，数着白鹭，争论河水明天早上会不会涨到第二级台阶。结果并没有。';
 const japanese = '橋の上で日が暮れるまで待ち、鷺を数えながら、水が朝までに二段目に届くかどうか言い合った。';

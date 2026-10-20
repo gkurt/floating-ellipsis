@@ -407,6 +407,11 @@ input.track:focus-visible {
   color: var(--ink);
   font: 15px/20px var(--sans);
 }
+.home textarea.field {
+  display: block;
+  height: 76px;
+  resize: vertical;
+}
 .home .field::placeholder {
   color: var(--muted);
 }

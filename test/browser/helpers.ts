@@ -172,7 +172,8 @@ export function errors(): { stop: () => string[] } {
 }
 
 /**
- * Lines stay inside the content box, and there are no more of them than
+ * Lines stay inside the content box (but for the space a line wraps at, which
+ * hangs past it where spaces are kept), and there are no more of them than
  * allowed. With `lines: 'fit'`, their line boxes end above its bottom.
  */
 export function expectFits(t: Elide, lines = t.options.lines) {
@@ -181,10 +182,13 @@ export function expectFits(t: Elide, lines = t.options.lines) {
   expect(rects.length).toBeGreaterThan(0);
   if (lines !== 'fit') expect(rects.length).toBeLessThanOrEqual(lines);
   expect(t.state.lines).toBe(rects.length);
-  const height = parseFloat(getComputedStyle(t.element).lineHeight);
+  const cs = getComputedStyle(t.element);
+  const height = parseFloat(cs.lineHeight);
+  const spacing = parseFloat(cs.wordSpacing);
+  const hang = cs.whiteSpace === 'pre-wrap' ? measure(fontOf(cs), ' ').advance + (Number.isFinite(spacing) ? spacing : 0) : 0;
   for (const r of rects) {
     expect(r.left).toBeGreaterThanOrEqual(c.left - 0.5);
-    expect(r.right).toBeLessThanOrEqual(c.right + 0.5);
+    expect(r.right).toBeLessThanOrEqual(c.right + hang + 0.5);
     // (With line-height: normal, a line is as tall as its glyphs' box.)
     if (lines === 'fit')
       expect((r.top + r.bottom) / 2 + (Number.isNaN(height) ? r.height : height) / 2).toBeLessThanOrEqual(c.bottom + 0.5);
