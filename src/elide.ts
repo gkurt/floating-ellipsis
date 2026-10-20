@@ -1,4 +1,5 @@
 import {
+  type Around,
   type Cutting,
   type Edges,
   type Layout,
@@ -238,7 +239,7 @@ export class Elide {
   #glyphEls: HTMLSpanElement[] = [];
   #pins: Range[] = [];
   /** Kept parts with words of context to show around them (see `contextOf`). */
-  #contexts: [Range, number][] = [];
+  #contexts: [Range, Around][] = [];
   /** Where cuts may start and end so as not to split a whole; null for anywhere. */
   #wholes: Edges | null = null;
   /** The letter-spacing `tighten` took off the full text showing, in px (0: none). */
@@ -753,7 +754,7 @@ export class Elide {
     // Each on its own: wholes that touch are still two.
     const ranges = (r: Range) => toGraphemeRanges([r], this.#offsets);
     this.#pins = toGraphemeRanges(keepRanges(this.#text, keep), this.#offsets);
-    this.#contexts = keepContexts(this.#text, keep).flatMap(([r, words]) => ranges(r).map((g): [Range, number] => [g, words]));
+    this.#contexts = keepContexts(this.#text, keep).flatMap(([r, around]) => ranges(r).map((g): [Range, Around] => [g, around]));
     this.#wholes = wholeEdges(this.#g.length, keepRanges(this.#text, asArray(this.#settings.whole)).flatMap(ranges));
     const marked = this.#marked.map(({ start, end, to }) => ({ start, end, to }));
     this.#forms = formsOf(this.#text, this.#offsets, [...marked, ...asArray(this.#settings.shorten)]);
@@ -1636,15 +1637,10 @@ export class Elide {
       const steps = this.#opener !== null ? [] : stepsOf(this.#forms, (f) => !!sought && f.start < sought[1] && sought[0] < f.end);
       let level = 0;
       let shortWholes: Edges | null = null;
-      const cutting = (pins: readonly Range[]): Cutting => ({
-        graphemes: this.#g,
-        layout: islands,
-        pins,
-        snap,
-        trim,
-        wholes: this.#wholes ? bothEdges(this.#wholes, shortWholes) : shortWholes,
-        context: contextOf(this.#g, this.#contexts, pins),
-      });
+      const cutting = (pins: readonly Range[]): Cutting => {
+        const wholes = this.#wholes ? bothEdges(this.#wholes, shortWholes) : shortWholes;
+        return { graphemes: this.#g, layout: islands, pins, snap, trim, wholes, context: contextOf(this.#g, this.#contexts, pins, wholes) };
+      };
       let cuts = cutting(pins);
       const at = (k: number) => this.#worthCutting(run, hiddenRanges(cuts, k));
       // What each cut tried so far did: different probes can come to the same cut.

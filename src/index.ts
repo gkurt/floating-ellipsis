@@ -1,7 +1,7 @@
 export { elide, Elide } from './elide.ts';
 export type { AutoSize, ElideOptions, ElideState, ChangeReason, GapInfo, GlyphMode, Part, Suffix } from './options.ts';
 export { separators, words, positionValue } from './cut.ts';
-export type { Cut, Keep, Place, Position, Range, SeparatorOptions, Share, Snap, SnapContext } from './cut.ts';
+export type { Cut, Keep, KeepContext, Place, Position, Range, SeparatorOptions, Share, Snap, SnapContext } from './cut.ts';
 export type { EllipsisStyle, MarkStyle, Shape, Length } from './marks.ts';
 export { planGap, inkGap, inkRuns, dotSpacing, measure, fontOf, clearMetrics } from './metrics.ts';
 export type { Font, Gap, GapPlan, GlyphMetrics } from './metrics.ts';

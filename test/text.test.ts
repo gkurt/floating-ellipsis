@@ -89,7 +89,9 @@ describe('elideText', () => {
     expect(at(80)).toBe('…herons…');
     expect(at(180)).toBe('…herons, arguing…');
     expect(at(260)).toBe('…counting herons, arguing…');
-    expect(at(400)).toBe('…went, counting herons, arguing about…');
+    // The next word shows as much as fits, unless snapped to words.
+    expect(at(400)).toBe('…went, counting herons, arguing about t…');
+    expect(elideText(text, { width: 400, measure: mono, keep, snap: words() }).text).toBe('…went, counting herons, arguing about…');
     // Two words either side, then the rest goes to the start.
     expect(at(600, { match: 'herons', context: 2 })).toBe('We waited on the bridg…went, counting herons, arguing about…');
   });

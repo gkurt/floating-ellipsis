@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  type Around,
   type Cutting,
+  type KeepContext,
   type Layout,
   type Range,
   type Position,
@@ -13,6 +15,7 @@ import {
   wholeEdges,
   widen,
   contextOf,
+  keepContexts,
   graphemeClasses,
   hiddenRanges,
   islands,
@@ -302,9 +305,10 @@ describe('context', () => {
   const g = graphemes(text);
   const at = text.indexOf('LANTERN');
   const lantern: Range = [at, at + 7];
+  const both = (words: number): Around => ({ before: words, after: words });
 
   it('grows a word at a time, after and then before', () => {
-    const context = contextOf(g, [[lantern, 2]], [lantern])!;
+    const context = contextOf(g, [[lantern, both(2)]], [lantern])!;
     expect(context.steps.map(([s, e]) => text.slice(s, e))).toEqual([' four', 'three ', ' five', 'two ']);
     expect([...context.costs]).toEqual([5, 11, 16, 20]);
   });
@@ -312,7 +316,7 @@ describe('context', () => {
   it('shows before the islands do', () => {
     const c: Cutting = {
       ...cutting(g, layoutFor(g.length, ['end']), [lantern], null, true),
-      context: contextOf(g, [[lantern, 2]], [lantern]),
+      context: contextOf(g, [[lantern, both(2)]], [lantern]),
     };
     const shown = (k: number) => show(g, hiddenRanges(c, k));
     expect(shown(0)).toBe('…LANTERN…');
@@ -329,8 +333,8 @@ describe('context', () => {
     const context = contextOf(
       g,
       [
-        [lan, 1],
-        [[four, four + 4], 1],
+        [lan, both(1)],
+        [[four, four + 4], both(1)],
       ],
       [lan, [four, four + 4]],
     )!;
@@ -339,7 +343,45 @@ describe('context', () => {
   });
 
   it('goes with the kept part when it gives way', () => {
-    expect(contextOf(g, [[lantern, 2]], [])).toBeNull();
+    expect(contextOf(g, [[lantern, both(2)]], [])).toBeNull();
+  });
+
+  it('shows as much of the next word as fits', () => {
+    const c: Cutting = {
+      ...cutting(g, layoutFor(g.length, ['end']), [lantern], null, true),
+      context: contextOf(g, [[lantern, both(2)]], [lantern]),
+    };
+    const shown = (k: number) => show(g, hiddenRanges(c, k));
+    expect(shown(3)).toBe('…LANTERN fo…');
+    expect(shown(8)).toBe('…ee LANTERN four…');
+    // Snapped to words, only whole words show.
+    expect(show(g, hiddenRanges({ ...c, snap: words() }, 3))).toBe('…LANTERN…');
+  });
+
+  it('takes a whole entire, once the other side has had its words', () => {
+    const two = text.indexOf('two');
+    const wholes = wholeEdges(g.length, [[two, two + 'two three'.length]]);
+    const context = contextOf(g, [[lantern, both(Infinity)]], [lantern], wholes)!;
+    expect(context.steps.map(([s, e]) => text.slice(s, e))).toEqual([' four', ' five', ' six', ' seven', 'two three ', 'one ']);
+    expect([...context.entire]).toEqual([0, 0, 0, 0, 1, 0]);
+    const c: Cutting = { ...cutting(g, layoutFor(g.length, ['end']), [lantern], null, true), wholes, context };
+    // Room short of the whole goes unused rather than to part of it.
+    expect(show(g, hiddenRanges(c, context.costs[3]! + 4))).toBe('…LANTERN four five six seven');
+  });
+
+  it('grows on one side only', () => {
+    const after = contextOf(g, [[lantern, { before: 0, after: Infinity }]], [lantern])!;
+    expect(after.steps.map(([s, e]) => text.slice(s, e))).toEqual([' four', ' five', ' six', ' seven']);
+    const before = contextOf(g, [[lantern, { before: 2, after: 0 }]], [lantern])!;
+    expect(before.steps.map(([s, e]) => text.slice(s, e))).toEqual(['three ', 'two ']);
+  });
+
+  it('reads a number as both sides, and an object side by side', () => {
+    const words = (context: KeepContext) => keepContexts(text, [{ match: 'LANTERN', context }]).map(([, around]) => around);
+    expect(words(2)).toEqual([both(2)]);
+    expect(words({ after: 3 })).toEqual([{ before: 0, after: 3 }]);
+    expect(words({ before: 0 })).toEqual([]);
+    expect(words(0)).toEqual([]);
   });
 });
 

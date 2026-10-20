@@ -4,6 +4,7 @@
  * a `measure` function of your own.
  */
 import {
+  type Around,
   type Cutting,
   type Keep,
   type Position,
@@ -151,7 +152,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
   );
   const mark = measure(ellipsis, graphemes(ellipsis).length);
   const graphemeRanges = (r: Range) => toGraphemeRanges([r], offsets);
-  const contexts = keepContexts(text, asArray(keep)).flatMap(([r, words]) => graphemeRanges(r).map((x): [Range, number] => [x, words]));
+  const contexts = keepContexts(text, asArray(keep)).flatMap(([r, around]) => graphemeRanges(r).map((x): [Range, Around] => [x, around]));
   const given = wholeEdges(n, keepRanges(text, asArray(options.whole)).flatMap(graphemeRanges));
   const wholes = given ? bothEdges(given, wholeEdges(n, shortRanges(short))) : wholeEdges(n, shortRanges(short));
   const positions = asArray(position);
@@ -177,7 +178,7 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
     snap,
     trim,
     wholes,
-    context: contextOf(g, contexts, pins),
+    context: contextOf(g, contexts, pins, wholes),
   });
   let c = cutting(toGraphemeRanges(keepRanges(text, asArray(keep)), offsets));
   // A cut no wider than the ellipsis standing in for it only adds an ellipsis.
@@ -231,6 +232,6 @@ export function elideText(text: string, options: ElideTextOptions): ElideTextRes
 }
 
 export { separators, words } from './cut.ts';
-export type { Keep, Place, Position, SeparatorOptions, Share, Snap, SnapContext, Whole } from './cut.ts';
+export type { Keep, KeepContext, Place, Position, SeparatorOptions, Share, Snap, SnapContext, Whole } from './cut.ts';
 export type { Part } from './options.ts';
 export type { ShortPart, Shorten } from './shorten.ts';

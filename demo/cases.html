@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>floating-ellipsis — case: background tasks</title>
+    <style>
+      :root {
+        --ink: rgb(11, 11, 11);
+        --muted: rgb(137, 135, 129);
+        --heading: rgb(82, 81, 78);
+        --line: rgb(11 11 11 / 0.1);
+        font:
+          400 13px/19px system-ui,
+          'Segoe UI',
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        color: var(--ink);
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: rgb(252, 252, 251);
+      }
+      .compare {
+        display: flex;
+        gap: 32px;
+        align-items: flex-start;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        margin: 0 0 10px 4px;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .panel {
+        width: 380px;
+        padding-bottom: 12px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 0 0 1px var(--line);
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 4px 0 8px;
+      }
+      .head h2 {
+        flex: 1;
+        margin: 0;
+        padding-left: 4px;
+        font: inherit;
+        color: var(--heading);
+      }
+      .icon {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        margin-left: 2px;
+      }
+      .section {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 10px 19px 6px;
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 15px;
+        color: var(--muted);
+      }
+      .rows {
+        margin: 0 19px;
+        padding: 0;
+        list-style: none;
+      }
+      .rows li {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 35px;
+        border-bottom: 0.6px solid var(--line);
+      }
+      .label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .folder {
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: rgb(11 11 11 / 0.06);
+        color: var(--heading);
+      }
+      .meta {
+        flex: none;
+        font-size: 12px;
+        line-height: 15px;
+        color: var(--muted);
+      }
+      .end {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 20px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="compare">
+      <figure>
+        <figcaption>As shipped</figcaption>
+        <div class="panel" id="before"></div>
+      </figure>
+      <figure>
+        <figcaption>With floating-ellipsis</figcaption>
+        <div class="panel" id="after"></div>
+      </figure>
+    </div>
+    <script type="module" src="./cases.ts"></script>
+  </body>
+</html>

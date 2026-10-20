@@ -368,13 +368,20 @@ it was already there.
 
 A kept part's `context` is a list of steps, each a word and what's between
 it and the part: after the part, then before it, for each part in turn,
-round after round, so every match has a word before any has two. A match
-that ends inside a word gets the rest of it first. Each step costs the
-graphemes it shows that weren't showing, so windows that run into each other
-or into a kept part merge at no cost. The search hands out graphemes to the
-steps in order, a whole step at a time, and only once every step shows to
-the islands `position` places; a number of words less than `Infinity` ends
-the steps sooner. What shows only grows as the room does, so it reads
+round after round, so every match has a word before any has two. With
+`{ before, after }`, each side stops at its own count, and a side with none
+leaves every round to the other. A match that ends inside a word gets the
+rest of it first. A side that comes to a `whole` waits while the other sides
+take their words, and then takes all of it as one step, so no step shows part
+of a whole only for the cut to hide it again. Each step costs the graphemes
+it shows that weren't showing, so windows that run into each other or into a
+kept part merge at no cost. The search hands out graphemes to the steps in
+order; graphemes short of the next step show as much of its word as they
+reach from the part (not of a step that takes a whole, which shows entire or
+not at all), so the line fills to the edge as a plain truncation does, and
+snapping to words hides that piece again. Only once every step shows do the
+islands `position` places get any; a number of words less than `Infinity`
+ends the steps sooner. What shows only grows as the room does, so it reads
 steadily on a resize. Context belongs to its kept part: when kept parts give
 way for lack of room, their context goes with them, and when one comes back
 the others share their context with it.

@@ -33,7 +33,9 @@ export interface ElideOptions {
    * hidden on both sides of a kept part gets an ellipsis on each side.
    * Earlier entries win when not all of them fit. `{ match, context: 3 }`
    * shows up to three words either side of every match, as room allows,
-   * before any other text: a search result's snippet.
+   * before any other text: a search result's snippet. `{ before, after }`
+   * counts each side on its own: `{ after: Infinity }` shows the words after
+   * a match and none before it.
    */
   keep?: Keep | readonly Keep[] | null;
   /**

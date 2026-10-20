@@ -310,17 +310,21 @@ export interface Cutting {
   /** Where cuts may start and end so as not to split a whole (see `wholeEdges`); null for anywhere. */
   wholes: Edges | null;
   /** Context that shows around kept parts before the islands get any (see `contextOf`); null for none. */
-  context: Context | null;
+  context: ContextSteps | null;
 }
 
 /** The most graphemes a cut can keep (see `hiddenRanges`): one short of all, and the context on top. */
 export const maxKept = (c: Cutting): number => c.graphemes.length - 1 + (c.context?.costs.at(-1) ?? 0);
 
-/** What shows with `kept` graphemes to give out: context, word by word, and once it's all showing, the islands. */
+/**
+ * What shows with `kept` graphemes to give out: context, word by word, the
+ * next word as much of it as they reach from its part (unless it takes a
+ * whole), and once it's all showing, the islands.
+ */
 function shownFor(c: Cutting, kept: number): Range[] {
   const context = c.context;
   if (!context) return islands(c.layout, kept);
-  const { steps, costs } = context;
+  const { steps, costs, after, entire } = context;
   let lo = 0;
   let hi = steps.length;
   while (lo < hi) {
@@ -329,7 +333,15 @@ function shownFor(c: Cutting, kept: number): Range[] {
     else hi = mid;
   }
   const shown = steps.slice(0, lo);
-  if (lo === steps.length) shown.push(...islands(c.layout, kept - (costs.at(-1) ?? 0)));
+  if (lo === steps.length) {
+    shown.push(...islands(c.layout, kept - (costs.at(-1) ?? 0)));
+    return shown;
+  }
+  const left = kept - (costs[lo - 1] ?? 0);
+  if (left > 0 && entire[lo] === 0) {
+    const [s, e] = steps[lo]!;
+    shown.push(after[lo] === 1 ? [s, Math.min(e, s + left)] : [Math.max(s, e - left), e]);
+  }
   return shown;
 }
 
@@ -806,13 +818,23 @@ function segmentSnap(separating: Separating, options: SeparatorOptions): Snap {
  * give it a `class` too, to highlight it, and `context`: how many words
  * either side of it show (as room allows, a word at a time around every
  * match) before the text the ellipses are placed in; `Infinity` for as many
- * as fit.
+ * as fit. `{ before, after }` counts each side on its own, a side left out
+ * showing none.
  */
 export type Keep =
   | string
   | RegExp
-  | { match: string | RegExp; class?: string; context?: number }
-  | { start: number; end: number; class?: string; context?: number };
+  | { match: string | RegExp; class?: string; context?: KeepContext }
+  | { start: number; end: number; class?: string; context?: KeepContext };
+
+/** Words of context around a kept part: as many either side, or each side's own. */
+export type KeepContext = number | { before?: number; after?: number };
+
+/** How many words of context a kept part gets before it and after it. */
+export interface Around {
+  before: number;
+  after: number;
+}
 
 /** A part to show whole or not at all (see `ElideOptions.whole`): found as a `Keep` is. */
 export type Whole = string | RegExp | { start: number; end: number };
@@ -839,31 +861,44 @@ export function keepRanges(text: string, keep: readonly Keep[]): Range[] {
   return keep.flatMap((k) => matches(text, k));
 }
 
-/** String ranges `keep` gives context, with how many words either side. */
-export function keepContexts(text: string, keep: readonly Keep[]): [Range, number][] {
+/** String ranges `keep` gives context, with how many words before and after them. */
+export function keepContexts(text: string, keep: readonly Keep[]): [Range, Around][] {
   return keep.flatMap((k) => {
-    const words = typeof k === 'object' && !(k instanceof RegExp) ? k.context : undefined;
-    return words !== undefined && words > 0 ? matches(text, k).map((r): [Range, number] => [r, words]) : [];
+    const c = typeof k === 'object' && !(k instanceof RegExp) ? k.context : undefined;
+    if (c === undefined) return [];
+    const around = typeof c === 'number' ? { before: c, after: c } : { before: c.before ?? 0, after: c.after ?? 0 };
+    return around.before > 0 || around.after > 0 ? matches(text, k).map((r): [Range, Around] => [r, around]) : [];
   });
 }
 
 /** Context around kept parts, in the order it shows. */
-export interface Context {
+export interface ContextSteps {
   /** What each step shows: a word and what's between it and the part, after it or before. */
   steps: Range[];
   /** How many graphemes that weren't showing the steps up to each show. */
   costs: Int32Array;
+  /** Which way each step reads from its part: 1 after it, 0 before it. */
+  after: Uint8Array;
+  /** Steps that show whole or not at all: those that take a whole. */
+  entire: Uint8Array;
 }
 
 /**
- * The context `parts` (grapheme ranges, with words either side) get as
+ * The context `parts` (grapheme ranges, with words before and after) get as
  * room grows, for those of them still in `pins` (the rest gave way): a word
  * at a time, after each part and then before it, round after round, so every
- * match gets a word of context before any gets two. A part cut inside a word
- * first gets the rest of it. Context that runs into other context or a pin
- * costs nothing more, and the windows merge. Null with none.
+ * match gets a word of context before any gets two; a side out of words
+ * leaves the room to the other. A part cut inside a word first gets the rest
+ * of it. A side that comes to a whole (`wholes`) waits while the others take
+ * their words, then takes it entire as one step. Context that runs into other
+ * context or a pin costs nothing more, and the windows merge. Null with none.
  */
-export function contextOf(g: readonly string[], parts: readonly (readonly [Range, number])[], pins: readonly Range[]): Context | null {
+export function contextOf(
+  g: readonly string[],
+  parts: readonly (readonly [Range, Around])[],
+  pins: readonly Range[],
+  wholes: Edges | null = null,
+): ContextSteps | null {
   const live = parts.filter(([[s, e]]) => pins.some(([a, b]) => a <= s && e <= b));
   if (live.length === 0) return null;
   const n = g.length;
@@ -872,8 +907,10 @@ export function contextOf(g: readonly string[], parts: readonly (readonly [Range
   for (const [s, e] of pins) shown.fill(1, s, e);
   const steps: Range[] = [];
   const costs: number[] = [];
+  const after: number[] = [];
+  const entire: number[] = [];
   let total = 0;
-  const take = (s: number, e: number) => {
+  const take = (s: number, e: number, isAfter: boolean, isEntire: boolean) => {
     for (let i = s; i < e; i++) {
       if (shown[i] === 1) continue;
       shown[i] = 1;
@@ -881,40 +918,76 @@ export function contextOf(g: readonly string[], parts: readonly (readonly [Range
     }
     steps.push([s, e]);
     costs.push(total);
+    after.push(isAfter ? 1 : 0);
+    entire.push(isEntire ? 1 : 0);
   };
-  const windows = live.map(([[s, e], words]) => ({ s, e, before: words, after: words }));
-  for (let more = true; more;) {
-    more = false;
-    for (const w of windows) {
-      if (w.after > 0) {
-        let i = w.e;
-        while (i < n && ids[i]! < 0) i++;
-        if (i < n) {
-          const end = wordAround(ids, i)[1];
-          take(w.e, end);
-          w.e = end;
-          w.after--;
-          more = true;
-        } else {
-          w.after = 0;
-        }
+  // `waitAfter` and `waitBefore`: where the step a side waits on, to take a whole, would end or start; -1 for none.
+  const windows = live.map(([[s, e], { before, after }]) => ({ s, e, before, after, waitAfter: -1, waitBefore: -1 }));
+  type Window = (typeof windows)[number];
+  const stepAfter = (w: Window): boolean => {
+    if (w.after <= 0 || w.waitAfter >= 0) return false;
+    let i = w.e;
+    while (i < n && ids[i]! < 0) i++;
+    if (i === n) {
+      w.after = 0;
+      return false;
+    }
+    let end = wordAround(ids, i)[1];
+    if (wholes && !wholes.end(end)) {
+      while (end < n && !wholes.end(end)) end++;
+      w.waitAfter = end;
+      return false;
+    }
+    take(w.e, end, true, false);
+    w.e = end;
+    w.after--;
+    return true;
+  };
+  const stepBefore = (w: Window): boolean => {
+    if (w.before <= 0 || w.waitBefore >= 0) return false;
+    let i = w.s - 1;
+    while (i >= 0 && ids[i]! < 0) i--;
+    if (i < 0) {
+      w.before = 0;
+      return false;
+    }
+    let start = wordAround(ids, i)[0];
+    if (wholes && !wholes.start(start)) {
+      while (start > 0 && !wholes.start(start)) start--;
+      w.waitBefore = start;
+      return false;
+    }
+    take(start, w.s, false, false);
+    w.s = start;
+    w.before--;
+    return true;
+  };
+  for (;;) {
+    for (let more = true; more;) {
+      more = false;
+      for (const w of windows) {
+        if (stepAfter(w)) more = true;
+        if (stepBefore(w)) more = true;
       }
-      if (w.before > 0) {
-        let i = w.s - 1;
-        while (i >= 0 && ids[i]! < 0) i--;
-        if (i >= 0) {
-          const start = wordAround(ids, i)[0];
-          take(start, w.s);
-          w.s = start;
-          w.before--;
-          more = true;
-        } else {
-          w.before = 0;
-        }
+    }
+    const waiting = windows.filter((w) => w.waitAfter >= 0 || w.waitBefore >= 0);
+    if (waiting.length === 0) break;
+    for (const w of waiting) {
+      if (w.waitAfter >= 0) {
+        take(w.e, w.waitAfter, true, true);
+        w.e = w.waitAfter;
+        w.waitAfter = -1;
+        w.after--;
+      }
+      if (w.waitBefore >= 0) {
+        take(w.waitBefore, w.s, false, true);
+        w.s = w.waitBefore;
+        w.waitBefore = -1;
+        w.before--;
       }
     }
   }
-  return steps.length > 0 ? { steps, costs: Int32Array.from(costs) } : null;
+  return steps.length > 0 ? { steps, costs: Int32Array.from(costs), after: Uint8Array.from(after), entire: Uint8Array.from(entire) } : null;
 }
 
 /** String ranges `keep` gives a class, with the class. */
