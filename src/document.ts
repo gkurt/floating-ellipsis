@@ -1,12 +1,12 @@
 /**
  * What instances share across the document: copying across an ellipsis,
  * expanding text that find in page found, and re-truncating when web fonts
- * load.
+ * load or the device pixel ratio changes.
  */
 import type { Range } from './cut.ts';
 import type { Elide } from './elide.ts';
 import { FORM } from './highlight.ts';
-import { ellipsisText } from './marks.ts';
+import { ellipsisText, pixelRatio } from './marks.ts';
 import { clearMetrics } from './metrics.ts';
 import type { Part } from './options.ts';
 import type { ShortPart } from './shorten.ts';
@@ -42,6 +42,7 @@ export function hookDocument(): void {
   document.addEventListener('selectionchange', onSelectionChange);
   document.addEventListener('beforematch', onBeforeMatch, true);
   document.addEventListener('pointerdown', onPointerDown, true);
+  watchPixelRatio();
   if (typeof document.fonts === 'undefined') return;
   const refresh = () => {
     clearMetrics();
@@ -51,6 +52,21 @@ export function hookDocument(): void {
   // text out) fire `loadingdone`; `ready` only matters while some are loading.
   document.fonts.addEventListener('loadingdone', refresh);
   if (document.fonts.status === 'loading') void document.fonts.ready.then(refresh);
+}
+
+/**
+ * Re-truncate when the device pixel ratio changes (zoom, or a window moved
+ * to another screen): drawn marks are sized in whole device pixels.
+ */
+function watchPixelRatio() {
+  if (typeof matchMedia === 'undefined') return;
+  const query = matchMedia(`(resolution: ${pixelRatio()}dppx)`);
+  const changed = () => {
+    query.removeEventListener('change', changed);
+    for (const instance of instances) instance.refresh('resize');
+    watchPixelRatio();
+  };
+  query.addEventListener('change', changed);
 }
 
 /**

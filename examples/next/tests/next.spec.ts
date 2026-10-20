@@ -107,11 +107,14 @@ for (const { name, url, path } of PAGES) {
       await page.goto(url);
       await hydrated(page);
       const cell = page.getByTestId('files-table').locator('[data-elide]').first();
-      const before = await cell.innerText();
-      // The panels beside the table go, and so do its other columns.
+      const before = (await cell.boundingBox())!.width;
+      // The panels beside the table go, and so do its other columns. The
+      // name column narrows, and each line is truncated again to fit it
+      // (sometimes to the same text: the folders go before the name does).
       await page.setViewportSize({ width: 390, height: 720 });
-      await expect.poll(() => cell.innerText()).not.toBe(before);
-      expect(await overflowing(page)).toEqual([]);
+      await expect.poll(async () => (await cell.boundingBox())!.width).toBeLessThan(before);
+      await expect.poll(() => overflowing(page)).toEqual([]);
+      await expect(cell).toHaveAttribute('data-truncated');
     });
   });
 }

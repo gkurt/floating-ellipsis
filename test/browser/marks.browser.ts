@@ -89,6 +89,24 @@ function cellOf(css: string): number {
   return width;
 }
 
+describe.each(FONTS)('drawn marks, in %s', (font) => {
+  // Browsers paint a box on whole pixels, so one that isn't a whole number of them paints wider or narrower by where it lands.
+  it.each(['dot', 'bullet', 'ring', 'square'] as const)('are each %s a whole number of device pixels wide and tall', (shape) => {
+    const t = make(box(PROSE, `font:${font}`), { position: 'middle', ellipsis: { shape, size: '0.11em' } });
+    for (const w of sweep(t, 140, 420, 7)) {
+      expectFits(t);
+      const marks = [...t.ellipsisElement.querySelectorAll('[data-fp-shape]')];
+      expect(marks.length, `${w}px`).toBeGreaterThan(0);
+      for (const mark of marks) {
+        const { width, height } = mark.getBoundingClientRect();
+        expect(width, `${w}px`).toBeGreaterThan(0);
+        expect(width * devicePixelRatio, `${w}px`).toBeCloseTo(Math.round(width * devicePixelRatio), 1);
+        expect(height * devicePixelRatio, `${w}px`).toBeCloseTo(Math.round(height * devicePixelRatio), 1);
+      }
+    }
+  });
+});
+
 describe('ellipses on cells', () => {
   it.each([
     ['end, one line', { position: 'end', lines: 1 }, 1],

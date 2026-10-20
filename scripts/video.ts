@@ -36,8 +36,10 @@ const stills = values.stills ? Number(values.stills) : null;
 
 const server = await createServer({ root: 'demo', logLevel: 'warn', server: { port: 4190 } });
 await server.listen();
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5 });
+// A real device scale, not `deviceScaleFactor`: emulation paints boxes on
+// whole CSS pixels, so drawn dots a pixel and a half wide come out uneven.
+const browser = await chromium.launch({ args: ['--force-device-scale-factor=1.5', '--window-size=1280,720'] });
+const page = await browser.newPage({ viewport: null });
 page.on('pageerror', (e) => console.error('page error:', e));
 page.on('console', (m) => m.type() === 'error' && console.error('console:', m.text()));
 await page.clock.install();
@@ -82,7 +84,7 @@ for (let i = 0; ; i++) {
   if (done) break;
   const keep = stills === null || i % Math.max(1, Math.round((stills * fps) / 1000)) === 0;
   if (!keep) continue;
-  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1280, height: 720, scale: 1.5 } });
+  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1280, height: 720, scale: 1 } });
   const png = Buffer.from(data, 'base64');
   if (ffmpeg) {
     if (!ffmpeg.stdin.write(png)) await new Promise((resolve) => ffmpeg.stdin.once('drain', resolve));

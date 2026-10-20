@@ -169,17 +169,23 @@ passes share, so it costs no layout of its own.
 the size of the font's dot rhythm, balanced and justified like any other. The
 spacing defaults to the font's own ellipsis rhythm, scaled to the mark size.
 
-Browsers paint a box's background and border on whole pixels, rounding its
-left and right edges separately (device pixels; whole CSS pixels in
-Chromium's device emulation, as Playwright screenshots use). A dot about a
-pixel and a half wide would paint one or two pixels wide, round or
-flattened, by the fraction of a pixel it lands on, and dots spread by
-`justify: 'dots'` would look uneven. So each mark is a box that only takes
-the room, holding the shape painted 64 times as large and scaled down by a
-`transform`: the rounding shrinks with it, and every dot paints the same.
-Where a mark lands is still rounded to a whole pixel, as any box's is, so
-the gaps between dots can differ by a pixel; text alone is placed at
-fractions of one.
+A mark's size is rounded to a whole number of device pixels (at least one).
+Browsers paint a box's background on whole pixels, rounding its left and
+right edges separately, so a dot a pixel and a half wide would paint one or
+two pixels wide, round or flattened, by the fraction of a pixel it lands on,
+and dots spread by `justify: 'dots'` would look uneven. A whole number of
+pixels paints the same wherever it lands. The size follows
+`devicePixelRatio`, and every instance re-truncates when it changes (zoom, or
+a window moved to another screen). Where a mark lands is still rounded to a
+whole pixel, as any box's is, so the gaps between dots can differ by one;
+text alone is placed at fractions of a pixel. Painting the shape larger and
+scaling it down with a `transform` would avoid both, but costs 10–20% more
+main-thread time on a page of truncated lines.
+
+Device emulation (Playwright's `deviceScaleFactor`) rounds to whole CSS
+pixels instead, so screenshots taken with it still show uneven dots. Launch
+Chromium with `--force-device-scale-factor` instead, as `scripts/video.ts`
+does: it lays out and paints as a screen of that density.
 
 ## Dots in brackets
 
