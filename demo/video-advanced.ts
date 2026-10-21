@@ -86,7 +86,7 @@ async function table() {
     }
   }
   s.stage.append(search, grid);
-  const tips = s.tooltip({ delay: 300, grace: 0, duration: 600, breaks: '/', maxWidth: 0.75 });
+  const tips = s.tooltip({ delay: 300, grace: 0, duration: 600, breaks: '/' });
   for (const { t } of cells) tips.attach(t);
   await s.enter();
   await wait(500);

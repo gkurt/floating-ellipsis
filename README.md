@@ -570,16 +570,16 @@ ellipsis hides. Pressing a tip makes its text selectable.
 | Option       | Default  |                                                                         |
 | ------------ | -------- | ----------------------------------------------------------------------- |
 | `reveal`     | `'grow'` | `'grow'`, `'expand'` or `'peek'`.                                       |
-| `delay`      | `500`    | Hover delay in ms. Focus shows the tip at once.                         |
+| `delay`      | `300`    | Hover delay in ms. Focus shows the tip at once.                         |
 | `grace`      | `300`    | After a tip closes, the next one shows without the delay for this long. |
 | `breaks`     | `''`     | Characters a tip may wrap after, besides spaces: `'/\\'` for paths.     |
-| `maxWidth`   | `0.5`    | Widest tip, as a fraction of the window (or the line's width if wider). |
+| `maxWidth`   | `40`     | Widest tip, in ems of the text (or the line's width if wider).          |
 | `aspect`     | `2`      | Minimum width-to-height ratio before a tip widens leftwards.            |
 | `edge`       | `8`      | Distance from the window's edges, in px.                                |
 | `offset`     | `8`      | `'peek'`: distance from the ellipsis, in px.                            |
 | `slop`       | `4`      | `'peek'`: hover tolerance around the ellipsis, in px.                   |
 | `selectable` | `true`   | A press makes the text selectable and holds the tip open.               |
-| `duration`   | `460`    | `'grow'` animation length; `easing` sets its curve.                     |
+| `duration`   | `240`    | `'grow'` animation length; `easing` sets its curve.                     |
 | `container`  | `<body>` | Where the tip goes; use the `<dialog>` for text inside a modal.         |
 | `onShow`     | —        | Called with `{ instance, trigger, ellipsis }`.                          |
 | `onHide`     | —        | Called with the same.                                                   |

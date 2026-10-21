@@ -711,8 +711,10 @@ grapheme showing starts where it is on screen and moves to make room. The
 room grows first: the hidden text waits where it lands, and fades in from
 40% of the way, on the tip's own curve, so the two end nearly together.
 Its text starts where the line's does and runs right. Past the
-window's edge or `maxWidth` it wraps (after `breaks` where it can), and only
-when that would leave it narrower than `aspect` does it widen to the left, as
+window's edge or `maxWidth` it wraps (after `breaks` where it can). `maxWidth`
+is in ems rather than a share of the window, so a tip keeps a readable
+length on a wide screen and can use the whole width of a narrow one. Only
+when wrapping would leave it narrower than `aspect` does it widen to the left, as
 little as it can. A full-text tip takes the text's font so its glyphs land on
 the original's; it's placed so its text, not its box, sits on the line.
 

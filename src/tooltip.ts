@@ -20,7 +20,7 @@ export interface TooltipOptions {
   reveal?: Reveal;
   /**
    * Milliseconds the pointer rests on a trigger before its tip shows.
-   * Default 500. Focus shows a tip at once.
+   * Default 300. Focus shows a tip at once.
    */
   delay?: number;
   /**
@@ -35,9 +35,9 @@ export interface TooltipOptions {
    */
   breaks?: string;
   /**
-   * 'grow' and 'expand': the widest a full-text tip gets, as a fraction of
-   * the window's width, unless the line it covers is wider. Longer text wraps.
-   * Default 0.5.
+   * 'grow' and 'expand': the widest a full-text tip gets, in ems of the
+   * text's font, unless the line it covers is wider. Longer text wraps, as
+   * does text that reaches the window's edge first. Default 40.
    */
   maxWidth?: number;
   /**
@@ -59,7 +59,7 @@ export interface TooltipOptions {
    * while it's hovered or holds a selection. Default true.
    */
   selectable?: boolean;
-  /** 'grow': milliseconds. Default 460. */
+  /** 'grow': milliseconds. Default 240. */
   duration?: number;
   /** 'grow': the easing of every glyph and the background. */
   easing?: string;
@@ -92,16 +92,16 @@ type Settings = Required<Omit<TooltipOptions, 'container' | 'onShow' | 'onHide'>
 
 const DEFAULTS: Settings = {
   reveal: 'grow',
-  delay: 500,
+  delay: 300,
   grace: 300,
   breaks: '',
-  maxWidth: 0.5,
+  maxWidth: 40,
   aspect: 2,
   edge: 8,
   offset: 8,
   slop: 4,
   selectable: true,
-  duration: 460,
+  duration: 240,
   easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
   respectReducedMotion: true,
 };
@@ -448,7 +448,7 @@ export class Tooltip {
     const left = Math.min(...lines.map((l) => l.left));
     const right = Math.max(...lines.map((l) => l.right));
     const view = document.documentElement.clientWidth;
-    const widest = Math.min(view - edge * 2, Math.max(right - left, view * maxWidth));
+    const widest = Math.min(view - edge * 2, Math.max(right - left, maxWidth * parseFloat(font.fontSize)));
     let x = Math.min(Math.max(first.left - dx, edge), view - edge);
     const anchored = Math.min(view - edge - x, widest);
     if (box.width > anchored) {

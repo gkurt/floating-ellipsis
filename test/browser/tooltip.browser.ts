@@ -133,7 +133,7 @@ describe('tooltip', () => {
     const opacity = (k: number) => {
       for (const a of tip.element.getAnimations({ subtree: true })) {
         a.pause();
-        a.currentTime = k * 460;
+        a.currentTime = k * 240;
       }
       return Number(getComputedStyle(hidden).opacity);
     };
@@ -145,14 +145,13 @@ describe('tooltip', () => {
   it('stays in the window, and wraps long text no narrower than its aspect', () => {
     const long = Array.from({ length: 6 }, () => PATH).join('');
     const t = make(box(long, 'width:300px;margin-left:600px'), { position: 'middle' });
-    const tip = make_tip({ reveal: 'expand', breaks: '/' });
+    const tip = make_tip({ reveal: 'expand', breaks: '/', maxWidth: 25 });
     tip.attach(t);
     tip.show(t);
     expectInWindow(tip);
     const r = tip.element.getBoundingClientRect();
-    const view = document.documentElement.clientWidth;
     expect(r.height).toBeGreaterThan(30);
-    expect(r.width).toBeLessThanOrEqual(view * 0.5 + 0.5);
+    expect(r.width).toBeLessThanOrEqual(25 * parseFloat(getComputedStyle(t.element).fontSize) + 0.5);
     expect(r.width / r.height).toBeGreaterThanOrEqual(2 - 0.05);
   });
 

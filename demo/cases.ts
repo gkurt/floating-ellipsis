@@ -206,7 +206,7 @@ const github: { folder: ElideOptions; file: ElideOptions } = {
   folder: { ...plain, position: 'middle', snap: separators('/-', { fragment: false }) },
   file: { ...plain, position: 'middle', keep: /(\.\w+)+$/ },
 };
-const tips = tooltip({ reveal: 'grow', breaks: '/', delay: 150, maxWidth: 0.9 });
+const tips = tooltip({ reveal: 'grow', breaks: '/', delay: 150 });
 for (const { row, name, folder } of fileTree(document.querySelector<HTMLElement>('#github-after')!))
   tips.attach(elide(name, folder ? github.folder : github.file), row);
 

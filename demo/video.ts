@@ -175,7 +175,7 @@ async function tooltips() {
   const items = files(s, tooltipPaths, tooltipOptions, true);
   s.stage.querySelector<HTMLElement>('.files')!.style.width = '860px';
   // Wide enough for the second row's tip to stay on one line; the last one wraps.
-  const tips = s.tooltip({ reveal: 'grow', delay: 250, grace: 0, breaks: '/\\', duration: 700, maxWidth: 0.75 });
+  const tips = s.tooltip({ reveal: 'grow', delay: 250, grace: 0, breaks: '/\\', duration: 700 });
   for (const { li, t } of items) tips.attach(t, li);
   await s.enter();
   pointer.x = 1000;

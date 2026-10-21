@@ -148,7 +148,7 @@ transitions(elide(heroLine, { position: 0.5, glyphs }), fast);
 
 {
   const list = $('#tipsList');
-  const tips = tooltip({ reveal: 'grow', breaks: '/\\', maxWidth: 0.75 });
+  const tips = tooltip({ reveal: 'grow', breaks: '/\\' });
   for (const path of tooltipPaths) {
     const li = el('li', '', fileIcon(16));
     li.tabIndex = 0;
