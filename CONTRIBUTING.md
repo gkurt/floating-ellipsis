@@ -38,7 +38,10 @@ starts at one), and `/video-advanced.html` a second one: the table, then the
 advanced features, each held longer. `bun run video` and `bun run video:advanced`
 record them frame by frame into `out/video/floating-ellipsis.mp4` and
 `out/video/floating-ellipsis-advanced.mp4` (1920×1080, 60fps, H.264, for
-sharing); they need ffmpeg on the PATH.
+sharing); they need ffmpeg on the PATH. The README's images in
+`.github/assets/` are cut from the first: `hero.gif` is its first 7.2
+seconds at 960px wide, and each PNG one frame with the stage cropped
+(`crop=1776:652:72:362`, scaled to 1200px wide).
 
 ## Next.js example
 

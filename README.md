@@ -1,6 +1,14 @@
 # floating-ellipsis
 
+[![npm](https://img.shields.io/npm/v/floating-ellipsis?color=e8674a)](https://www.npmjs.com/package/floating-ellipsis)
+[![CI](https://github.com/gkurt/floating-ellipsis/actions/workflows/ci.yml/badge.svg)](https://github.com/gkurt/floating-ellipsis/actions/workflows/ci.yml)
+[![gzip size](https://img.shields.io/bundlejs/size/floating-ellipsis)](https://bundlejs.com/?q=floating-ellipsis)
+[![types](https://img.shields.io/npm/types/floating-ellipsis)](https://www.npmjs.com/package/floating-ellipsis)
+[![license](https://img.shields.io/npm/l/floating-ellipsis)](https://github.com/gkurt/floating-ellipsis/blob/main/LICENSE)
+
 Fluid, balanced ellipsis. Smart text truncation for the DOM. **[Live demo →](https://gkurt.com/floating-ellipsis/)**
+
+[![The ellipsis stays balanced as the line narrows, then slides from the end of the line to its start](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/hero.gif)](https://gkurt.com/floating-ellipsis/)
 
 - **Anywhere, any length.** Clamp to any number of lines (or as many as fit the height), with the ellipsis at
   the start, middle, end, any position, or several at once.
@@ -101,6 +109,8 @@ elide(el, { ellipsis: { shape: 'dot', like: '…', count: 5 } }); // the font's 
 elide(el, { ellipsis: '' }); // no marks, just a balanced gap
 ```
 
+![Three lines with two ellipses drawn as bullets](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/lines.png)
+
 Marks are sized from the font: dots and squares from its `.`, bullets and rings
 from its `•`.
 
@@ -127,6 +137,8 @@ other letters), then the element's `lang`.
 ```js
 elide(el, { position: 'middle', keep: { match: /engine/gi, class: 'hit' } });
 ```
+
+![Kept matches highlighted beside the ellipses: a file extension, search hits and an error code](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/keep.png)
 
 Matches stay visible and are wrapped in a `<span>` with the class (and
 `data-fp-kept`). A highlight split by an ellipsis marks its pieces with
@@ -166,6 +178,8 @@ elide(el, { snap: words() }); // The quick brown…lazy dog
 elide(el, { snap: separators('/\\') }); // /Users/ada/Projects/anal…/notes/x.md
 elide(el, { snap: separators('/\\', { fragment: false }) }); // /Users/ada/…/difference-engine/notes/x.md
 ```
+
+![The same line truncated at any glyph, between words, and between path segments](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/snap.png)
 
 `words()` truncates between words in any language `Intl.Segmenter` supports.
 `separators(chars)` takes a string of characters or a RegExp. By default one
@@ -281,6 +295,8 @@ const post = elide(el, { lines: 3, suffix: suffix(more, { show: 'truncated' }) }
 more.onclick = () => (post.expanded ? post.collapse() : post.expand());
 ```
 
+![Issue titles truncated before an issue number and a "new" badge, which always show](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/suffix.png)
+
 The content is a string or a node, which follows the text on its last line and
 is never truncated. A node is moved into place, keeping its listeners, and goes back
 on `destroy()`. `show` is `'always'` (default) or `'truncated'`. `expand()`
@@ -338,6 +354,8 @@ Hidden text is still found by the browser's find in page (where
 `hidden="until-found"` is supported). With `find: 'keep'`, the matched word is
 kept visible and marked `data-fp-match`; with `'expand'`, the text expands.
 Either lasts until a press outside the text or a match elsewhere.
+
+![Find in page on "lantern" keeps the match visible beside the ellipsis](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/find.png)
 
 ```css
 [data-fp-match] {
@@ -541,6 +559,8 @@ import { tooltip } from 'floating-ellipsis/tooltip';
 const tips = tooltip({ reveal: 'grow', breaks: '/\\' });
 for (const row of rows) tips.attach(elide(row.querySelector('.path'), { position: 'middle' }), row);
 ```
+
+![A truncated path grown into a tooltip with the full path, wrapped at its separators](https://raw.githubusercontent.com/gkurt/floating-ellipsis/main/.github/assets/tooltip.png)
 
 A headless tooltip for truncated text, shared by every instance attached to it.
 With `reveal: 'grow'` the tip starts as a copy of the line and grows into the
