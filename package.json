@@ -1,6 +1,6 @@
 {
   "name": "floating-ellipsis",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Fluid, balanced ellipsis: smart text truncation for one or many lines, with the ellipsis anywhere and optically even spacing.",
   "keywords": [
     "ellipsis",

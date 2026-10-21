@@ -1,7 +1,4 @@
----
-packages:
-  'floating-ellipsis': major
----
+## floating-ellipsis@1.0.0
 
 ### First stable release
 
