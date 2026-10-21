@@ -1,6 +1,6 @@
 ---
 packages:
-  'floating-ellipsis': minor
+  'floating-ellipsis': patch
 ---
 
 ### Tooltips are as wide as a readable line, not half the window
