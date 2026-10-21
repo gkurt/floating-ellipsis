@@ -27,9 +27,11 @@
       },
       "peerDependencies": {
         "react": ">=18",
+        "react-dom": ">=18",
       },
       "optionalPeers": [
         "react",
+        "react-dom",
       ],
     },
     "examples/next": {
