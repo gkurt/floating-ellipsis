@@ -1,10 +1,10 @@
 core:changelogs:
-  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Tooltips are as wide as a readable line, not half the window\n\nThe tooltip's `maxWidth` is now in ems of the text (default `40`) instead of a fraction of the window, so a tip can use a narrow window's whole width. Tips also show sooner and grow faster: `delay` defaults to `300` and `duration` to `240`.\n"
-    filename: tooltip-width-in-ems.md
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Text under a scaled ancestor truncates as it would unscaled\n\nAn element inside a `transform: scale(…)` (a zoomed canvas, a scaled card) no longer truncates too early, or shows too much, and keeps its cut when the scale changes. `geometry`'s ink boxes and ellipsis areas, and `elideInput`'s copy and caret, land where they should under a scale too.\n"
+    filename: scaled-ancestors.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - tooltip-width-in-ems.md
+      - scaled-ancestors.md
     id: npm:floating-ellipsis
     updated: true
   - id: npm:floating-ellipsis-next-example
