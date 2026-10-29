@@ -121,6 +121,37 @@ Implementation details behind the behaviour described in the
    its text a second time.) A resize that leaves plain text on as many lines
    keeps the height it holds without measuring it again.
 
+## Under a scaled ancestor
+
+A transform doesn't change layout, only where it lands on screen: the lines
+wrap at the same words at any scale. But the boxes a pass reads
+(`getClientRects()`, `getBoundingClientRect()`) are on screen, scaled by every
+transform above the element (a zoomed canvas, a scaled card), while glyph
+widths, padding, borders, gaps and the sizes a ResizeObserver reports are in
+CSS pixels. So each pass finds the element's scale along each axis, its border
+box on screen against its used size (the computed `width` and `height`, with
+padding, borders and a scrollbar beside a content box), and divides every box
+it reads by it. The cut is then the same at any scale, and a scale changing,
+which no observer reports, leaves it right without a pass. An inline element
+has no used size, only its offset size, rounded: a scale within a pixel of 1
+counts as none there.
+
+Boxes are as precise as the engine gives them: Chromium and WebKit give a
+transformed box to a 64th of a screen pixel, so a length read under a scale
+that isn't a power of two is off by up to a 64th of a pixel over the scale.
+At 0.46, the gaps and spacing that fill a line differ from unscaled by around
+a hundredth of a pixel; the cut doesn't. Below a scale of about a third that
+error passes the twentieth of a pixel a line may overrun the edge by, so a
+line that ends that close to the edge may keep a grapheme more or less than
+unscaled.
+
+`geometry` reports boxes on screen: an ink box or an ellipsis' area adds font
+metrics and margins scaled by the element's scale at the time it's called. Only
+a scale (and a translation) is read: the bounding box of a rotated or skewed
+element isn't its size. `tooltip` and `transitions` don't account for a scale
+yet: the tip is laid out unscaled in `document.body`, and glides move glyphs by
+distances read on screen.
+
 ## Places along the line
 
 A share of the text hands kept graphemes to the islands by count, so the

@@ -650,6 +650,11 @@ and transitions respect reduced motion.
 - `elideInput` lines the pressed glyph up only in inputs set from the left;
   in a textarea, the line pressed stays under the pointer, but its glyphs
   can move along it.
+- Under a scaled ancestor (`transform: scale()`), text truncates as it
+  would unscaled, but below a scale of about a third a line ending within
+  a few hundredths of a pixel of the edge may keep a grapheme more or less.
+  Rotation and skew aren't supported, and `tooltip` and `transitions`
+  don't account for the scale yet.
 
 More in [How it works](docs/how-it-works.md). To work on the library, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
