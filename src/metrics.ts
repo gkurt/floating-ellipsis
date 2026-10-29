@@ -6,6 +6,7 @@
  * distance between their ink (bounding box) edges.
  */
 import { isWhitespace } from './graphemes.ts';
+import type { Scale } from './lines.ts';
 
 /** Horizontal metrics of a glyph, relative to its pen origin. */
 export interface GlyphMetrics {
@@ -75,15 +76,20 @@ export function kerning(run: Typeset, a: string, b: string): number {
   return k;
 }
 
-/** The ink box of grapheme `g`, laid out in `box` by `run`: the box itself for whitespace (it has no ink). */
-export function inkOf(run: Typeset, g: string | undefined, box: DOMRect): DOMRect {
+/**
+ * The ink box of grapheme `g`, laid out in `box` (on screen, in an element
+ * transforms scale by `scale`) by `run`: the box itself for whitespace (it
+ * has no ink).
+ */
+export function inkOf(run: Typeset, g: string | undefined, box: DOMRect, scale: Scale): DOMRect {
   if (g === undefined || isWhitespace(g)) return box;
-  return inkBox(glyphIn(run, g), box.left, box.top + fontAscent(run.font));
+  return inkBox(glyphIn(run, g), box.left, box.top + fontAscent(run.font) * scale.y, scale);
 }
 
-/** The ink box of a glyph with metrics `m`, laid out from `origin` on `baseline`. */
-export function inkBox(m: GlyphMetrics, origin: number, baseline: number): DOMRect {
-  return new DOMRect(origin - m.left, baseline - m.ascent, m.left + m.right, m.ascent + m.descent);
+/** The ink box on screen of a glyph with metrics `m`, laid out from `origin` on `baseline`, scaled by `scale`. */
+export function inkBox(m: GlyphMetrics, origin: number, baseline: number, scale: Scale): DOMRect {
+  const { x, y } = scale;
+  return new DOMRect(origin - m.left * x, baseline - m.ascent * y, (m.left + m.right) * x, (m.ascent + m.descent) * y);
 }
 
 export type Gap = 'dots' | 'natural' | 'none' | number | `${number}em` | `${number}px`;

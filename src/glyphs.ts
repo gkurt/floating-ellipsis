@@ -6,6 +6,7 @@ import type { Range } from './cut.ts';
 import type { Elide } from './elide.ts';
 import { chainId, filled } from './highlight.ts';
 import { inside } from './inside.ts';
+import { scaleNow } from './lines.ts';
 import { type Chain, type Placed, nest, unitCopy } from './markup.ts';
 import { inkOf } from './metrics.ts';
 import type { GlyphMode } from './options.ts';
@@ -87,5 +88,5 @@ export function glyphInk(instance: Elide, index: number): DOMRect | null {
   s.sync();
   const el = s.glyphs[index];
   if (!el?.isConnected || !s.run) return null;
-  return inkOf(s.run, instance.graphemes[index], el.getBoundingClientRect());
+  return inkOf(s.run, instance.graphemes[index], el.getBoundingClientRect(), scaleNow(instance.element));
 }

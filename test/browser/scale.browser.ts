@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Elide } from '#src/elide.ts';
+import { ellipsisArea, ellipsisInk, lineRects, markInks } from '#src/geometry.ts';
+import { glyphInk, glyphs } from '#src/glyphs.ts';
 import type { ElideOptions } from '#src/options.ts';
 import { FONTS, PROSE, box, expectConsistent, expectFits, expectFlush, frames, make, track } from './helpers.ts';
 
@@ -87,6 +89,39 @@ describe.each(FONTS)('under a scaled ancestor, in %s', (font) => {
       wrapper.style.transform = `scale(${scale})`;
       await frames();
       expectSameCut(t, unscaled, 0.46);
+    }
+  });
+});
+
+describe('geometry under a scaled ancestor', () => {
+  /** Boxes from the element's top left corner, in its CSS pixels: as they'd be unscaled. */
+  const local = (t: Elide, scale: number, rects: readonly (DOMRect | null)[]) => {
+    const o = t.element.getBoundingClientRect();
+    return rects.map((r) => r && [(r.left - o.left) / scale, (r.top - o.top) / scale, r.width / scale, r.height / scale]);
+  };
+
+  it.each<[string, ElideOptions]>([
+    ['…', { position: [0.3, 0.7], lines: 2 }],
+    ['...', { ellipsis: '...', position: 'middle' }],
+    ['bullets', { ellipsis: { shape: 'bullet', count: 4 }, position: 'start' }],
+    ['glyph mode', { glyphs, position: 'middle' }],
+  ])('puts ink, areas and lines where they are unscaled: %s', (_, options) => {
+    const boxes = (t: Elide, scale: number) =>
+      [
+        lineRects(t),
+        t.ellipses.flatMap((_e, j) => [...markInks(t, j), ellipsisInk(t, j), ellipsisArea(t, j)]),
+        options.glyphs ? t.graphemes.map((_g, i) => glyphInk(t, i)) : [],
+      ].flatMap((rects) => local(t, scale, rects));
+    for (const scale of SCALES) {
+      const wrapper = scaled(scale);
+      const t = make(box(PROSE, 'width:230px', wrapper), options);
+      expect(t.truncated).toBe(true);
+      const got = boxes(t, scale);
+      // The same layout, unscaled (a transform changes none of it).
+      wrapper.style.transform = 'none';
+      const want = boxes(t, 1);
+      expect(got.map((r) => r === null)).toEqual(want.map((r) => r === null));
+      got.forEach((r, i) => r?.forEach((n, k) => expect(Math.abs(n - want[i]![k]!)).toBeLessThan(Math.max(0.01, 1 / 32 / scale))));
     }
   });
 });

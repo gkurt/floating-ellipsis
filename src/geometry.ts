@@ -7,7 +7,7 @@ import type { Range } from './cut.ts';
 import type { Elide, Inside } from './elide.ts';
 import { FORM } from './highlight.ts';
 import { inside } from './inside.ts';
-import { lineBoxes, scaleOf } from './lines.ts';
+import { type Scale, lineBoxes, scaleNow } from './lines.ts';
 import { markInk } from './marks.ts';
 import { UNIT_COPY } from './markup.ts';
 import { isVisible } from './options.ts';
@@ -35,7 +35,7 @@ export function ellipsisInk(instance: Elide, index = 0): DOMRect | null {
  */
 export function ellipsisArea(instance: Elide, index = 0): DOMRect | null {
   const e = instance.ellipses[index];
-  return e ? areaOf(e, lineRects(instance)) : null;
+  return e ? areaOf(e, lineRects(instance), scaleNow(instance.element)) : null;
 }
 
 /**
@@ -65,7 +65,7 @@ export function markInks(instance: Elide, index = 0): DOMRect[] {
   if (!join || !layout || index >= (s.current?.hidden.length ?? 0)) return [];
   // More marks than measured are repeated ones (see `MarkLayout.repeats`).
   return join.marks.length === layout.metrics.length || (layout.repeats && join.marks.length > layout.metrics.length)
-    ? markInk(layout, join.marks, join.ellipsis)
+    ? markInk(layout, join.marks, join.ellipsis, scaleNow(instance.element))
     : [];
 }
 
@@ -110,8 +110,7 @@ function formRange(el: Element): Range {
 export function lineRects(instance: Elide): DOMRect[] {
   const s = inside(instance);
   s.sync();
-  const el = instance.element;
-  const k = scaleOf(el, getComputedStyle(el), el.getBoundingClientRect());
+  const k = scaleNow(instance.element);
   return lineBoxes([s.line], k).map((l) => new DOMRect(l.left * k.x, l.top * k.y, (l.right - l.left) * k.x, (l.bottom - l.top) * k.y));
 }
 
@@ -200,14 +199,15 @@ function piecesOf(instance: Elide, s: Inside): Map<Node, Range> {
 }
 
 /**
- * The space `el` (an ellipsis) takes up between the text either side of it:
- * its box and margins, over the height of its line, one of `lines`.
+ * The space `el` (an ellipsis, in an element transforms scale by `scale`)
+ * takes up between the text either side of it: its box and margins, over
+ * the height of its line, one of `lines`.
  */
-function areaOf(el: Element, lines: readonly DOMRect[]): DOMRect {
+function areaOf(el: Element, lines: readonly DOMRect[], scale: Scale): DOMRect {
   const r = el.getBoundingClientRect();
   const cs = getComputedStyle(el);
-  const left = r.left - parseFloat(cs.marginLeft);
-  const right = r.right + parseFloat(cs.marginRight);
+  const left = r.left - parseFloat(cs.marginLeft) * scale.x;
+  const right = r.right + parseFloat(cs.marginRight) * scale.x;
   const middle = r.top + r.height / 2;
   const line = lines.find((l) => middle >= l.top && middle <= l.bottom);
   const top = Math.min(r.top, line?.top ?? r.top);

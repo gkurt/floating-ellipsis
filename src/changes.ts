@@ -81,7 +81,7 @@ function trackOf(instance: Elide): Track {
       s.glyphs.forEach((el, i) => {
         if (!el.isConnected) return;
         const box = el.getBoundingClientRect();
-        glyphs.set(i, { box: local(box), ink: local(inkOf(run, instance.graphemes[i], box)) });
+        glyphs.set(i, { box: local(box), ink: local(inkOf(run, instance.graphemes[i], box, run.scale)) });
       });
       track.painting = { glyphs, marks: (s.current?.hidden ?? []).map((_, j) => markInks(instance, j).map(local)) };
     },

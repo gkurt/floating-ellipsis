@@ -6,6 +6,7 @@
 import type { Range } from './cut.ts';
 import type { Elide } from './elide.ts';
 import { FORM } from './highlight.ts';
+import { scaleNow } from './lines.ts';
 import { ellipsisText, pixelRatio } from './marks.ts';
 import { clearMetrics } from './metrics.ts';
 import type { Part } from './options.ts';
@@ -156,7 +157,8 @@ function paint(el: HTMLElement): string[] {
   el.style.backgroundColor = background;
   if (color) el.style.color = color;
   // As tall as the selection is painted: an inline element's padding moves nothing.
-  const leading = (parseFloat(cs.lineHeight) - el.getBoundingClientRect().height) / 2;
+  const host = el.closest<HTMLElement>('[data-elide]');
+  const leading = (parseFloat(cs.lineHeight) - el.getBoundingClientRect().height / (host ? scaleNow(host).y : 1)) / 2;
   if (!textHigh && leading > 0) el.style.paddingBlock = `${leading}px`;
   if (el.hasAttribute('data-fp-ellipsis')) {
     // Its gaps are margins, which a background doesn't reach: shadows its size cover them.

@@ -54,6 +54,11 @@ export function scaleOf(el: HTMLElement, cs: CSSStyleDeclaration, box: DOMRectRe
   };
 }
 
+/** The scale of `el` as it is laid out now (see `scaleOf`). Reads layout. */
+export function scaleNow(el: HTMLElement): Scale {
+  return scaleOf(el, getComputedStyle(el), el.getBoundingClientRect());
+}
+
 /** `r`, a rect on screen, in the CSS pixels of an element scaled by `scale`. */
 export function unscaled(r: DOMRectReadOnly | LineBox, scale: Scale): LineBox {
   return { top: r.top / scale.y, bottom: r.bottom / scale.y, left: r.left / scale.x, right: r.right / scale.x };

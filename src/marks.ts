@@ -2,6 +2,7 @@
  * The marks an ellipsis is made of: characters of a string, or drawn shapes.
  */
 import { graphemes } from './graphemes.ts';
+import type { Scale } from './lines.ts';
 import {
   type Font,
   type GlyphMetrics,
@@ -366,17 +367,20 @@ export function styleMarks(marks: readonly HTMLElement[], css: string): void {
 const styled = new WeakMap<HTMLElement, string>();
 
 /**
- * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`.
- * For a single glyph like '…' the dots are found in the glyph itself. Marks
- * past the layout's (repeated, see `MarkLayout.repeats`) are like its last.
+ * The ink box of each mark drawing an ellipsis, as laid out in `ellipsis`
+ * (in an element transforms scale by `scale`). For a single glyph like '…'
+ * the dots are found in the glyph itself. Marks past the layout's
+ * (repeated, see `MarkLayout.repeats`) are like its last.
  */
-export function markInk(layout: MarkLayout, marks: readonly HTMLElement[], ellipsis: HTMLElement): DOMRect[] {
+export function markInk(layout: MarkLayout, marks: readonly HTMLElement[], ellipsis: HTMLElement, scale: Scale): DOMRect[] {
   if (layout.drawn) return marks.map((m) => m.getBoundingClientRect());
-  const baseline = ellipsis.getBoundingClientRect().top + layout.ascent;
-  const boxes = marks.map((el, i) => inkBox((layout.metrics[i] ?? layout.metrics.at(-1))!, el.getBoundingClientRect().left, baseline));
+  const baseline = ellipsis.getBoundingClientRect().top + layout.ascent * scale.y;
+  const boxes = marks.map((el, i) =>
+    inkBox((layout.metrics[i] ?? layout.metrics.at(-1))!, el.getBoundingClientRect().left, baseline, scale),
+  );
   const ink = boxes[0];
   if (boxes.length !== 1 || !ink || !layout.runs || layout.runs.length <= 1) return boxes;
-  return layout.runs.map(([a, b]) => new DOMRect(ink.left + a, ink.top, b - a, ink.height));
+  return layout.runs.map(([a, b]) => new DOMRect(ink.left + a * scale.x, ink.top, (b - a) * scale.x, ink.height));
 }
 
 /** Metrics of the whole ellipsis, given the extra space before each mark after the first. */
