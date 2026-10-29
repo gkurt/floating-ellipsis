@@ -27,30 +27,22 @@ export interface Scale {
  */
 export function scaleOf(el: HTMLElement, cs: CSSStyleDeclaration, box: DOMRectReadOnly): Scale {
   const px = (p: string) => parseFloat(cs.getPropertyValue(p));
-  const along = (screen: number, size: string, offset: number, client: number, edges: string[]) => {
-    const scale = (css: number, near: number) => (css > 0 && screen > 0 && Math.abs(screen - css) > near ? screen / css : 1);
+  const along = (screen: number, size: string, offset: number, client: number, a: string, b: string) => {
     const used = px(size);
-    // An inline element has no used size, only its offset size, rounded.
-    if (!Number.isFinite(used)) return scale(offset, 1);
-    if (cs.boxSizing === 'border-box') return scale(used, 0.01);
-    const [a, b, borderA, borderB] = edges.map(px) as [number, number, number, number];
-    // A content box's size leaves out a scrollbar beside it (see `contentEdges`).
-    const gutter = offset - client - Math.round(borderA + borderB);
-    return scale(used + a + b + borderA + borderB + (gutter > 1 ? gutter : 0), 0.01);
+    const border = px(`border-${a}-width`) + px(`border-${b}-width`);
+    const gutter = offset - client - Math.round(border);
+    // An inline element has no used size, only its offset size, rounded. A
+    // content box's leaves out padding, border and a scrollbar (see `contentEdges`).
+    const css = Number.isNaN(used)
+      ? offset
+      : cs.boxSizing === 'border-box'
+        ? used
+        : used + px(`padding-${a}`) + px(`padding-${b}`) + border + (gutter > 1 ? gutter : 0);
+    return css > 0 && screen > 0 && Math.abs(screen - css) > (Number.isNaN(used) ? 1 : 0.01) ? screen / css : 1;
   };
   return {
-    x: along(box.width, 'width', el.offsetWidth, el.clientWidth, [
-      'padding-left',
-      'padding-right',
-      'border-left-width',
-      'border-right-width',
-    ]),
-    y: along(box.height, 'height', el.offsetHeight, el.clientHeight, [
-      'padding-top',
-      'padding-bottom',
-      'border-top-width',
-      'border-bottom-width',
-    ]),
+    x: along(box.width, 'width', el.offsetWidth, el.clientWidth, 'left', 'right'),
+    y: along(box.height, 'height', el.offsetHeight, el.clientHeight, 'top', 'bottom'),
   };
 }
 
