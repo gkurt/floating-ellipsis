@@ -8,6 +8,7 @@ import { type Elide, elide } from './elide.ts';
 import { ellipsisAt, ellipsisRect, graphemeRect } from './geometry.ts';
 import { graphemes } from './graphemes.ts';
 import { inside } from './inside.ts';
+import { scaleNow, scaleOf } from './lines.ts';
 import { applyTextTransform, fontOf, measure } from './metrics.ts';
 import type { ElideOptions } from './options.ts';
 
@@ -306,7 +307,8 @@ class Field implements ElidedInput<TextareaOptions> {
   /** A textarea's lines are as wide as its content box: beside its scrollbar, the copy's are too. */
   #gutter(cs = getComputedStyle(this.#input)) {
     const input = this.#input;
-    const gutter = input.getBoundingClientRect().width - px(cs.borderLeftWidth) - px(cs.borderRightWidth) - input.clientWidth;
+    const box = input.getBoundingClientRect();
+    const gutter = box.width / scaleOf(input, cs, box).x - px(cs.borderLeftWidth) - px(cs.borderRightWidth) - input.clientWidth;
     // (`clientWidth` is rounded.)
     const padding = `${px(cs.paddingRight) + (gutter < 2 ? 0 : gutter)}px`;
     this.#overlay.style.paddingRight = padding;
@@ -323,10 +325,12 @@ class Field implements ElidedInput<TextareaOptions> {
     if (s.left === '') [s.left, s.top] = ['0px', '0px'];
     const field = this.#input.getBoundingClientRect();
     const copy = this.#overlay.getBoundingClientRect();
-    s.left = `${px(s.left) + field.left - copy.left}px`;
-    s.top = `${px(s.top) + field.top - copy.top}px`;
-    s.width = `${field.width}px`;
-    s.height = `${field.height}px`;
+    // (On screen, under any transform; the styles are in CSS pixels.)
+    const { x, y } = scaleNow(this.#input);
+    s.left = `${px(s.left) + (field.left - copy.left) / x}px`;
+    s.top = `${px(s.top) + (field.top - copy.top) / y}px`;
+    s.width = `${field.width / x}px`;
+    s.height = `${field.height / y}px`;
   }
 
   /** The copy's colour: the input's, or its placeholder's while it's empty. */
@@ -495,7 +499,7 @@ class Field implements ElidedInput<TextareaOptions> {
     const top = mirror.getBoundingClientRect().top;
     mirror.remove();
     if (!r) return;
-    input.scrollTop = (r.top + r.bottom) / 2 - top - (y - input.getBoundingClientRect().top);
+    input.scrollTop = ((r.top + r.bottom) / 2 - top - (y - input.getBoundingClientRect().top)) / scaleNow(input).y;
   }
 
   /**
@@ -513,8 +517,8 @@ class Field implements ElidedInput<TextareaOptions> {
       px(cs.letterSpacing) * graphemes(before).length +
       px(cs.wordSpacing) * spaces;
     // (Firefox counts an input's padding in its clientLeft.)
-    const start = input.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
-    const want = width - (x - start);
+    const box = input.getBoundingClientRect();
+    const want = width - (x - box.left) / scaleOf(input, cs, box).x + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
     input.scrollLeft = Math.max(0, Math.min(input.scrollWidth - input.clientWidth, want));
     return Math.abs(input.scrollLeft - want) < 0.5;
   }

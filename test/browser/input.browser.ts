@@ -18,11 +18,11 @@ afterEach(async () => {
 });
 
 /** A text field holding `value`, cut by `elideInput` until the test ends. */
-function field(value: string, font: string, options: InputOptions = {}, css = '') {
+function field(value: string, font: string, options: InputOptions = {}, css = '', parent: HTMLElement = document.body) {
   const input = track(document.createElement('input'));
   input.value = value;
   input.style.cssText = `font:${font};width:240px;padding:4px 8px;border:1px solid #888;margin:20px;${css}`;
-  document.body.append(input);
+  parent.append(input);
   const f = elideInput(input, options);
   fields.push(f);
   const copy = input.nextElementSibling as HTMLElement;
@@ -168,11 +168,11 @@ describe.each(FONTS)('elideInput, in %s', (font) => {
 const LEDGER = Array.from({ length: 20 }, (_, i) => `line ${String(i + 1).padStart(2, '0')} of the ledger`).join('\n');
 
 /** A textarea four lines tall holding `value`, truncated by `elideInput` until the test ends. */
-function area(value: string, font: string, options: TextareaOptions = {}, css = '') {
+function area(value: string, font: string, options: TextareaOptions = {}, css = '', parent: HTMLElement = document.body) {
   const input = track(document.createElement('textarea'));
   input.value = value;
   input.style.cssText = `font:${font};width:240px;height:80px;padding:4px 8px;border:1px solid #888;margin:20px;resize:none;${css}`;
-  document.body.append(input);
+  parent.append(input);
   const f = elideInput(input, options);
   fields.push(f);
   const copy = input.nextElementSibling as HTMLElement;
@@ -272,5 +272,44 @@ describe.each(FONTS)('elideInput on a textarea, in %s', (font) => {
     expect(input.style.overflowY).toBe('');
     expect(input.style.getPropertyValue('scrollbar-gutter')).toBe('');
     expect(Object.getOwnPropertyDescriptor(input, 'value')).toBeUndefined();
+  });
+});
+
+describe.each([0.6, 1.5])('elideInput under an ancestor scaled by %s', (scale) => {
+  const scaled = () => {
+    const el = track(document.createElement('div'));
+    el.style.cssText = `transform:scale(${scale});transform-origin:0 0`;
+    document.body.append(el);
+    return el;
+  };
+
+  it('cuts the value as unscaled, over the field', () => {
+    const { t: unscaled } = field(PATH, FONTS[0]!, { position: 'middle' });
+    const { input, t, copy } = field(PATH, FONTS[0]!, { position: 'middle' }, '', scaled());
+    expect(t.state.hidden).toEqual(unscaled.state.hidden);
+    const [a, b] = [input.getBoundingClientRect(), copy.getBoundingClientRect()];
+    for (const side of ['left', 'top', 'width', 'height'] as const) expect(Math.abs(a[side] - b[side])).toBeLessThan(0.5);
+  });
+
+  it('puts the caret where the cut text was pressed', async () => {
+    const { input, t } = field(PATH, FONTS[0]!, { position: 'middle' }, '', scaled());
+    const cut = t.state.hidden[0]!;
+    for (const i of [2, cut.start - 2, cut.end + 1, PATH.length - 3]) {
+      const r = graphemeRect(t, i)!;
+      await press(r.left + r.width * 0.25, r.top + r.height / 2);
+      expect(input.selectionStart).toBe(i);
+      input.blur();
+    }
+  });
+
+  it('keeps the line pressed under the pointer in a textarea', async () => {
+    const { input, t } = area(LEDGER, FONTS[0]!, { position: 'middle' }, '', scaled());
+    const i = LEDGER.length - 4;
+    const r = graphemeRect(t, i)!;
+    const [x, y] = [r.left + r.width * 0.25, r.top + r.height / 2];
+    await press(x, y);
+    expect(input.selectionStart).toBe(i);
+    await press(x, y);
+    expect(lineOf(LEDGER, input.selectionStart)).toBe(lineOf(LEDGER, i));
   });
 });
