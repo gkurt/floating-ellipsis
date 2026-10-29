@@ -7,7 +7,7 @@ import type { Range } from './cut.ts';
 import type { Elide, Inside } from './elide.ts';
 import { FORM } from './highlight.ts';
 import { inside } from './inside.ts';
-import { lineBoxes } from './lines.ts';
+import { lineBoxes, scaleOf } from './lines.ts';
 import { markInk } from './marks.ts';
 import { UNIT_COPY } from './markup.ts';
 import { isVisible } from './options.ts';
@@ -110,7 +110,9 @@ function formRange(el: Element): Range {
 export function lineRects(instance: Elide): DOMRect[] {
   const s = inside(instance);
   s.sync();
-  return lineBoxes(s.line).map((l) => new DOMRect(l.left, l.top, l.right - l.left, l.bottom - l.top));
+  const el = instance.element;
+  const k = scaleOf(el, getComputedStyle(el), el.getBoundingClientRect());
+  return lineBoxes([s.line], k).map((l) => new DOMRect(l.left * k.x, l.top * k.y, (l.right - l.left) * k.x, (l.bottom - l.top) * k.y));
 }
 
 /**

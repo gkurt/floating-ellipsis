@@ -37,7 +37,7 @@ import { type Marking, besideEllipsis, fillPiece, shortCopy, shortOf } from './h
 import { openUp } from './inside.ts';
 import { type Join, createJoin, drawMarks, fillWords, forgetWords, reconcile, setFindable, showHidden, space, spellCells } from './join.ts';
 import { type Justified, justify } from './justify.ts';
-import { type LineBox, contentEdges, contentHeight, holdStyle, lineBoxes, lineSpan } from './lines.ts';
+import { type LineBox, type Scale, contentEdges, contentHeight, holdStyle, lineBoxes, lineSpan, scaleOf, unscaled } from './lines.ts';
 import { Phase, type Pass, lockstep } from './lockstep.ts';
 import {
   type EllipsisStyle,
@@ -82,8 +82,10 @@ import { type Form, type ShortPart, formsOf, shortAt, shortRanges, stepsOf, tota
 
 /** What a pass knows about the element and how its text is set. */
 export interface Run extends Typeset {
-  /** The element's border box. */
+  /** The element's border box, on screen. */
   box: DOMRect;
+  /** How much transforms scale the element on screen: every other length here is in CSS pixels. */
+  scale: Scale;
   /** Content box edges and width. */
   left: number;
   right: number;
@@ -915,9 +917,10 @@ export class Elide {
 
   /** What a pass needs to know about the element. Reads layout. */
   #prepare(cs: CSSStyleDeclaration, box: DOMRect): Run {
-    const { left, right } = contentEdges(this.element, cs, box);
+    const scale = scaleOf(this.element, cs, box);
+    const { left, right } = contentEdges(this.element, cs, unscaled(box, scale));
     const typeset = typesetOf(cs);
-    const sums = this.#sumsOf(typeset);
+    const sums = this.#sumsOf(typeset, scale);
     const wordSpacing = finite(parseFloat(cs.wordSpacing));
     const kept =
       cs.whiteSpace === 'pre-wrap' ||
@@ -925,6 +928,7 @@ export class Elide {
     return {
       ...typeset,
       box,
+      scale,
       left,
       right,
       // As a ResizeObserver reports it.
@@ -932,7 +936,7 @@ export class Elide {
       marks: null,
       sums,
       long: sums,
-      suffix: this.#suffix?.measure() ?? 0,
+      suffix: (this.#suffix?.measure() ?? 0) / scale.x,
       wordSpacing,
       fontSize: parseFloat(cs.fontSize),
       hang: kept ? glyphIn(typeset, ' ').advance + wordSpacing : 0,
@@ -949,11 +953,13 @@ export class Elide {
    * as wide as its copy was last laid out in the line: canvas can't measure
    * an image. Reads layout.
    */
-  #sumsOf(typeset: Typeset): Float64Array {
+  #sumsOf(typeset: Typeset, scale: Scale): Float64Array {
     const sums = advanceSums(this.#g, typeset);
     if (this.#units.length === 0) return sums;
-    for (const el of this.#lineEl.querySelectorAll(`[${UNIT_COPY}]`))
-      if (!el.closest('[data-fp-found]')) this.#unitWidths.set(Number(el.getAttribute(UNIT_COPY)), el.getBoundingClientRect().width);
+    for (const el of this.#lineEl.querySelectorAll(`[${UNIT_COPY}]`)) {
+      if (el.closest('[data-fp-found]')) continue;
+      this.#unitWidths.set(Number(el.getAttribute(UNIT_COPY)), el.getBoundingClientRect().width / scale.x);
+    }
     const out = new Float64Array(sums.length);
     for (let i = 0; i < this.#g.length; i++) {
       const own = sums[i + 1]! - sums[i]!;
@@ -967,7 +973,8 @@ export class Elide {
     const el = target instanceof Element ? target.closest(`[${UNIT_COPY}]`) : null;
     if (!el || el.closest('[data-fp-found]')) return;
     const width = this.#unitWidths.get(Number(el.getAttribute(UNIT_COPY)));
-    if (width === undefined || Math.abs(el.getBoundingClientRect().width - width) > 0.01) this.refresh();
+    const scale = this.#lastRun?.scale.x ?? 1;
+    if (width === undefined || Math.abs(el.getBoundingClientRect().width / scale - width) > 0.01) this.refresh();
   }
 
   /**
@@ -1057,9 +1064,9 @@ export class Elide {
    * leading either side puts it) ends above the content box's bottom.
    */
   #fitting(run: Run, boxes: readonly LineBox[]): number {
-    const box = this.element.getBoundingClientRect();
+    const box = unscaled(this.element.getBoundingClientRect(), run.scale);
     const bottom = box.bottom - run.inset;
-    this.#lastHeight = box.height;
+    this.#lastHeight = box.bottom - box.top;
     let fits = 0;
     for (const l of boxes) {
       const half = (run.lineHeight ?? l.bottom - l.top) / 2;
@@ -1071,7 +1078,7 @@ export class Elide {
 
   /** Does the rendered text fit? Reads layout. */
   #measure(run: Run): Fit {
-    const boxes = lineBoxes(...this.#lineParts());
+    const boxes = lineBoxes(this.#lineParts(), run.scale);
     const { lines } = this.#settings;
     const max = lines === 'fit' ? this.#fitting(run, boxes) : lines;
     const width = run.right - run.left;
@@ -1090,9 +1097,9 @@ export class Elide {
   }
 
   /** Index of the line ellipsis `index` is on, or -1. */
-  #lineOf(index: number, lines: { top: number; bottom: number }[]): number {
-    const r = this.#joins[index]!.ellipsis.getBoundingClientRect();
-    const middle = r.top + r.height / 2;
+  #lineOf(run: Run, index: number, lines: { top: number; bottom: number }[]): number {
+    const r = unscaled(this.#joins[index]!.ellipsis.getBoundingClientRect(), run.scale);
+    const middle = (r.top + r.bottom) / 2;
     return lines.findIndex((l) => middle >= l.top && middle <= l.bottom);
   }
 
@@ -1317,7 +1324,8 @@ export class Elide {
    * single line is expected to end, that stands in for reading it.
    */
   #justified(run: Run, plans: GapPlan[], lines: number, hidden: readonly Range[], end: number | null = null): Justified {
-    const boxes = (): LineBox[] => (end === null ? lineBoxes(...this.#lineParts()) : [{ top: 0, bottom: 0, left: run.left, right: end }]);
+    const boxes = (): LineBox[] =>
+      end === null ? lineBoxes(this.#lineParts(), run.scale) : [{ top: 0, bottom: 0, left: run.left, right: end }];
     const marks = run.marks!;
     return {
       // An ellipsis on cells keeps its width, so the text after it keeps to them.
@@ -1342,8 +1350,8 @@ export class Elide {
       ),
       known: end !== null,
       boxes,
-      lineOf: (j, boxes) => (end === null ? this.#lineOf(j, boxes) : 0),
-      measure: () => lineBoxes(...this.#lineParts()),
+      lineOf: (j, boxes) => (end === null ? this.#lineOf(run, j, boxes) : 0),
+      measure: () => lineBoxes(this.#lineParts(), run.scale),
       fits: () => this.#measure(run),
       space: (j, left, right, inner) => space(this.#joins[j]!, left, right, inner),
       spread: (ls) => (this.#lineEl.style.letterSpacing = ls !== 0 ? `${run.letterSpacing + ls}px` : ''),
@@ -1560,7 +1568,7 @@ export class Elide {
       this.#lastRun?.glyphs === run.glyphs &&
       (this.#lastRun.marks === run.marks || !previous?.truncated);
     if (predictable && this.#g.length > 0 && (fresh || steady)) {
-      const { end } = lineSpan([this.#lineEl], run.left, run.right);
+      const { end } = lineSpan([this.#lineEl], run.scale, run.left, run.right);
       const added = fresh ? 0 : (previous?.gaps.reduce((sum, g) => sum + g.slack, 0) ?? 0);
       base = { cut: fresh ? [] : (previous?.hidden.map((p): Range => [p.start, p.end]) ?? []), end: end - added };
     }
