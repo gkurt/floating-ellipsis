@@ -1,3 +1,9 @@
+## floating-ellipsis@1.0.3
+
+### Popovers and menus open with their ellipses in place
+
+`transitions` animates only once the element has been on screen, and an element shown again after `display: none` is truncated before it paints, instead of a frame later.
+
 ## floating-ellipsis@1.0.2
 
 ### Text under a scaled ancestor truncates as it would unscaled
