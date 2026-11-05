@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { server } from 'vitest/browser';
 import type { Elide } from '#src/elide.ts';
 import { ellipsisArea, ellipsisInk, lineRects, markInks } from '#src/geometry.ts';
 import { glyphInk, glyphs } from '#src/glyphs.ts';
@@ -59,7 +60,11 @@ describe.each(FONTS)('under a scaled ancestor, in %s', (font) => {
     ['tightened in the middle, with padding and a border', { tighten: '0.05em', position: 'middle' }, 'padding:0 7px;border:3px solid'],
   ];
 
-  it.each(cases)('cuts as it does unscaled: %s', (_, options, css) => {
+  // Firefox snaps every transformed box to a 60th of a screen pixel, at
+  // powers of two too: at 0.25 that passes the twentieth of a pixel a line
+  // may overrun the edge by, so a cut that close to it can differ by a
+  // grapheme, and at 2 the spacing by a few hundredths of a pixel.
+  it.skipIf(server.browser === 'firefox').each(cases)('cuts as it does unscaled: %s', (_, options, css) => {
     const instances = SCALES.map((scale) => make(box(PROSE, `font:${font};${css}`, scaled(scale)), options));
     const unscaled = instances[SCALES.indexOf(1)]!;
     let truncated = 0;

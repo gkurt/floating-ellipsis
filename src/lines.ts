@@ -30,7 +30,8 @@ export function scaleOf(el: HTMLElement, cs: CSSStyleDeclaration, box: DOMRectRe
   const along = (screen: number, size: string, offset: number, client: number, a: string, b: string) => {
     const used = px(size);
     const border = px(`border-${a}-width`) + px(`border-${b}-width`);
-    const gutter = offset - client - Math.round(border);
+    // (An input has no scrollbar, and Firefox leaves its padding out of `clientWidth`.)
+    const gutter = el.localName === 'input' ? 0 : offset - client - Math.round(border);
     // An inline element has no used size, only its offset size, rounded. A
     // content box's leaves out padding, border and a scrollbar (see `contentEdges`).
     const css = Number.isNaN(used)

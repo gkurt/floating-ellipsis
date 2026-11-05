@@ -143,7 +143,9 @@ At 0.46, the gaps and spacing that fill a line differ from unscaled by around
 a hundredth of a pixel; the cut doesn't. Below a scale of about a third that
 error passes the twentieth of a pixel a line may overrun the edge by, so a
 line that ends that close to the edge may keep a grapheme more or less than
-unscaled.
+unscaled. Firefox snaps every transformed box to a 60th of a screen pixel,
+at powers of two too: there the spacing differs by a few hundredths of a pixel
+at any scale, and at 0.25 a cut that close to the edge can too.
 
 `geometry` reports boxes on screen: an ink box or an ellipsis' area adds font
 metrics and margins scaled by the element's scale at the time it's called. Only
