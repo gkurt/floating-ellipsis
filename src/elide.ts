@@ -298,7 +298,7 @@ export class Elide {
   /** The box as tall as the element's max-height, while one is watched (see `watchRoom`), and its height. */
   #room: HTMLElement | null = null;
   #roomHeight = -1;
-  /** Far from the screen, as far as the IntersectionObserver knows (null until it has said). */
+  /** Far from the screen, as far as the IntersectionObserver knows (null until it has said, and while not rendered). */
   #far: boolean | null = null;
   /** A pass put off while far from the screen (see `putOff`). */
   #owed: ChangeReason | null = null;
@@ -1424,7 +1424,12 @@ export class Elide {
     for (const entry of entries) {
       const instance = observed.get(entry.target);
       if (!instance) continue;
-      instance.#far = !entry.isIntersecting;
+      // An element that isn't rendered (`display: none`, a closed popover)
+      // isn't far: once shown, it may be anywhere, and should be truncated
+      // before it paints, so the pass goes by its box until the observer says.
+      const r = entry.boundingClientRect;
+      const unrendered = !entry.isIntersecting && r.width === 0 && r.height === 0 && r.x === 0 && r.y === 0;
+      instance.#far = entry.isIntersecting ? false : unrendered ? null : true;
       if (!instance.#far && instance.#owed) instance.#schedule(instance.#owed);
     }
   }

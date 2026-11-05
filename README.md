@@ -549,7 +549,8 @@ const stop = transitions(t, { effect: 'merge' });
 | `duration` | `460`     | Milliseconds. Leaving glyphs take less when squeezed or dragged fast.               |
 | `glide`    | `true`    | The ellipsis' spacing glides when the truncation changes. Works without glyph mode. |
 
-Respects `prefers-reduced-motion`.
+Respects `prefers-reduced-motion`. Only animates on screen: an element that
+opens already truncated (a popover, a menu) shows its ellipses at once.
 
 ## Tooltips
 

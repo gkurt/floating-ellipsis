@@ -184,7 +184,9 @@ and passes run in lockstep: all read, then all write, and one layout serves
 them all. Passes are queued in a microtask; reading from an instance flushes
 its pending pass. One ResizeObserver serves every instance, and an
 IntersectionObserver puts off elements more than a screen away, when what they
-show meanwhile can't change their height. Inside content that
+show meanwhile can't change their height. An element that isn't rendered
+(`display: none`, a closed popover) isn't far: shown again, it is truncated in
+the frame it shows, before that frame paints. Inside content that
 `content-visibility: auto` skips, an instance waits until it is rendered.
 
 Creating 900 instances, or resizing the grid they're in, takes a handful of
@@ -684,7 +686,12 @@ dots spread into freed room as the glyphs there shrink, which is what
 squeezes them out.
 
 `transitions` can be attached at any time; the first change after it animates
-from what's showing.
+from what's showing. Changes animate only while the element is on screen, as an
+IntersectionObserver last said, which it says after the frame that shows the
+element. Nothing animates from a cut nobody saw: text truncated as its element
+is placed and sized (a popover or menu sized to the room it has once open), an
+element shown again at another width, or a change in the frame `transitions`
+is attached in.
 
 ## Inputs
 

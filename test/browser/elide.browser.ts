@@ -481,6 +481,29 @@ describe('elide', () => {
     expectFits(t);
   });
 
+  it('truncates an element shown again before it paints, at its new width', async () => {
+    const el = box(PROSE, 'width:300px');
+    const t = make(el, { position: 'middle' });
+    await frames(3);
+    const cut = rendered(t);
+    el.style.display = 'none';
+    await frames(3);
+    // A ResizeObserver made after the instance's hears of the size after it,
+    // in the same frame, before that frame paints.
+    const seen = new Promise<string>((resolve) => {
+      const ro = new ResizeObserver(([entry]) => {
+        if (entry!.contentRect.width === 0) return;
+        ro.disconnect();
+        resolve(rendered(t));
+      });
+      ro.observe(el);
+    });
+    el.style.width = '150px';
+    el.style.display = '';
+    expect(await seen).not.toBe(cut);
+    expectFits(t);
+  });
+
   it('updates text and options, and reports what changed', () => {
     const changes: { shown: number[]; hidden: number[]; reset: boolean }[] = [];
     const t = make(box(PROSE));

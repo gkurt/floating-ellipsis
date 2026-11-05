@@ -167,6 +167,16 @@ function settle(x: number, v: number, omega: number, dt: number): [number, numbe
 
 /** Below this, an animation isn't worth showing. */
 const INSTANT = 60;
+
+/**
+ * Whether each host is on screen, as an IntersectionObserver last said. It
+ * says so after the frame that first shows a host, so a host is off screen
+ * until then: while it is created, placed and sized (a popover sized to the
+ * room it has once open), and while it is hidden.
+ */
+const onScreen = new WeakMap<Element, boolean>();
+let screenObserver: IntersectionObserver | undefined;
+
 /** A merging glyph narrower than this (px) is gone. */
 const SPECK = 0.75;
 
@@ -727,8 +737,13 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
     return duration * 0.85 * leeway;
   }
 
+  screenObserver ??= new IntersectionObserver((entries) => {
+    for (const e of entries) onScreen.set(e.target, e.isIntersecting);
+  });
+  screenObserver.observe(host);
   const offChange = onChange(instance, (change: ElideChange) => {
-    if (change.reset || !change.previous || reduced()) {
+    // Off screen, nobody saw what it changed from.
+    if (change.reset || !change.previous || reduced() || !onScreen.get(host)) {
       land();
       return;
     }
@@ -786,6 +801,8 @@ export function transitions(instance: Elide, options: TransitionOptions = {}): (
   return () => {
     offChange();
     offRender();
+    screenObserver!.unobserve(host);
+    onScreen.delete(host);
     land();
     for (const f of Array.from(fades)) f.anim.cancel();
     regions.clear();

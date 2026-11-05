@@ -21,8 +21,27 @@ async function animated(options: TransitionOptions = {}, width = 360): Promise<E
   // Attached before the first pass, so leaving glyphs know where they were painted.
   stops.push(transitions(t, options));
   expect(t.truncated).toBe(true);
-  await frames();
+  await onScreen(t.element);
   return t;
+}
+
+/**
+ * Wait until `transitions` knows `el` is on screen: it animates nothing until
+ * its IntersectionObserver has said so. That can take a few frames on a busy
+ * page, and Chromium may tell another observer first, so this one's word is
+ * followed by a frame.
+ */
+async function onScreen(el: Element): Promise<void> {
+  await frames();
+  await new Promise<void>((resolve) => {
+    const io = new IntersectionObserver(([entry]) => {
+      if (!entry!.isIntersecting) return;
+      io.disconnect();
+      resolve();
+    });
+    io.observe(el);
+  });
+  await frame();
 }
 
 /** Narrow the element and re-truncate now. */
@@ -139,7 +158,7 @@ describe('transitions', () => {
   ] as const)('%s at %s: glyphs coming and going never overlap the text, the marks or each other', async (effect, position) => {
     const t = make(box(PROSE, 'width:360px'), { position, glyphs });
     stops.push(transitions(t, { effect }));
-    await frames();
+    await onScreen(t.element);
     const seen: string[] = [];
     const widths = [...Array.from({ length: 40 }, (_, k) => 360 - k * 3), ...Array.from({ length: 40 }, (_, k) => 240 + k * 3)];
     let drawn = 0;
@@ -159,6 +178,31 @@ describe('transitions', () => {
     expect(t.truncated).toBe(true);
     await frames();
     stops.push(transitions(t));
+    await onScreen(t.element);
+    cutMore(t);
+    expect(ghosts(t)).toBeGreaterThan(0);
+  });
+
+  it('animates nothing before the element has been on screen: truncated as it is sized', () => {
+    // A popover laid out at its full width, then sized to the room it has, before it paints.
+    const t = make(box(PROSE, 'width:max-content'), { position: 'middle', glyphs });
+    stops.push(transitions(t));
+    expect(t.truncated).toBe(false);
+    narrow(t, 240);
+    expect(ghosts(t)).toBe(0);
+    expect(markElements(t, 0).every((m) => m.style.transform === '')).toBe(true);
+  });
+
+  it('animates nothing as an element is shown again at another width, then animates what follows', async () => {
+    const t = await animated();
+    t.element.style.display = 'none';
+    await frames();
+    t.element.style.display = '';
+    narrow(t, 240);
+    expect(ghosts(t)).toBe(0);
+    await frame();
+    expect(markElements(t, 0).every((m) => m.style.transform === '')).toBe(true);
+    await onScreen(t.element);
     cutMore(t);
     expect(ghosts(t)).toBeGreaterThan(0);
   });
@@ -240,7 +284,7 @@ describe('transitions', () => {
   it('glides without glyph mode too', async () => {
     const t = make(box(PROSE, 'width:360px'), { position: 'middle' });
     stops.push(transitions(t));
-    await frames();
+    await onScreen(t.element);
     narrow(t, 240);
     expect(ghosts(t)).toBe(0);
     await frame();
@@ -250,7 +294,7 @@ describe('transitions', () => {
   it('arriving glyphs take their time, however fast the text widens', async () => {
     const t = make(box(PROSE, 'width:200px'), { position: 'middle', glyphs });
     stops.push(transitions(t));
-    await frames();
+    await onScreen(t.element);
     for (let w = 200; w <= 300; w += 6) {
       t.element.style.width = `${w}px`;
       t.refresh();
@@ -263,7 +307,7 @@ describe('transitions', () => {
   it('keeps up with changes faster than it can play them', async () => {
     const t = make(box(PROSE, 'width:420px'), { position: 'middle', glyphs });
     stops.push(transitions(t, { effect: 'merge' }));
-    await frames();
+    await onScreen(t.element);
     let most = 0;
     for (let w = 420; w >= 120; w -= 6) {
       narrow(t, w);
