@@ -12,6 +12,7 @@ import { type Elide, elide } from '#src/elide.ts';
 import { glyphs } from '#src/glyphs.ts';
 import { separators, words } from '#src/index.ts';
 import type { ElideOptions } from '#src/options.ts';
+import { transitions } from '#src/transitions.ts';
 import { PROSE, frames } from './helpers.ts';
 
 const PROFILE = import.meta.env.BENCH_PROFILE === '1';
@@ -156,6 +157,23 @@ async function drag({ host }: Made, from = 900, to = 600, steps = 10) {
     host.style.width = `${from + ((to - from) * s) / steps}px`;
     await frames(1);
   }
+}
+
+interface Moving extends Made {
+  stops: (() => void)[];
+}
+
+/** A grid truncated in the middle, with `transitions` on every instance when `motion`. */
+function moving(rows: number, cells: number, motion: boolean) {
+  return async (): Promise<Moving> => {
+    const m = await made(rows, cells, mixed, () => ({ position: 'middle' }))();
+    return { ...m, stops: motion ? m.instances.map((t) => transitions(t)) : [] };
+  };
+}
+
+function stop(m: Moving) {
+  for (const s of m.stops) s();
+  teardown(m);
 }
 
 const mixed = (i: number) => `${i} ${i % 2 === 1 ? path() : prose(18)}`;
@@ -322,6 +340,29 @@ describe('bench', () => {
       (m) => drag(m, 900, 600, 6),
       teardown,
     );
+  });
+
+  it('a hidden panel shown again', async () => {
+    // A tab panel or a menu kept mounted, `display: none` until shown, by then
+    // narrower. Most of 900 are far off screen; 30 fit on it, so every pass
+    // runs as it shows.
+    const hidden =
+      (rows: number, cells: number, motion = false) =>
+      async (): Promise<Moving> => {
+        const m = await moving(rows, cells, motion)();
+        m.host.style.display = 'none';
+        await frames(3);
+        return m;
+      };
+    const show = async ({ host }: Made) => {
+      host.style.width = '700px';
+      host.style.display = '';
+      await frames(2);
+    };
+    await bench('hidden 900: show narrower', hidden(300, 3), show, stop);
+    await bench('hidden 30: show narrower', hidden(15, 2), show, stop);
+    await bench('hidden 30 + transitions: show narrower', hidden(15, 2, true), show, stop);
+    await bench('transitions 100: drag', moving(50, 2, true), (m) => drag(m), stop);
   });
 
   it('glyphs and listeners', async () => {
