@@ -1,10 +1,14 @@
 core:changelogs:
-  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Popovers and menus open with their ellipses in place\n\n`transitions` animates only once the element has been on screen, and an element shown again after `display: none` is truncated before it paints, instead of a frame later.\n"
-    filename: no-animation-on-open.md
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: patch\n---\n\n### Pressing a truncated input puts the caret on the glyph pressed in Firefox\n\nAn input with padding read as scaled in Firefox, so the caret landed a glyph or two off.\n"
+    filename: input-caret-firefox.md
+    v: 0.0.0
+  - content: "---\npackages:\n  floating-ellipsis:\n    type: minor\n---\n\n### Tooltips over text under a scaled ancestor\n\nA full-text tip (`reveal: 'grow'` or `'expand'`) over text under a `transform: scale()`, such as a zoomed canvas, is drawn at the text's scale, so its glyphs land on the original's at their size, and it grows, wraps and selects as it does unscaled. Any tip now closes once its text moves or changes size on screen, as when a canvas pans or zooms under it.\n"
+    filename: tooltip-scale.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - no-animation-on-open.md
+      - input-caret-firefox.md
+      - tooltip-scale.md
     id: npm:floating-ellipsis
     updated: true
   - id: npm:floating-ellipsis-next-example
