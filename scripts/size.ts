@@ -15,7 +15,7 @@ const BUDGETS: Record<string, number> = {
   input: 29.75 * 1024,
   autosize: 0.5 * 1024,
   transitions: 6.75 * 1024,
-  tooltip: 7.75 * 1024,
+  tooltip: 8 * 1024,
   text: 6.5 * 1024,
   element: 30.5 * 1024,
   react: 28.75 * 1024,

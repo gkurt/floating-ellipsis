@@ -2,6 +2,7 @@ import type { Elide } from './elide.ts';
 import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements, shortElement } from './geometry.ts';
 
 import { isWhitespace } from './graphemes.ts';
+import { type Scale, scaleNow } from './lines.ts';
 import type { ElideState } from './options.ts';
 
 /**
@@ -70,7 +71,8 @@ export interface TooltipOptions {
    * modal `<dialog>` to show tips for text in it, since the dialog is drawn
    * above the rest of the page. A container that is the containing block of
    * fixed elements (it has a transform, filter or `contain`) works too, as
-   * long as it isn't scaled or rotated.
+   * long as it isn't scaled or rotated. (The text may be: a full-text tip is
+   * drawn at the scale the text is.)
    */
   container?: Element;
   /** Called when a tip opens, after it's laid out. */
@@ -163,6 +165,10 @@ export class Tooltip {
   #presses = { count: 0, time: 0, x: 0, y: 0 };
   /** Where the tip's `left: 0; top: 0` is in the viewport (not at 0, 0 in a container that is its containing block). */
   #frame = { x: 0, y: 0 };
+  /** The scale a full-text tip is drawn at, the text's: screen pixels per pixel of the tip's own. */
+  #scale: Scale = { x: 1, y: 1 };
+  /** The frame that checks whether the tip's text has moved. */
+  #following = 0;
   #listening = new AbortController();
 
   constructor(options: TooltipOptions = {}) {
@@ -304,7 +310,27 @@ export class Tooltip {
     // doesn't count.)
     const laid = target.instance.state;
     this.#unrender = target.instance.onRender((state) => !sameLayout(state, laid) && this.#close());
+    this.#follow(target.instance);
     this.#settings.onShow?.(target);
+  }
+
+  /**
+   * Close the tip once its text moves or changes size on screen, as when a
+   * canvas it's on pans or zooms, or something moves it without a scroll: it
+   * no longer lines up. Checked once a frame while it's open.
+   */
+  #follow(t: Elide) {
+    const where = () => {
+      const r = t.element.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height];
+    };
+    const was = where();
+    const check = () => {
+      this.#following = 0;
+      if (where().some((v, i) => Math.abs(v - was[i]!) > 0.5)) return this.#close();
+      this.#following = requestAnimationFrame(check);
+    };
+    this.#following = requestAnimationFrame(check);
   }
 
   /**
@@ -325,6 +351,8 @@ export class Tooltip {
     if (target.ellipsis !== null) target.instance.ellipses[target.ellipsis]?.removeAttribute(OPEN);
     this.#unrender?.();
     this.#unrender = null;
+    cancelAnimationFrame(this.#following);
+    this.#following = 0;
     this.#current = null;
     this.#closedAt = performance.now();
     this.#settings.onHide?.(target);
@@ -403,7 +431,10 @@ export class Tooltip {
    * the original's. Text that runs past the window's edge, or past
    * `maxWidth`, wraps there (after `breaks`, where it can), and widens to the
    * left only when wrapping would make it narrower than `aspect`. It moves
-   * up if it would run off the bottom.
+   * up if it would run off the bottom. Under a scaled ancestor, as on a
+   * zoomed canvas, it's drawn at the text's scale, so its glyphs are the
+   * original's size: it's laid out in its own pixels and scaled from its
+   * top-left corner, and everything below is on screen but what's set on it.
    */
   #full(target: TooltipTarget, grow: boolean): boolean {
     const t = target.instance;
@@ -412,10 +443,15 @@ export class Tooltip {
     if (!first || t.graphemes.length === 0) return false;
     const origin = grow ? this.#origin(t) : null;
     const font = getComputedStyle(t.element);
+    const scale = scaleNow(t.element);
+    this.#scale = scale;
 
     const tip = this.element;
     for (const p of FONT) tip.style.setProperty(p, font.getPropertyValue(p));
+    const scaled = scale.x !== 1 || scale.y !== 1;
     Object.assign(tip.style, {
+      transform: scaled ? `scale(${scale.x}, ${scale.y})` : '',
+      transformOrigin: scaled ? '0 0' : '',
       width: '',
       height: '',
       maxWidth: 'none',
@@ -448,7 +484,7 @@ export class Tooltip {
     const left = Math.min(...lines.map((l) => l.left));
     const right = Math.max(...lines.map((l) => l.right));
     const view = document.documentElement.clientWidth;
-    const widest = Math.min(view - edge * 2, Math.max(right - left, maxWidth * parseFloat(font.fontSize)));
+    const widest = Math.min(view - edge * 2, Math.max(right - left, maxWidth * parseFloat(font.fontSize) * scale.x));
     let x = Math.min(Math.max(first.left - dx, edge), view - edge);
     const anchored = Math.min(view - edge - x, widest);
     if (box.width > anchored) {
@@ -457,7 +493,7 @@ export class Tooltip {
       spans.forEach((span, i) => after.has(t.graphemes[i]!) && span.after(document.createElement('wbr')));
       Object.assign(tip.style, { whiteSpace: '', overflowWrap: 'break-word' });
       const wide = (width: number) => {
-        tip.style.maxWidth = `${width}px`;
+        tip.style.maxWidth = `${width / scale.x}px`;
         const r = tip.getBoundingClientRect();
         return r.width >= r.height * aspect;
       };
@@ -469,7 +505,7 @@ export class Tooltip {
         if (wide(mid)) hi = mid;
         else lo = mid;
       }
-      tip.style.maxWidth = `${hi}px`;
+      tip.style.maxWidth = `${hi / scale.x}px`;
       box = tip.getBoundingClientRect();
       x = Math.max(Math.min(x, view - edge - box.width), edge);
     }
@@ -486,7 +522,7 @@ export class Tooltip {
     if (!origin) return true;
 
     // The lines' box, padded like the tip: where the background grows from.
-    const padRight = parseFloat(getComputedStyle(tip).paddingRight);
+    const padRight = parseFloat(getComputedStyle(tip).paddingRight) * scale.x;
     const last = lines[lines.length - 1]!;
     const start = {
       left: left - dx,
@@ -532,6 +568,8 @@ export class Tooltip {
    */
   #grow(origin: Origin, targets: DOMRect[], box: DOMRect, start: Record<'left' | 'right' | 'top' | 'bottom', number>, bg: HTMLElement) {
     const { duration, easing } = this.#settings;
+    // Lengths on screen, as lengths set inside the tip, which its scale scales.
+    const { x: sx, y: sy } = this.#scale;
     const timing = { duration, easing, fill: 'backwards' } as const;
     const tip = this.element;
     const spans = this.#spans;
@@ -559,7 +597,7 @@ export class Tooltip {
     });
 
     const text = spans[0]!.parentElement!;
-    Object.assign(tip.style, { width: `${box.width}px`, height: `${box.height}px` });
+    Object.assign(tip.style, { width: `${box.width / sx}px`, height: `${box.height / sy}px` });
     Object.assign(text.style, { position: 'absolute', inset: '0', contain: 'layout' });
     const groups = runs.map(({ start, end }) => {
       const group = document.createElement('span');
@@ -597,10 +635,10 @@ export class Tooltip {
       const i = lead[k]!;
       const at = placed[k]!;
       const dx = targets[i]!.left - at.left;
-      group.style.left = `${dx}px`;
-      group.style.top = `${targets[i]!.top - at.top}px`;
+      group.style.left = `${dx / sx}px`;
+      group.style.top = `${(targets[i]!.top - at.top) / sy}px`;
       if (part[i]! < 0) {
-        const [x, y] = [from[i]!.left - targets[i]!.left, from[i]!.top - targets[i]!.top];
+        const [x, y] = [(from[i]!.left - targets[i]!.left) / sx, (from[i]!.top - targets[i]!.top) / sy];
         group.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: 'none' }], timing);
         return;
       }
@@ -617,14 +655,14 @@ export class Tooltip {
         transform: 'none',
         pointerEvents: 'none',
         userSelect: 'none',
-        left: `${rect.left - box.left}px`,
-        top: `${rect.top - box.top}px`,
+        left: `${(rect.left - box.left) / sx}px`,
+        top: `${(rect.top - box.top) / sy}px`,
       });
       tip.append(dot);
       dot.animate({ opacity: [1, 0] }, { duration: duration * 0.35, fill: 'forwards' });
     }
 
-    const inset = `${start.top - box.top}px ${box.right - start.right}px ${box.bottom - start.bottom}px ${start.left - box.left}px`;
+    const inset = `${(start.top - box.top) / sy}px ${(box.right - start.right) / sx}px ${(box.bottom - start.bottom) / sy}px ${(start.left - box.left) / sx}px`;
     const growing = bg.animate([{ inset }, { inset: '0px' }], timing);
     this.#landing = () => {
       for (const group of groups) group.removeAttribute('style');
@@ -653,7 +691,9 @@ export class Tooltip {
     if (!ink || !part) return false;
     const tip = this.element;
     for (const p of FONT) tip.style.removeProperty(p);
-    Object.assign(tip.style, { maxWidth: '', whiteSpace: '', overflowWrap: '', userSelect: '' });
+    // A peek is set in the tip's own font, beside the text rather than over it: it isn't scaled with it.
+    this.#scale = { x: 1, y: 1 };
+    Object.assign(tip.style, { transform: '', transformOrigin: '', maxWidth: '', whiteSpace: '', overflowWrap: '', userSelect: '' });
     this.#spans = [];
     this.#fill('peek', ...contentOf(target.instance, part.start, part.end));
 
@@ -766,8 +806,9 @@ export class Tooltip {
     const tip = this.element;
     const r = tip.getBoundingClientRect();
     const cs = getComputedStyle(tip);
-    x = Math.min(Math.max(x, r.left + parseFloat(cs.paddingLeft) + 1), r.right - parseFloat(cs.paddingRight) - 1);
-    y = Math.min(Math.max(y, r.top + parseFloat(cs.paddingTop) + 1), r.bottom - parseFloat(cs.paddingBottom) - 1);
+    const { x: sx, y: sy } = this.#scale;
+    x = Math.min(Math.max(x, r.left + parseFloat(cs.paddingLeft) * sx + 1), r.right - parseFloat(cs.paddingRight) * sx - 1);
+    y = Math.min(Math.max(y, r.top + parseFloat(cs.paddingTop) * sy + 1), r.bottom - parseFloat(cs.paddingBottom) * sy - 1);
     const caret = document.caretPositionFromPoint(x, y);
     const node = caret?.offsetNode;
     const offset = caret?.offset ?? 0;

@@ -150,9 +150,17 @@ at any scale, and at 0.25 a cut that close to the edge can too.
 `geometry` reports boxes on screen: an ink box or an ellipsis' area adds font
 metrics and margins scaled by the element's scale at the time it's called. Only
 a scale (and a translation) is read: the bounding box of a rotated or skewed
-element isn't its size. `tooltip` and `transitions` don't account for a scale
-yet: the tip is laid out unscaled in `document.body`, and glides move glyphs by
-distances read on screen.
+element isn't its size. A full-text tip is drawn at the text's scale: it's laid
+out in its own CSS pixels in `document.body`, with the text's font, and scaled
+from its top-left corner by the scale the text is under, so its glyphs are the
+original's size and land on them; what it reads of itself and of the line is on
+screen, and what it sets inside itself (its width, where each run of a 'grow'
+starts, the background's inset) is divided by that scale. A peek is set in the
+tip's own font beside the text, and isn't scaled. A scale changing, as a canvas
+zooms, or the text moving, as it pans, fires nothing a tip hears, so while one
+is open it reads the element's box once a frame and closes when it moves.
+`transitions` doesn't account for a scale yet: glides move glyphs by distances
+read on screen.
 
 ## Places along the line
 

@@ -566,7 +566,9 @@ for (const row of rows) tips.attach(elide(row.querySelector('.path'), { position
 A headless tooltip for truncated text, shared by every instance attached to it.
 With `reveal: 'grow'` the tip starts as a copy of the line and grows into the
 full text; `'expand'` shows it at once; `'peek'` shows only what the hovered
-ellipsis hides. Pressing a tip makes its text selectable.
+ellipsis hides. Pressing a tip makes its text selectable. Over text under a
+scaled ancestor, a zoomed canvas, a full-text tip is drawn at the text's scale,
+and a tip closes when its text moves or rescales under it.
 
 | Option       | Default  |                                                                         |
 | ------------ | -------- | ----------------------------------------------------------------------- |
@@ -654,8 +656,8 @@ and transitions respect reduced motion.
 - Under a scaled ancestor (`transform: scale()`), text truncates as it
   would unscaled, but below a scale of about a third a line ending within
   a few hundredths of a pixel of the edge may keep a grapheme more or less.
-  Rotation and skew aren't supported, and `tooltip` and `transitions`
-  don't account for the scale yet.
+  Rotation and skew aren't supported, and `transitions` doesn't account
+  for the scale yet. A full-text tooltip is drawn at the text's scale.
 
 More in [How it works](docs/how-it-works.md). To work on the library, see
 [CONTRIBUTING.md](CONTRIBUTING.md).

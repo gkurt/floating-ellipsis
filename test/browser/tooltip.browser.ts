@@ -3,7 +3,7 @@ import { commands, server, userEvent } from 'vitest/browser';
 import type { Elide } from '#src/elide.ts';
 import { ellipsisArea, ellipsisInk, graphemeRect } from '#src/geometry.ts';
 import { type Tooltip, type TooltipOptions, tooltip } from '#src/tooltip.ts';
-import { PATH, PROSE, box, frames, make, spacer } from './helpers.ts';
+import { PATH, PROSE, box, frames, make, spacer, track } from './helpers.ts';
 
 // WebKit doesn't kern across element boundaries, and the tip sets every
 // grapheme in a span of its own: its glyphs land up to a pixel off the
@@ -53,8 +53,10 @@ const finish = (tip: Tooltip) => tip.element.getAnimations({ subtree: true }).fo
 
 const center = (r: DOMRect): [number, number] => [r.left + r.width / 2, r.top + r.height / 2];
 
-/** Every grapheme showing in the line is under its copy in the tip, as far as the tip's first line goes. */
-function expectOnLine(tip: Tooltip, t: Elide) {
+/** Every grapheme showing in the line is under its copy in the tip, as far as the tip's first line goes; drawn at `scale`, as far off as it scales. */
+function expectOnLine(tip: Tooltip, t: Elide, scale = 1) {
+  const near = (actual: number, expected: number, what: string) =>
+    expect(Math.abs(actual - expected), what).toBeLessThan(slack * Math.max(1, scale));
   const spans = graphemeSpans(tip);
   const top = spans[0]!.getBoundingClientRect().top;
   const part = t.state.hidden[0]!;
@@ -62,8 +64,8 @@ function expectOnLine(tip: Tooltip, t: Elide) {
     const r = spans[i]!.getBoundingClientRect();
     if (Math.abs(r.top - top) > 1) break;
     const original = graphemeRect(t, i)!;
-    expectNear(r.left, original.left, `grapheme ${i} '${t.graphemes[i]}'`);
-    expectNear(r.top, original.top, `grapheme ${i} '${t.graphemes[i]}'`);
+    near(r.left, original.left, `grapheme ${i} '${t.graphemes[i]}'`);
+    near(r.top, original.top, `grapheme ${i} '${t.graphemes[i]}'`);
   }
 }
 
@@ -362,5 +364,77 @@ describe('tooltip', () => {
       tip.hide();
       expect(t.element.contains(getSelection()!.anchorNode)).toBe(true);
     });
+  });
+});
+
+describe('tooltip under a scaled ancestor', () => {
+  /** A wrapper scaled by `scale`, as a zoomed canvas scales what it holds, on the page until the test ends. */
+  function scaled(scale: number): HTMLDivElement {
+    const el = track(document.createElement('div'));
+    el.style.cssText = `transform:scale(${scale});transform-origin:0 0;margin:40px 0 0 30px`;
+    document.body.append(el);
+    return el;
+  }
+
+  /** PROSE cut in the middle at `scale`, with a tip for it. */
+  function at(scale: number, options: TooltipOptions) {
+    const wrapper = scaled(scale);
+    const t = make(box(PROSE, 'width:200px', wrapper), { position: 'middle' });
+    const tip = make_tip(options);
+    tip.attach(t);
+    expect(tip.show(t)).toBe(true);
+    return { wrapper, t, tip };
+  }
+
+  it.each([0.5, 1.5])('lays the full text over the line at its scale, glyph on glyph: %s', (scale) => {
+    const { t, tip } = at(scale, { reveal: 'expand' });
+    expect(tipText(tip)).toBe(PROSE);
+    expectOnLine(tip, t, scale);
+    // Its glyphs are drawn the original's size.
+    const original = graphemeRect(t, 0)!;
+    const copy = graphemeSpans(tip)[0]!.getBoundingClientRect();
+    expect(Math.abs(copy.width - original.width)).toBeLessThan(slack * Math.max(1, scale));
+  });
+
+  it.each([0.5, 1.5])('grows from where every grapheme showing is, and lands on the line: %s', async (scale) => {
+    const { t, tip } = at(scale, { reveal: 'grow' });
+    for (const a of tip.element.getAnimations({ subtree: true })) {
+      a.pause();
+      a.currentTime = 0;
+    }
+    const spans = graphemeSpans(tip);
+    const part = t.state.hidden[0]!;
+    for (let i = 0; i < t.state.length; i++) {
+      if ((i >= part.start && i < part.end) || t.graphemes[i] === ' ') continue;
+      const r = spans[i]!.getBoundingClientRect();
+      const original = graphemeRect(t, i)!;
+      expect(Math.abs(r.left - original.left), `grapheme ${i}`).toBeLessThan(slack * Math.max(1, scale));
+      expect(Math.abs(r.top - original.top), `grapheme ${i}`).toBeLessThan(slack * Math.max(1, scale));
+    }
+    finish(tip);
+    await frames();
+    expect(tipText(tip)).toBe(PROSE);
+    expectOnLine(tip, t, scale);
+  });
+
+  it.each(['scale(1.2)', 'translate(24px, 0) scale(1.5)'])('closes when the text zooms or pans out from under it: %s', async (moved) => {
+    const { wrapper, tip } = at(1.5, { reveal: 'expand' });
+    await frames();
+    expect(tip.target).not.toBeNull();
+    wrapper.style.transform = moved;
+    await frames();
+    expect(tip.target).toBeNull();
+  });
+
+  it('selects a run between breaks in a scaled tip', async () => {
+    const wrapper = scaled(1.5);
+    const t = make(box(PATH, 'width:180px', wrapper), { position: 'middle' });
+    const tip = make_tip({ reveal: 'expand', breaks: '/' });
+    tip.attach(t);
+    tip.show(t);
+    const run = graphemeSpans(tip)[PATH.indexOf('Projects') + 2]!.getBoundingClientRect();
+    await commands.mouse('press', ...center(run), 2);
+    expect(tip.held).toBe(true);
+    expect(getSelection()!.toString()).toBe('Projects');
   });
 });
