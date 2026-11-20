@@ -196,7 +196,9 @@ its pending pass. One ResizeObserver serves every instance, and an
 IntersectionObserver puts off elements more than a screen away, when what they
 show meanwhile can't change their height. An element that isn't rendered
 (`display: none`, a closed popover) isn't far: shown again, it is truncated in
-the frame it shows, before that frame paints. Inside content that
+the frame it shows, before that frame paints. A scroll that brings a far
+element near runs the element's pass in the scroll event, before the frame
+paints, as the IntersectionObserver reports a frame or two later. Inside content that
 `content-visibility: auto` skips, an instance waits until it is rendered.
 
 Creating 900 instances, or resizing the grid they're in, takes a handful of

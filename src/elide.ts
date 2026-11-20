@@ -221,6 +221,16 @@ let sharedObserver: ResizeObserver | null = null;
 let nearObserver: IntersectionObserver | null = null;
 const observed = new Map<Element, Elide>();
 
+/**
+ * Instances with a pass put off while far from the screen (see `putOff`).
+ * A scroll brings them near before the IntersectionObserver can say: it
+ * reports a frame or two after the scroll, and the text would show in full
+ * until then. A scroll event comes before the frame paints, so the passes run
+ * there (see `scrolled`), and `scrolling` keeps them from being put off again.
+ */
+const waiting = new Set<Elide>();
+let scrolling = false;
+
 /** One more for the max-height of every element fitted to its height (see `watchRoom`). */
 let roomObserver: ResizeObserver | null = null;
 const rooms = new Map<Element, Elide>();
@@ -603,6 +613,7 @@ export class Elide {
     this.#observe(false);
     this.#watchRoom();
     queued.delete(this);
+    waiting.delete(this);
     unfound.delete(this);
     instances.delete(this);
     byId.delete(this.#id);
@@ -649,10 +660,14 @@ export class Elide {
     // way (`scrollMargin`): `rootMargin` widens the window alone, so text in a
     // scrolling list, below what the list shows, would wait until it scrolled
     // into sight, and settle there a frame later.
-    nearObserver ??= new IntersectionObserver((entries) => Elide.#neared(entries), {
-      rootMargin: '100%',
-      scrollMargin: '100%',
-    });
+    if (!nearObserver) {
+      nearObserver = new IntersectionObserver((entries) => Elide.#neared(entries), {
+        rootMargin: '100%',
+        scrollMargin: '100%',
+      });
+      // Not bubbling, but it can be caught on its way down.
+      document.addEventListener('scroll', (e) => Elide.#scrolled(e), { capture: true, passive: true });
+    }
     nearObserver.observe(host);
   }
 
@@ -1406,11 +1421,46 @@ export class Elide {
    * near the screen, or as soon as anything is read from the instance.
    */
   #putOff(reason: ChangeReason, far: boolean): boolean {
-    if (!far || this.#reading || !nearObserver || observed.get(this.element) !== this) return false;
+    if (!far || this.#reading || scrolling || !nearObserver || observed.get(this.element) !== this) return false;
     if (reason !== 'init' && reason !== 'resize' && reason !== 'fonts') return false;
     if (wraps(this.#settings.lines) ? this.#heightLock === null : reason === 'init' && !WRAP_MODE) return false;
     this.#owed ??= reason;
+    waiting.add(this);
     return true;
+  }
+
+  /**
+   * A scroll, before the frame paints: passes put off for elements it brought
+   * near run now, in one batch, so the text shows truncated from the first
+   * frame it's seen in. Near is within a screen of the window, and within
+   * the scrolled element's own size of what it shows.
+   */
+  static #scrolled(event: Event) {
+    if (waiting.size === 0) return;
+    const scroller = event.target instanceof Element ? event.target : null;
+    const view = scroller?.getBoundingClientRect();
+    const due: Elide[] = [];
+    for (const instance of waiting) {
+      const host = instance.element;
+      if (!instance.#owed) {
+        waiting.delete(instance);
+        continue;
+      }
+      if (scroller && !scroller.contains(host)) continue;
+      const r = host.getBoundingClientRect();
+      if (r.bottom < -innerHeight || r.top > 2 * innerHeight || r.right < -innerWidth || r.left > 2 * innerWidth) continue;
+      if (view && (r.bottom < view.top - view.height || r.top > view.bottom + view.height)) continue;
+      if (view && (r.right < view.left - view.width || r.left > view.right + view.width)) continue;
+      due.push(instance);
+    }
+    if (due.length === 0) return;
+    for (const instance of due) if (!queued.has(instance)) queued.set(instance, instance.#owed!);
+    scrolling = true;
+    try {
+      Elide.#flush();
+    } finally {
+      scrolling = false;
+    }
   }
 
   /**
@@ -1518,6 +1568,7 @@ export class Elide {
     const phase = new Phase();
     const host = this.element;
     this.#owed = null;
+    waiting.delete(this);
     if (this.#destroyed || !host.isConnected) return null;
     // Expanded text wraps as it likes: only a change of text or options needs a pass.
     if (this.#opener !== null && (reason === 'resize' || reason === 'fonts')) return null;

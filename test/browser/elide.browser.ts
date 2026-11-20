@@ -496,6 +496,31 @@ describe('elide', () => {
     expectFits(t);
   });
 
+  it('truncates text a scroll brings from far away before the frame paints', async () => {
+    const list = box('', 'height:100px;overflow:auto');
+    const far = document.createElement('div');
+    far.style.height = `${3 * innerHeight}px`;
+    list.append(far);
+    const el = box(PROSE, 'white-space:nowrap', list);
+    make(el);
+    await frames(3);
+    // Put off: far below what the list shows, and the window.
+    expect(el.hasAttribute('data-truncated')).toBe(false);
+    // A scroll from a task, as a person's is, and what the next frame paints
+    // (the attribute, as reading the instance runs its pass).
+    await new Promise((resolve) => setTimeout(resolve));
+    list.scrollTop = far.offsetHeight;
+    const painted = await new Promise<boolean>((resolve) => {
+      const probe = box('', 'height:1px');
+      const ro = new ResizeObserver(() => {
+        ro.disconnect();
+        resolve(el.hasAttribute('data-truncated'));
+      });
+      ro.observe(probe);
+    });
+    expect(painted).toBe(true);
+  });
+
   it('truncates an element shown again before it paints, at its new width', async () => {
     const el = box(PROSE, 'width:300px');
     const t = make(el, { position: 'middle' });
