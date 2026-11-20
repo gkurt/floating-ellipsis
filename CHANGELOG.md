@@ -1,3 +1,17 @@
+## floating-ellipsis@1.2.0
+
+### Truncate text in a scrolling list before the list scrolls it into sight
+
+Text more than a screen from the window waits to be truncated until the text comes near. Text in a scrolling container, below what the container shows, counted as far until the text scrolled into sight, and the ellipsis settled a frame later. The text now counts as near within a container's height of what the container shows (`scrollMargin`), so the text is truncated before it shows. Firefox, without `scrollMargin`, works as before.
+
+### A click on a tip goes to what's under it
+
+A press on a full-text tip that doesn't move is a click on the element under the tip, such as the link or the row the truncated text is in: the tip lets go and passes the pointer events, the focus and the click on. Only a drag of 4px or more selects the tip's text, and only a drag holds the tip open. Two and three presses no longer select a run or all of the text in the tip, as each press is a click on what's under it.
+
+### Truncate text a fast scroll brings near before the frame paints
+
+Text more than a screen from the window waits to be truncated until the IntersectionObserver says the text came near. The observer reports a frame or two after a scroll, so text that a fast scroll brought straight into sight showed in full for those frames, and the ellipsis settled late. A scroll event now runs the waiting passes of the text the scroll brought near, before the frame paints, so the text shows truncated from the first frame. A pass that runs there lands at once, with no animation from `floating-ellipsis/transitions`.
+
 ## floating-ellipsis@1.1.0
 
 ### Pressing a truncated input puts the caret on the glyph pressed in Firefox
