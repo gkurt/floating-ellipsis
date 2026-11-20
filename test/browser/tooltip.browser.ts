@@ -310,22 +310,25 @@ describe('tooltip', () => {
       return { tip, line, at };
     }
 
-    it('holds the tip after a press, until a press elsewhere', async () => {
-      const { tip, line, at } = await hovered();
+    it('passes a click on the tip to what is under it, and lets go of the tip', async () => {
+      const { tip, at } = await hovered();
+      const heard: string[] = [];
+      for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click'])
+        tip.target!.instance.element.addEventListener(type, (e) => heard.push(`${type}${(e as MouseEvent).altKey ? '+alt' : ''}`));
       await press(...at);
-      expect(tip.held).toBe(true);
-      expect(tip.element.hasAttribute('data-held')).toBe(true);
-      await press(line.left + 5, line.bottom + 150);
-      expect(tip.target).toBeNull();
+      expect(heard).toEqual(['pointerdown', 'mousedown', 'mouseup', 'click']);
+      expect(tip.held).toBe(false);
+      expect(tip.element.style.pointerEvents).toBe('none');
+      expect(getSelection()!.toString()).toBe('');
     });
 
-    it('selects a run between breaks on two presses, and all of it on three', async () => {
+    it('holds the tip with what a drag selected, until a press elsewhere', async () => {
       const { tip, line, at } = await hovered();
-      await press(...at, 2);
-      expect(getSelection()!.toString()).toBe('Projects');
-      // Three at once: a press on its own after the two may come too late to count as a third.
-      await press(...at, 3);
-      expect(getSelection()!.toString()).toBe(PATH);
+      await commands.mouse('down', ...at);
+      await commands.mouse('move', at[0] + 30, at[1]);
+      await commands.mouse('up', at[0] + 30, at[1]);
+      expect(tip.held).toBe(true);
+      expect(getSelection()!.toString()).not.toBe('');
       // It holds a selection: moving away leaves it open.
       await commands.mouse('move', line.left + 5, line.bottom + 150);
       await frames(1);
@@ -426,14 +429,19 @@ describe('tooltip under a scaled ancestor', () => {
     expect(tip.target).toBeNull();
   });
 
-  it('selects a run between breaks in a scaled tip', async () => {
+  it('drags a selection across a scaled tip', async () => {
     const wrapper = scaled(1.5);
     const t = make(box(PATH, 'width:180px', wrapper), { position: 'middle' });
     const tip = make_tip({ reveal: 'expand', breaks: '/' });
     tip.attach(t);
     tip.show(t);
-    const run = graphemeSpans(tip)[PATH.indexOf('Projects') + 2]!.getBoundingClientRect();
-    await commands.mouse('press', ...center(run), 2);
+    const spans = graphemeSpans(tip);
+    const start = PATH.indexOf('Projects');
+    const from = spans[start]!.getBoundingClientRect();
+    const to = spans[start + 'Projects'.length]!.getBoundingClientRect();
+    await commands.mouse('down', from.left + 1, from.top + from.height / 2);
+    await commands.mouse('move', to.left + 1, to.top + to.height / 2);
+    await commands.mouse('up', to.left + 1, to.top + to.height / 2);
     expect(tip.held).toBe(true);
     expect(getSelection()!.toString()).toBe('Projects');
   });

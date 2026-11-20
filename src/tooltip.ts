@@ -55,9 +55,9 @@ export interface TooltipOptions {
   /** 'peek': how far around an ellipsis' area still counts as on it, in px. Default 4. */
   slop?: number;
   /**
-   * 'grow' and 'expand': a press on the tip starts selecting its text (two
-   * select a run between breaks, three all of it), and the tip stays open
-   * while it's hovered or holds a selection. Default true.
+   * 'grow' and 'expand': dragging across the tip selects its text, and the tip
+   * stays open while it's hovered or holds a selection. A click on the tip
+   * goes to what's under it, as it would without the tip. Default true.
    */
   selectable?: boolean;
   /** 'grow': milliseconds. Default 240. */
@@ -122,6 +122,9 @@ const cut = (instance: Elide) => (instance.truncated || instance.state.shortened
 
 const OPEN = 'data-fp-tip-open';
 
+/** How far a press on the tip moves, in px, before the press is a drag that selects, not a click. */
+const DRAG = 4;
+
 /** How far into a 'grow' the hidden text starts to show: once the tip has mostly grown, eased so the two settle together. */
 const REVEAL = 0.4;
 
@@ -160,9 +163,11 @@ export class Tooltip {
   #holding = false;
   #dragging = false;
   #anchor = 0;
-  // Pointer events don't count clicks (their `detail` is 0), so presses are
-  // counted here: one soon enough after the last, close enough to it, adds one.
-  #presses = { count: 0, time: 0, x: 0, y: 0 };
+  // A press on the tip that hasn't moved yet: where it landed, the boundary
+  // under it, and the event, for the click it becomes unless it drags.
+  #pressed: { x: number; y: number; at: number | null; down: PointerEvent } | null = null;
+  // While a click goes on to what's under the tip, the tip leaves its events be.
+  #passing = false;
   /** Where the tip's `left: 0; top: 0` is in the viewport (not at 0, 0 in a container that is its containing block). */
   #frame = { x: 0, y: 0 };
   /** The scale a full-text tip is drawn at, the text's: screen pixels per pixel of the tip's own. */
@@ -718,13 +723,16 @@ export class Tooltip {
   // Selecting text in the tip
   //
   // The tip ignores the pointer, so hovering what's under it keeps working.
-  // But a press that lands on it (with a mouse or pen) is the tip's: it takes
-  // the pointer, the press starts a selection in its text, and dragging
-  // extends it, clamped to the tip's text. The press also holds the tip open
-  // while it's hovered, and for as long as it holds a selection. When the
-  // pointer leaves it with nothing selected, it stays open (no longer held)
-  // if the pointer is back on its trigger, and closes otherwise. A press
-  // elsewhere lets go of it and closes it.
+  // A press that lands on it (with a mouse or pen) is the tip's until the
+  // pointer moves: it takes the pointer, and once the pointer moves DRAG px a
+  // selection starts in its text where the press landed, which dragging
+  // extends, clamped to the tip's text. A press let go of without moving is a
+  // click on what's under the tip: the tip lets go and passes the press and
+  // the click on, as if the tip weren't there. A drag holds the tip open while
+  // it's hovered, and for as long as it holds a selection. When the pointer
+  // leaves it with nothing selected, it stays open (no longer held) if the
+  // pointer is back on its trigger, and closes otherwise. A press elsewhere
+  // lets go of it and closes it.
 
   #selectable() {
     return this.#settings.selectable && this.#current !== null && this.#settings.reveal !== 'peek' && this.#spans.length > 0;
@@ -765,30 +773,27 @@ export class Tooltip {
   }
 
   #onPress = (e: PointerEvent) => {
-    if (e.button !== 0 || e.pointerType === 'touch') return;
+    if (this.#passing || e.button !== 0 || e.pointerType === 'touch') return;
     if (!this.#selectable() || !this.#inside(e.clientX, e.clientY)) {
       if (this.#holding) this.#close(true);
       return;
     }
     e.preventDefault();
     e.stopPropagation();
-    const tip = this.element;
     this.#land();
     this.#hold(true);
-    tip.setPointerCapture(e.pointerId);
-    const p = this.#presses;
-    const again = e.timeStamp - p.time < 500 && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 5;
-    this.#presses = { count: again ? p.count + 1 : 1, time: e.timeStamp, x: e.clientX, y: e.clientY };
-    const at = this.#caretAt(e.clientX, e.clientY);
-    if (at === null) return;
-    if (this.#presses.count === 2) return this.#selectAround(at);
-    if (this.#presses.count >= 3) return this.#select(0, this.#spans.length);
-    this.#anchor = at;
-    this.#dragging = true;
-    this.#select(at, at);
+    this.element.setPointerCapture(e.pointerId);
+    this.#pressed = { x: e.clientX, y: e.clientY, at: this.#caretAt(e.clientX, e.clientY), down: e };
   };
 
   #onDrag = (e: PointerEvent) => {
+    const p = this.#pressed;
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= DRAG) {
+      this.#pressed = null;
+      if (p.at === null) return;
+      this.#anchor = p.at;
+      this.#dragging = true;
+    }
     if (!this.#dragging) return;
     const at = this.#caretAt(e.clientX, e.clientY);
     if (at !== null) this.#select(this.#anchor, at);
@@ -796,10 +801,60 @@ export class Tooltip {
 
   #onRelease = (e: PointerEvent) => {
     if (!this.#holding) return;
+    const click = this.#pressed;
+    this.#pressed = null;
     this.#dragging = false;
     if (this.element.hasPointerCapture(e.pointerId)) this.element.releasePointerCapture(e.pointerId);
+    if (click && e.type === 'pointerup') {
+      // Not a drag: let go of the tip, which ignores the pointer again, and click what's under it.
+      this.#hold(false);
+      this.#passClick(click.down, e);
+      return;
+    }
     if (!this.#inside(e.clientX, e.clientY)) this.#leave(e.clientX, e.clientY);
   };
+
+  /**
+   * Passes a press on the tip, `down` then `up`, to the element under it, as the
+   * press would have gone without the tip: the pointer and mouse events, the
+   * focus a press gives, and the click.
+   */
+  #passClick(down: PointerEvent, up: PointerEvent) {
+    const target = document.elementFromPoint(down.clientX, down.clientY);
+    if (!target || this.element.contains(target)) return;
+    const at = (e: PointerEvent, buttons: number) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      clientX: down.clientX,
+      clientY: down.clientY,
+      screenX: down.screenX,
+      screenY: down.screenY,
+      button: 0,
+      buttons,
+      detail: 1,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      pointerId: e.pointerId,
+      pointerType: e.pointerType,
+      isPrimary: e.isPrimary,
+    });
+    this.#passing = true;
+    try {
+      const pressed = target.dispatchEvent(new PointerEvent('pointerdown', at(down, 1)));
+      const mouse = pressed && target.dispatchEvent(new MouseEvent('mousedown', at(down, 1)));
+      // A press focuses what it lands in, unless the page kept it from doing so.
+      if (mouse) target.closest<HTMLElement>('a[href], button, input, select, textarea, [tabindex]')?.focus({ preventScroll: true });
+      target.dispatchEvent(new PointerEvent('pointerup', at(up, 0)));
+      target.dispatchEvent(new MouseEvent('mouseup', at(up, 0)));
+      target.dispatchEvent(new MouseEvent('click', at(up, 0)));
+    } finally {
+      this.#passing = false;
+    }
+  }
 
   /** The grapheme boundary under a point, with the point first pulled inside the tip's text. */
   #caretAt(x: number, y: number): number | null {
@@ -838,18 +893,6 @@ export class Tooltip {
     };
     if (this.#spans.length === 0) return;
     document.getSelection()?.setBaseAndExtent(...at(from), ...at(to));
-  }
-
-  /** Select the run around a boundary, between spaces and `breaks`. */
-  #selectAround(at: number) {
-    const g = this.#current?.instance.graphemes ?? [];
-    const stop = (s: string) => /\s/.test(s) || this.#settings.breaks.includes(s);
-    let a = at;
-    let b = at;
-    while (a > 0 && !stop(g[a - 1]!)) a--;
-    while (b < g.length && !stop(g[b]!)) b++;
-    if (a === b) b = Math.min(g.length, b + 1);
-    this.#select(a, b);
   }
 
   /**

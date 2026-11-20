@@ -566,7 +566,8 @@ for (const row of rows) tips.attach(elide(row.querySelector('.path'), { position
 A headless tooltip for truncated text, shared by every instance attached to it.
 With `reveal: 'grow'` the tip starts as a copy of the line and grows into the
 full text; `'expand'` shows it at once; `'peek'` shows only what the hovered
-ellipsis hides. Pressing a tip makes its text selectable. Over text under a
+ellipsis hides. Dragging across a tip selects its text, and a click on a tip
+goes to what's under it. Over text under a
 scaled ancestor, a zoomed canvas, a full-text tip is drawn at the text's scale,
 and a tip closes when its text moves or rescales under it.
 
@@ -581,7 +582,7 @@ and a tip closes when its text moves or rescales under it.
 | `edge`       | `8`      | Distance from the window's edges, in px.                                |
 | `offset`     | `8`      | `'peek'`: distance from the ellipsis, in px.                            |
 | `slop`       | `4`      | `'peek'`: hover tolerance around the ellipsis, in px.                   |
-| `selectable` | `true`   | A press makes the text selectable and holds the tip open.               |
+| `selectable` | `true`   | A drag selects the text and holds the tip open; a click passes through. |
 | `duration`   | `240`    | `'grow'` animation length; `easing` sets its curve.                     |
 | `container`  | `<body>` | Where the tip goes; use the `<dialog>` for text inside a modal.         |
 | `onShow`     | —        | Called with `{ instance, trigger, ellipsis }`.                          |
