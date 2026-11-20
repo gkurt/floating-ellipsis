@@ -481,6 +481,21 @@ describe('elide', () => {
     expectFits(t);
   });
 
+  it('truncates text in a scrolling list before the list scrolls it into sight', async () => {
+    const list = box('', 'height:100px;overflow:auto');
+    list.append(spacer(150));
+    const el = box(PROSE, 'width:300px', list);
+    const t = make(el, { position: 'middle' });
+    await frames(3);
+    const cut = rendered(t);
+    el.style.width = '150px';
+    await frames(3);
+    // Below what the list shows, within a list's height of it: near enough.
+    expect(rendered(t)).not.toBe(cut);
+    expect(el.style.overflow).toBe('');
+    expectFits(t);
+  });
+
   it('truncates an element shown again before it paints, at its new width', async () => {
     const el = box(PROSE, 'width:300px');
     const t = make(el, { position: 'middle' });

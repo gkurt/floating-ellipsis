@@ -645,7 +645,14 @@ export class Elide {
     observed.set(host, this);
     sharedObserver.observe(host);
     if (typeof IntersectionObserver === 'undefined') return;
-    nearObserver ??= new IntersectionObserver((entries) => Elide.#neared(entries), { rootMargin: '100%' });
+    // A screen around the window, and around each scroll container on the
+    // way (`scrollMargin`): `rootMargin` widens the window alone, so text in a
+    // scrolling list, below what the list shows, would wait until it scrolled
+    // into sight, and settle there a frame later.
+    nearObserver ??= new IntersectionObserver((entries) => Elide.#neared(entries), {
+      rootMargin: '100%',
+      scrollMargin: '100%',
+    });
     nearObserver.observe(host);
   }
 
