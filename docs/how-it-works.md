@@ -755,8 +755,8 @@ the glyph pressed when the press ends, unless it selected something.
 A tip shows once the pointer rests on a trigger for the delay. Every move
 starts the wait again, so a pointer passing over text opens nothing. After the
 first tip, the next shows at once, so moving along a list only waits once.
-With `hover: 'ellipsis'` a full-text tip opens only within `slop` of an
-ellipsis' area, and stays open over the whole trigger once open. Listeners are shared, so attaching every cell of a table is
+With `hover: 'ellipsis'` a full-text tip opens only on an ellipsis' area, the
+character showing on either side of the ellipsis, or within `slop` of them, and stays open over the whole trigger once open. Listeners are shared, so attaching every cell of a table is
 cheap.
 
 A growing tip starts as an exact copy of the line, dots included: every

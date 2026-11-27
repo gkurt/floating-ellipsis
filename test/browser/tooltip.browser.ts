@@ -265,6 +265,15 @@ describe('tooltip', () => {
     expect(tip.target?.instance).toBe(t);
   });
 
+  it("with hover: 'ellipsis', opens on the character beside an ellipsis", async () => {
+    const t = make(box(PATH, 'width:220px;margin-top:100px'), { position: 'middle' });
+    const tip = make_tip({ reveal: 'expand', hover: 'ellipsis', delay: 0, grace: 0, slop: 0 });
+    tip.attach(t);
+    const after = graphemeRect(t, t.state.hidden[0]!.end)!;
+    await commands.mouse('move', after.right - 1, after.top + after.height / 2);
+    await expect.poll(() => tip.target?.instance).toBe(t);
+  });
+
   it('peeks on hovering an ellipsis, gaps included, and not the text', async () => {
     const t = make(box(PATH, 'width:220px;margin-top:100px'), { position: 'middle' });
     const tip = make_tip({ reveal: 'peek', delay: 0 });

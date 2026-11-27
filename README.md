@@ -571,23 +571,23 @@ goes to what's under it. Over text under a
 scaled ancestor, a zoomed canvas, a full-text tip is drawn at the text's scale,
 and a tip closes when its text moves or rescales under it.
 
-| Option       | Default  |                                                                         |
-| ------------ | -------- | ----------------------------------------------------------------------- |
-| `reveal`     | `'grow'` | `'grow'`, `'expand'` or `'peek'`.                                       |
-| `hover`      | `'text'` | `'ellipsis'` opens a full-text tip only on or near an ellipsis.         |
-| `delay`      | `300`    | Rest in ms; every move restarts the wait. Focus shows the tip at once.  |
-| `grace`      | `300`    | After a tip closes, the next one shows without the delay for this long. |
-| `breaks`     | `''`     | Characters a tip may wrap after, besides spaces: `'/\\'` for paths.     |
-| `maxWidth`   | `40`     | Widest tip, in ems of the text (or the line's width if wider).          |
-| `aspect`     | `2`      | Minimum width-to-height ratio before a tip widens leftwards.            |
-| `edge`       | `8`      | Distance from the window's edges, in px.                                |
-| `offset`     | `8`      | `'peek'`: distance from the ellipsis, in px.                            |
-| `slop`       | `4`      | `'peek'` and `hover: 'ellipsis'`: tolerance around the ellipsis, in px. |
-| `selectable` | `true`   | A drag selects the text and holds the tip open; a click passes through. |
-| `duration`   | `240`    | `'grow'` animation length; `easing` sets its curve.                     |
-| `container`  | `<body>` | Where the tip goes; use the `<dialog>` for text inside a modal.         |
-| `onShow`     | —        | Called with `{ instance, trigger, ellipsis }`.                          |
-| `onHide`     | —        | Called with the same.                                                   |
+| Option       | Default  |                                                                                  |
+| ------------ | -------- | -------------------------------------------------------------------------------- |
+| `reveal`     | `'grow'` | `'grow'`, `'expand'` or `'peek'`.                                                |
+| `hover`      | `'text'` | `'ellipsis'` opens a full-text tip only on an ellipsis or a character beside it. |
+| `delay`      | `300`    | Rest in ms; every move restarts the wait. Focus shows the tip at once.           |
+| `grace`      | `300`    | After a tip closes, the next one shows without the delay for this long.          |
+| `breaks`     | `''`     | Characters a tip may wrap after, besides spaces: `'/\\'` for paths.              |
+| `maxWidth`   | `40`     | Widest tip, in ems of the text (or the line's width if wider).                   |
+| `aspect`     | `2`      | Minimum width-to-height ratio before a tip widens leftwards.                     |
+| `edge`       | `8`      | Distance from the window's edges, in px.                                         |
+| `offset`     | `8`      | `'peek'`: distance from the ellipsis, in px.                                     |
+| `slop`       | `4`      | `'peek'` and `hover: 'ellipsis'`: tolerance around the ellipsis, in px.          |
+| `selectable` | `true`   | A drag selects the text and holds the tip open; a click passes through.          |
+| `duration`   | `240`    | `'grow'` animation length; `easing` sets its curve.                              |
+| `container`  | `<body>` | Where the tip goes; use the `<dialog>` for text inside a modal.                  |
+| `onShow`     | —        | Called with `{ instance, trigger, ellipsis }`.                                   |
+| `onHide`     | —        | Called with the same.                                                            |
 
 `attach(instance, trigger?)` returns a detach function; `show(instance,
 ellipsis?)` and `hide()` open and close the tooltip, `update(options)` changes

@@ -1,5 +1,5 @@
 import type { Elide } from './elide.ts';
-import { ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements, shortElement } from './geometry.ts';
+import { ellipsisArea, ellipsisAt, ellipsisInk, graphemeAt, graphemeRect, lineRects, markElements, shortElement } from './geometry.ts';
 
 import { isWhitespace } from './graphemes.ts';
 import { type Scale, scaleNow } from './lines.ts';
@@ -22,9 +22,9 @@ export interface TooltipOptions {
   /**
    * Where hovering opens a full-text tip ('grow' and 'expand'):
    * - 'text': anywhere on the trigger.
-   * - 'ellipsis': only on or near an ellipsis (its area, gaps included, and
-   *   `slop` around it). Text that is only shortened, with no ellipsis,
-   *   opens anywhere. Once open, the tip stays open over the whole trigger.
+   * - 'ellipsis': only on or near an ellipsis: its area, gaps included, the
+   *   character showing on either side of the ellipsis, and `slop` around
+   *   them. Text that is only shortened, with no ellipsis, opens anywhere. Once open, the tip stays open over the whole trigger.
    * A 'peek' tip always opens on its ellipsis. Default 'text'.
    */
   hover?: 'text' | 'ellipsis';
@@ -130,6 +130,25 @@ interface Origin {
 
 /** Whether some of `instance`'s text doesn't show as it is: cut, or shortened (and not expanded). */
 const cut = (instance: Elide) => (instance.truncated || instance.state.shortened) && !instance.expanded;
+
+/**
+ * Whether a point is near an ellipsis of `instance`: on the ellipsis' area,
+ * or on the character showing on either side of the ellipsis in the same
+ * line, or within `slop` px of either.
+ */
+function nearEllipsis(instance: Elide, x: number, y: number, slop: number): boolean {
+  return instance.state.hidden.some((part, i) => {
+    const area = ellipsisArea(instance, i);
+    if (!area) return false;
+    const middle = area.top + area.height / 2;
+    const beside = [graphemeRect(instance, part.start - 1), graphemeRect(instance, part.end)].filter(
+      (r): r is DOMRect => !!r && r.top <= middle && r.bottom >= middle,
+    );
+    const left = Math.min(area.left, ...beside.map((r) => r.left)) - slop;
+    const right = Math.max(area.right, ...beside.map((r) => r.right)) + slop;
+    return x >= left && x < right && y >= area.top - slop && y < area.bottom + slop;
+  });
+}
 
 const OPEN = 'data-fp-tip-open';
 
@@ -379,9 +398,12 @@ export class Tooltip {
     const peek = reveal === 'peek';
     // An open full-text tip stays open over the whole trigger, wherever it opened.
     if (!peek && this.#current?.instance === found.instance) return this.#cancel();
-    const at = peek || hover === 'ellipsis' ? ellipsisAt(found.instance, e.clientX, e.clientY, slop) : 0;
-    if (at < 0 && (peek || found.instance.ellipses.length > 0)) return this.#close();
-    const target = { ...found, ellipsis: peek ? at : null };
+    const ellipsis = peek ? ellipsisAt(found.instance, e.clientX, e.clientY, slop) : null;
+    if (ellipsis === -1) return this.#close();
+    const far =
+      !peek && hover === 'ellipsis' && found.instance.ellipses.length > 0 && !nearEllipsis(found.instance, e.clientX, e.clientY, slop);
+    if (far) return this.#close();
+    const target = { ...found, ellipsis };
     if (this.#same(target, this.#current)) return this.#cancel();
     this.#close(false, true);
     // A move while waiting starts the wait again: the tip shows once the pointer rests.
