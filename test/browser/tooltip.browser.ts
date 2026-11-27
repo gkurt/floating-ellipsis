@@ -234,6 +234,37 @@ describe('tooltip', () => {
     expect(hidden).toHaveLength(1);
   });
 
+  it('waits for the pointer to rest: every move starts the delay again', async () => {
+    const t = make(box(PROSE, 'width:260px'), { position: 'middle' });
+    const tip = make_tip({ reveal: 'expand', delay: 200 });
+    tip.attach(t);
+    const r = t.element.getBoundingClientRect();
+    const y = r.top + r.height / 2;
+    for (let i = 0; i < 6; i++) {
+      await commands.mouse('move', r.left + 10 + i * 4, y);
+      await new Promise((done) => setTimeout(done, 80));
+    }
+    expect(tip.target).toBeNull();
+    await expect.poll(() => tip.target?.instance).toBe(t);
+  });
+
+  it("with hover: 'ellipsis', opens near an ellipsis and stays open over the text", async () => {
+    const t = make(box(PATH, 'width:220px;margin-top:100px'), { position: 'middle' });
+    const tip = make_tip({ reveal: 'expand', hover: 'ellipsis', delay: 0, grace: 0 });
+    tip.attach(t);
+    const text = center(graphemeRect(t, 0)!);
+    await commands.mouse('move', ...text);
+    await frames(2);
+    expect(tip.target).toBeNull();
+    const area = ellipsisArea(t, 0)!;
+    await commands.mouse('move', area.left + 1, area.top + area.height / 2);
+    await expect.poll(() => tip.target?.instance).toBe(t);
+    expect(tip.target?.ellipsis).toBeNull();
+    await commands.mouse('move', ...text);
+    await frames(2);
+    expect(tip.target?.instance).toBe(t);
+  });
+
   it('peeks on hovering an ellipsis, gaps included, and not the text', async () => {
     const t = make(box(PATH, 'width:220px;margin-top:100px'), { position: 'middle' });
     const tip = make_tip({ reveal: 'peek', delay: 0 });

@@ -20,8 +20,18 @@ export interface TooltipOptions {
   /** What the tip shows, and where. Default 'grow'. */
   reveal?: Reveal;
   /**
-   * Milliseconds the pointer rests on a trigger before its tip shows.
-   * Default 300. Focus shows a tip at once.
+   * Where hovering opens a full-text tip ('grow' and 'expand'):
+   * - 'text': anywhere on the trigger.
+   * - 'ellipsis': only on or near an ellipsis (its area, gaps included, and
+   *   `slop` around it). Text that is only shortened, with no ellipsis,
+   *   opens anywhere. Once open, the tip stays open over the whole trigger.
+   * A 'peek' tip always opens on its ellipsis. Default 'text'.
+   */
+  hover?: 'text' | 'ellipsis';
+  /**
+   * Milliseconds the pointer rests still on a trigger before its tip shows.
+   * Every move starts the wait again, so a pointer passing over text doesn't
+   * open its tip. Default 300. Focus shows a tip at once.
    */
   delay?: number;
   /**
@@ -52,7 +62,7 @@ export interface TooltipOptions {
   edge?: number;
   /** 'peek': the distance between the ellipsis' ink and the tip, in px. Default 8. */
   offset?: number;
-  /** 'peek': how far around an ellipsis' area still counts as on it, in px. Default 4. */
+  /** 'peek', and `hover: 'ellipsis'`: how far around an ellipsis' area still counts as on it, in px. Default 4. */
   slop?: number;
   /**
    * 'grow' and 'expand': dragging across the tip selects its text, and the tip
@@ -94,6 +104,7 @@ type Settings = Required<Omit<TooltipOptions, 'container' | 'onShow' | 'onHide'>
 
 const DEFAULTS: Settings = {
   reveal: 'grow',
+  hover: 'text',
   delay: 300,
   grace: 300,
   breaks: '',
@@ -149,7 +160,6 @@ export class Tooltip {
   #triggers = new WeakMap<Element, Elide>();
   #triggerOf = new WeakMap<Elide, Element>();
   #current: TooltipTarget | null = null;
-  #waiting: TooltipTarget | null = null;
   #timer = 0;
   #closedAt = -Infinity;
   #unrender: (() => void) | null = null;
@@ -285,7 +295,6 @@ export class Tooltip {
     this.#cancel();
     const warm = this.#current !== null || performance.now() - this.#closedAt < this.#settings.grace;
     if (warm || this.#settings.delay <= 0) return this.#open(target);
-    this.#waiting = target;
     this.#timer = window.setTimeout(() => this.#open(target), this.#settings.delay);
   }
 
@@ -293,7 +302,6 @@ export class Tooltip {
   #cancel() {
     clearTimeout(this.#timer);
     this.#timer = 0;
-    this.#waiting = null;
   }
 
   #open(target: TooltipTarget) {
@@ -367,15 +375,16 @@ export class Tooltip {
     if (e.pointerType === 'touch' || this.#holding) return;
     const found = this.#triggerAt(e.target);
     if (!found) return this.#close();
-    let ellipsis: number | null = null;
-    if (this.#settings.reveal === 'peek') {
-      ellipsis = ellipsisAt(found.instance, e.clientX, e.clientY, this.#settings.slop);
-      if (ellipsis < 0) return this.#close();
-    }
-    const target = { ...found, ellipsis };
+    const { reveal, hover, slop } = this.#settings;
+    const peek = reveal === 'peek';
+    // An open full-text tip stays open over the whole trigger, wherever it opened.
+    if (!peek && this.#current?.instance === found.instance) return this.#cancel();
+    const at = peek || hover === 'ellipsis' ? ellipsisAt(found.instance, e.clientX, e.clientY, slop) : 0;
+    if (at < 0 && (peek || found.instance.ellipses.length > 0)) return this.#close();
+    const target = { ...found, ellipsis: peek ? at : null };
     if (this.#same(target, this.#current)) return this.#cancel();
-    if (this.#same(target, this.#waiting)) return;
     this.#close(false, true);
+    // A move while waiting starts the wait again: the tip shows once the pointer rests.
     this.#request(target);
   };
 
